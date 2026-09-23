@@ -1,8 +1,10 @@
 [package]
 name = "gus"
 version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
+description = "Gus — notas y tareas locales en Markdown (escritorio con Tauri v2)"
+authors = ["victorrubilar-dev"]
+license = "MIT"
+repository = "https://github.com/victorrubilar-dev/gus"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

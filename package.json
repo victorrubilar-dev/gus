@@ -2,6 +2,17 @@
   "name": "gus",
   "private": true,
   "version": "0.1.0",
+  "description": "Gus — app de escritorio para notas y tareas en Markdown, local-first (Tauri v2 + React).",
+  "license": "MIT",
+  "author": "victorrubilar-dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/victorrubilar-dev/gus.git"
+  },
+  "homepage": "https://github.com/victorrubilar-dev/gus#readme",
+  "bugs": {
+    "url": "https://github.com/victorrubilar-dev/gus/issues"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",
