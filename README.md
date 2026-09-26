@@ -35,7 +35,6 @@ WebView del sistema en lugar de meter un Chromium entero).
 - ⌨️ **Paleta de comandos** — `Ctrl+K` / `Ctrl+P` filtra todas las notas del vault.
 - 🏠 **Local-first** — carpetas con archivos `.md` estándar, sincronizables con git o rsync; sin nube ni cuentas.
 
-
 ---
 
 ## 🛠 Tecnologías
@@ -123,7 +122,6 @@ La pestaña **Tareas** abre el **Tablero** Kanban (`Por hacer` / `En progreso` /
 
 La sección **Notas del vault** reúne las tareas escritas en los `.md`: `src/utils/taskParser.ts` extrae sus líneas `- [ ]` / `- [x]` (fuera de bloques de código) con prioridad (`!urgente` … `!baja`), etiquetas `#tag` y plazo `📅`. Al marcarlas se reescribe solo la checkbox con `setTaskChecked` y el archivo se guarda con `write_vault_file`.
 
-
 ---
 
 ## 🗃 Estructura del proyecto
@@ -151,11 +149,13 @@ gus/
 │  │  ├─ SettingsPanel.tsx  # Configuración: categorías + buscador
 │  │  ├─ TrashView.tsx      # Papelera: lista, restaurar y vaciar .gus-trash
 │  │  ├─ NewTaskDialog.tsx  # Formulario superpuesto de nueva tarea
+│  │  ├─ SpellMenu.tsx      # Menú contextual del corrector (clic derecho)
 │  │  └─ DatePicker.tsx     # Mini calendario integrado para elegir el plazo
 │  ├─ utils/
 │  │  └─ taskParser.ts      # Extrae - [ ] / - [x] de un .md: prioridad y #tags
 │  └─ lib/
 │     ├─ caretPosition.ts   # Posición del cursor en el textarea (ancla de menús)
+│     ├─ pointerOffset.ts   # Offset del texto bajo el puntero (menú contextual)
 │     ├─ calendarDate.ts    # Fechas: AAAA-MM-DD, meses y rejillas (lunes 1.º)
 │     ├─ fileName.ts        # Utilidades de rutas y nombres
 │     ├─ listContinue.ts     # Intro en listas: continúa el marcador o lo retira
@@ -164,6 +164,7 @@ gus/
 │     ├─ taskPriority.ts    # Prioridades: tipos, colores, orden y ciclo
 │     ├─ settings.ts        # Ajustes globales, categorías y valores por defecto
 │     ├─ spellCheck.ts      # Corrector: idiomas, diccionarios y segmentación
+│     ├─ taskStore.ts       # Almacén .gus-tasks.json: carga y persistencia
 │     ├─ wikiLink.ts        # [[enlaces]]: plugin remark, búsqueda y detectores
 │     └─ newTask.ts         # Contrato del evento task-created
 ├─ public/
