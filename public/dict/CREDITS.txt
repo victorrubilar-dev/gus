@@ -1,0 +1,16 @@
+Diccionarios ortográficos (formato hunspell: .aff + .dic)
+=========================================================
+
+Fuente: https://github.com/wooorm/dictionaries
+  (normalizados a partir de https://github.com/LibreOffice/dictionaries)
+
+Idiomas incluidos: es, en-US, en-GB, fr, de, pt-BR, it.
+Licencias originales de cada diccionario: LGPL-3.0 OR MPL-2.0
+(ver el repositorio fuente para el detalle de cada uno).
+
+El motor que los consulta es hunspell-wasm
+(https://github.com/rotemdan/hunspell-wasm — LGPL-2.0 OR GPL-2.0 OR MPL-1.1),
+Hunspell compilado a WebAssembly.
+
+Estos ficheros se sirven como assets independientes desde `dict/` y solo se
+descargan cuando el corrector está activo en Ajustes -> Notas.

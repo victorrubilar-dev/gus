@@ -1,13 +1,16 @@
 @import "tailwindcss";
 
+/* Tema «Calico Dark» — la paleta oficial de la gata Gus: pelaje azabache,
+   manchas terracota, ojos verdes menta y pecho marfil. */
 @theme static {
-  --color-gus-bg: #0b0c0e;
-  --color-gus-panel: #121418;
-  --color-gus-card: #1a1d24;
-  --color-gus-border: #272b35;
-  --color-gus-accent: #8b5cf6;
-  --color-gus-text: #e2e8f0;
-  --color-gus-muted: #8a93a5;
+  --color-gus-bg: #0d0e11; /* Negro pelaje azabache */
+  --color-gus-panel: #16181f; /* Carbón suave para paneles */
+  --color-gus-card: #1f222b; /* Fondo de tarjetas y elementos */
+  --color-gus-border: #2a2e39; /* Bordes sutiles */
+  --color-gus-accent: #e07a5f; /* Naranja terracota de sus manchas */
+  --color-gus-eyes: #81b29a; /* Verde menta/felino de sus ojos */
+  --color-gus-text: #f4f1de; /* Blanco marfil de su pecho */
+  --color-gus-muted: #8d99ae; /* Texto secundario y etiquetas */
 }
 
 :root {
@@ -51,4 +54,83 @@ body {
 
 .gus-scrollbar::-webkit-scrollbar-corner {
   background: transparent;
+}
+
+/* Ajuste «Animaciones» desactivada: sin transiciones ni animaciones CSS. */
+.gus-no-motion *,
+.gus-no-motion *::before,
+.gus-no-motion *::after {
+  transition-duration: 0.001ms !important;
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+}
+
+/* Fórmulas (KaTeX): heredan el color de la nota y se desplazan en
+   horizontal en lugar de romper el ancho de la columna. */
+.katex {
+  color: inherit;
+  font-size: 1.05em;
+}
+
+.katex-display {
+  margin: 1em 0;
+  padding: 2px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+/* Diagramas Mermaid: centrados y sin desbordar el ancho de la nota. */
+.gus-mermaid {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 0;
+  overflow-x: auto;
+}
+
+.gus-mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* -----------------------------------------------------------------------
+ * Editor con vista en vivo (InlinePreview): el texto del textarea va
+ * transparente y la capa de atrás dibuja el markdown renderizado. El
+ * cursor sigue siendo nativo (caret de color de acento) y la selección
+ * es semitransparente para que el texto del overlay se lea por debajo.
+ * -------------------------------------------------------------------- */
+
+.gus-source-area {
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  caret-color: var(--color-gus-accent);
+}
+
+.gus-source-area::placeholder {
+  color: var(--color-gus-muted);
+  -webkit-text-fill-color: var(--color-gus-muted);
+}
+
+.gus-source-area::selection {
+  background: color-mix(in oklab, var(--color-gus-accent) 30%, transparent);
+}
+
+/* Durante la composición (IME) el navegador pinta él el texto: se restaura
+ * y la capa de atrás se oculta para no duplicar los glifos. */
+.gus-source-text {
+  color: var(--color-gus-text);
+  -webkit-text-fill-color: var(--color-gus-text);
+}
+
+/* -----------------------------------------------------------------------
+ * Corrector ortográfico: subrayado ondulado de las faltas que marca la capa
+ * en vivo. Los decorados de texto no alteran el layout, así que el encaje
+ * textarea/fantasma/overlay sigue intacto.
+ * -------------------------------------------------------------------- */
+
+.gus-misspelled {
+  text-decoration: underline wavy var(--color-rose-400);
+  text-decoration-skip-ink: none;
+  text-underline-offset: 0.2em;
 }

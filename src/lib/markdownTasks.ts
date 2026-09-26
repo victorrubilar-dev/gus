@@ -1,38 +1,35 @@
-/**
- * Utilidades para escanear y modificar líneas de tareas en archivos `.md`
- * con el formato de task list de Markdown: `- [ ]` (pendiente) / `- [x]` (hecha).
- *
- * Las funciones de escritura devuelven SIEMPRE el contenido completo resultante
- * (inmutables): quien decide persistirlo es el consumidor.
- */
-
 export interface TaskLine {
-  /** Índice de línea (base 0) dentro del contenido. */
   line: number;
-  /** Texto de la tarea sin el checkbox y sin las etiquetas. */
   title: string;
-  /** Etiquetas `#tag` finales de la línea, en orden (vacío si no tiene). */
   tags: string[];
   completes: boolean;
+  due?: string;
+  description?: string;
 }
 
-/** `- [ ] texto` o `- [x] texto` (también `[X]`), con sangría opcional y `\r` tolerado. */
 const TASK_RE = /^(\s*)- \[([ xX])]\s*(.*)\r?$/;
 
-/**
- * Una etiqueta final precedida de espacio o de inicio de línea: ` ... #dev #ui`.
- * Exigir el espacio antes del `#` evita comerse títulos como "Aprender C#net".
- */
 const TAG_RE = /(?:^|\s)#([\p{L}\p{N}_-]+)\s*$/u;
 
-/**
- * Separa el cuerpo de una tarea en título y etiquetas libres (varias por línea),
- * quitando las que están al final: `Comprar pan #casa #urgente`.
- */
-function parseTaskBody(body: string): { title: string; tags: string[] } {
-  const tags: string[] = [];
-  let text = body;
+const DUE_RE = /\s+📅\s*(\d{4}-\d{2}-\d{2})\s*$/;
 
+interface TaskBody {
+  title: string;
+  tags: string[];
+  due: string | undefined;
+}
+
+function parseTaskBody(body: string): TaskBody {
+  let text = body;
+  let due: string | undefined;
+
+  const dueMatch = DUE_RE.exec(text);
+  if (dueMatch) {
+    due = dueMatch[1];
+    text = text.slice(0, dueMatch.index);
+  }
+
+  const tags: string[] = [];
   for (;;) {
     const match = TAG_RE.exec(text);
     if (!match) break;
@@ -40,18 +37,13 @@ function parseTaskBody(body: string): { title: string; tags: string[] } {
     text = text.slice(0, match.index);
   }
 
-  return { title: text.trim(), tags };
+  return { title: text.trim(), tags, due };
 }
 
-const CHECKBOX_LEN = "- [ ]".length; // "- [x]" mide lo mismo
+const CHECKBOX_LEN = "- [ ]".length;
 
-/** Apertura/cierre de bloque de código con ``` o ~~~ (0-3 espacios de sangría). */
 const FENCE_RE = /^\s{0,3}(`{3,}|~{3,})/;
 
-/**
- * Índices de las líneas que son tareas FUERA de bloques de código,
- * junto con sus coincidencias (mismo numerado que `markdown.split("\n")`).
- */
 function taskLineIndexes(markdown: string): { line: number; match: RegExpExecArray }[] {
   const found: { line: number; match: RegExpExecArray }[] = [];
   let openFence: string | null = null;
@@ -72,25 +64,55 @@ function taskLineIndexes(markdown: string): { line: number; match: RegExpExecArr
   return found;
 }
 
-/** ¿Esta línea es una tarea con formato `- [ ]` / `- [x]`? */
+function isDescriptionLine(line: string): boolean {
+  if (TASK_RE.test(line)) return false;
+
+  const body = line.replace(/\r$/, "");
+  if (body === "") return false;
+  if (/^\s+$/.test(body)) return true;
+  return /^\s+\S/.test(body);
+}
+
+function blockEnd(lines: string[], line: number): number {
+  let end = line;
+  while (end + 1 < lines.length && isDescriptionLine(lines[end + 1])) end += 1;
+  return end;
+}
+
 export function isTaskLine(line: string): boolean {
   return TASK_RE.test(line);
 }
 
-/** Escanea todo el contenido y devuelve las líneas de tarea con su posición. */
 export function scanTaskLines(markdown: string): TaskLine[] {
-  return taskLineIndexes(markdown).map(({ line, match }) => {
-    const { title, tags } = parseTaskBody((match[3] ?? "").trim());
+  const rawLines = markdown.split("\n");
 
-    return { line, title, tags, completes: match[2] !== " " };
+  return taskLineIndexes(markdown).map(({ line, match }) => {
+    const { title, tags, due } = parseTaskBody((match[3] ?? "").trim());
+
+    const description: string[] = [];
+    for (let index = line + 1; index < rawLines.length; index++) {
+      const raw = rawLines[index];
+      if (!isDescriptionLine(raw)) break;
+      description.push(raw.replace(/\r$/, "").replace(/^\s+/, ""));
+    }
+    while (description.length > 0 && description[description.length - 1].trim() === "") {
+      description.pop();
+    }
+    while (description.length > 0 && description[0].trim() === "") {
+      description.shift();
+    }
+
+    return {
+      line,
+      title,
+      tags,
+      completes: match[2] !== " ",
+      ...(due !== undefined ? { due } : {}),
+      ...(description.length > 0 ? { description: description.join("\n") } : {}),
+    };
   });
 }
 
-/**
- * Normaliza una lista de etiquetas: quita `#` iniciales y espacios, descarta
- * vacíos y duplicados (comparando sin distinguir mayúsculas) y conserva el orden.
- * Acepta también una única cadena, por compatibilidad con el modelo `tag` simple.
- */
 export function normalizeTags(tags: string[] | string = []): string[] {
   const list = typeof tags === "string" ? [tags] : tags;
   const seen = new Set<string>();
@@ -110,24 +132,24 @@ export function normalizeTags(tags: string[] | string = []): string[] {
   return result;
 }
 
-/** Formatea una línea de tarea: `- [ ] Comprar pan #casa #urgente`. */
+export function parseTagInput(text: string): string[] {
+  return text.split(/[,，\s]+/).filter(Boolean);
+}
+
 export function formatTaskLine(
   title: string,
   tags: string[] | string = [],
   completes = false,
+  due?: string | null,
 ): string {
   const body = [title.trim(), ...normalizeTags(tags).map((tag) => `#${tag}`)]
     .filter(Boolean)
     .join(" ");
+  const plazo = due ? ` 📅 ${due}` : "";
 
-  return `- [${completes ? "x" : " "}]${body ? ` ${body}` : ""}`;
+  return `- [${completes ? "x" : " "}]${body ? ` ${body}` : ""}${plazo}`;
 }
 
-/**
- * Marca/desmarca la checkbox de `line` tocando SOLO el `[ ]`/`[x]`;
- * el resto de la línea (texto y `#tag`s) queda intacto.
- * Si la línea no existe o no es una tarea, devuelve el contenido sin cambios.
- */
 export function setTaskChecked(markdown: string, line: number, completes: boolean): string {
   const lines = markdown.split("\n");
   if (line < 0 || line >= lines.length) return markdown;
@@ -142,61 +164,66 @@ export function setTaskChecked(markdown: string, line: number, completes: boolea
   return lines.join("\n");
 }
 
-/** Inserta una tarea nueva (sin persistir) y devuelve el contenido resultante. */
+export interface NewTaskOptions {
+  description?: string;
+  due?: string;
+}
+
 export function addTaskLine(
   markdown: string,
   title: string,
   tags: string[] | string = [],
   completes = false,
+  options: NewTaskOptions = {},
 ): string {
-  const newLine = formatTaskLine(title, tags, completes);
   const cr = markdown.includes("\r\n") ? "\r" : "";
   const lines = markdown.split("\n");
 
-  // 1) después de la última tarea existente (fuera de bloques de código)
+  const block = [`${formatTaskLine(title, tags, completes, options.due)}${cr}`];
+  const description = (options.description ?? "")
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((text) => text.trimStart());
+  while (description.length > 0 && description[0].trim() === "") description.shift();
+  while (description.length > 0 && description[description.length - 1].trim() === "") {
+    description.pop();
+  }
+  for (const text of description) {
+    block.push(`  ${text}${cr}`);
+  }
+
   const tasks = taskLineIndexes(lines.join("\n"));
   const last = tasks[tasks.length - 1];
   if (last) {
-    lines.splice(last.line + 1, 0, `${newLine}${cr}`);
+    lines.splice(blockEnd(lines, last.line) + 1, 0, ...block);
     return lines.join("\n");
   }
 
-  // 2) debajo de un encabezado de tareas si existe (## Tareas, # Tareas, ...)
-  const heading = lines.findIndex((line) => /^#{1,6}\s+\S.*tareas\s*$/i.test(line.trim()));
+  const heading = lines.findIndex((line) => /^#{1,6}\s+.*tareas\s*$/i.test(line.trim()));
   if (heading !== -1) {
-    lines.splice(heading + 1, 0, `${newLine}${cr}`);
+    lines.splice(heading + 1, 0, ...block);
     return lines.join("\n");
   }
 
-  // 3) si no hay tareas ni sección, se crea al final
   const nl = cr ? "\r\n" : "\n";
   if (markdown.trim() === "") {
-    return `## Tareas${nl}${newLine}${nl}`;
+    return `## Tareas${nl}${block.join(nl)}${nl}`;
   }
 
   while (lines.length > 0 && lines[lines.length - 1].trim() === "") lines.pop();
-  lines.push("", "## Tareas", `${newLine}${cr}`, "");
+  lines.push("", "## Tareas", ...block, "");
   return lines.join("\n");
 }
 
-/**
- * Elimina la línea de tarea `line` y devuelve el contenido resultante.
- * Si la línea no existe o no es una tarea, devuelve el contenido sin cambios.
- */
 export function removeTaskLine(markdown: string, line: number): string {
   const lines = markdown.split("\n");
   if (line < 0 || line >= lines.length) return markdown;
   if (!isTaskLine(lines[line])) return markdown;
 
-  lines.splice(line, 1);
+  lines.splice(line, blockEnd(lines, line) - line + 1);
   return lines.join("\n");
 }
 
-/**
- * Sustituye las etiquetas de la línea `line` conservando su texto, su checkbox
- * y su sangría (también el `\r` de los archivos CRLF).
- * Si la línea no existe o no es una tarea, devuelve el contenido sin cambios.
- */
 export function setTaskTags(markdown: string, line: number, tags: string[] | string): string {
   const lines = markdown.split("\n");
   if (line < 0 || line >= lines.length) return markdown;
@@ -204,16 +231,15 @@ export function setTaskTags(markdown: string, line: number, tags: string[] | str
   const match = TASK_RE.exec(lines[line]);
   if (!match) return markdown;
 
-  const { title } = parseTaskBody((match[3] ?? "").trim());
+  const { title, due } = parseTaskBody((match[3] ?? "").trim());
   const indent = match[1];
   const carriageReturn = lines[line].endsWith("\r") ? "\r" : "";
-  const rebuilt = formatTaskLine(title, tags, match[2] !== " ");
+  const rebuilt = formatTaskLine(title, tags, match[2] !== " ", due);
 
   lines[line] = `${indent}${rebuilt}${carriageReturn}`;
   return lines.join("\n");
 }
 
-/** Contador simple de tareas (hechas / total). */
 export function countTasks(markdown: string): { total: number; done: number } {
   const lines = scanTaskLines(markdown);
   return { total: lines.length, done: lines.filter((task) => task.completes).length };

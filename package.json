@@ -2,7 +2,7 @@
   "name": "gus",
   "private": true,
   "version": "0.1.0",
-  "description": "Gus — app de escritorio para notas y tareas en Markdown, local-first (Tauri v2 + React).",
+  "description": "Gus — app de escritorio para notas en Markdown y tareas privadas, local-first (Tauri v2 + React).",
   "license": "MIT",
   "author": "victorrubilar-dev",
   "repository": {
@@ -22,12 +22,21 @@
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-dialog": "^2.7.3",
     "@tauri-apps/plugin-opener": "^2",
     "clsx": "^2.1.1",
+    "cmdk": "^1.1.1",
     "framer-motion": "^13.4.0",
+    "hunspell-wasm": "^0.3.0",
+    "katex": "^0.18.9",
     "lucide-react": "^1.47.0",
+    "mermaid": "^12.0.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
+    "react-markdown": "^10.1.0",
+    "rehype-katex": "^7.0.1",
+    "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0",
     "tailwind-merge": "^3.7.0"
   },
   "devDependencies": {

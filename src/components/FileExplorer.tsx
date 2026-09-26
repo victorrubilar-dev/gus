@@ -3,6 +3,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type DragEvent as ReactDragEvent,
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -29,36 +30,24 @@ import {
 
 export interface NoteFile {
   id: string;
-  /** Nombre del archivo, con extensión. */
   name: string;
-  /** "note" = .md abrible en el editor; "image" = visible en el visor. */
   kind?: "note" | "image";
   updatedAt?: string;
 }
 
 export interface FileExplorerProps {
-  /** Directorio a leer vía `list_vault_entries`. Por defecto `~/gus-vault`. */
-  vaultPath?: string;
-  /** Lista estática: si se pasa, no se llama a Rust (útil para pruebas/previsualización). */
+  vaultPath: string;
   files?: NoteFile[];
-  /** Nota activa controlada por el padre (opcional). */
   activeId?: string | null;
-  /** Se dispara al seleccionar una nota (incluida la recién creada). */
   onSelect?: (file: NoteFile) => void;
-  /** Se dispara con la lista completa cuando cambia (solo modo estático). */
   onFilesChange?: (files: NoteFile[]) => void;
-  /** Cambia para forzar la recarga (p. ej. tras renombrar una nota). */
   refreshKey?: number;
-  /** Se dispara al borrar la nota activa, para que el padre cierre el editor. */
   onFileDeleted?: (path: string) => void;
-  /**
-   * Se *awaitea* antes de renombrar/mover/borrar: el padre aprovecha para
-   * volcar cambios pendientes mientras el archivo aún existe en la ruta vieja.
-   */
+  expanded?: boolean;
+  width?: number;
   onBeforeFileAction?: (path: string) => void | Promise<void>;
 }
 
-/** Entrada del comando `list_vault_entries` (carpeta, .md o imagen). */
 interface VaultEntry {
   name: string;
   path: string;
@@ -66,7 +55,6 @@ interface VaultEntry {
   modified_ms: number | null;
 }
 
-/** Carpeta devuelta por `list_vault_dirs` (destino al mover). */
 interface VaultDir {
   path: string;
   relative: string;
@@ -77,7 +65,6 @@ interface FolderEntry {
   path: string;
 }
 
-/** Menú contextual abierto y su posición (en coordenadas de pantalla). */
 interface MenuState {
   id: string;
   kind: "file" | "folder";
@@ -85,24 +72,19 @@ interface MenuState {
   y: number;
 }
 
-/** Visor de imagen: data URL en `src` mientras carga, `error` si falla. */
-interface PreviewState {
+interface DragEntry {
+  kind: "file" | "folder";
   path: string;
-  name: string;
-  src: string | null;
-  error: string | null;
 }
 
-const DEFAULT_VAULT_PATH = "~/gus-vault";
+const DRAG_ENTRY_MIME = "application/x-gus-explorer-entry";
 
-/** Tamaño del menú (w-52) usado para mantenerlo dentro de la ventana. */
 const MENU_WIDTH = 208;
 const MENU_MAX_HEIGHT = 280;
 
 const RENAME_INPUT_CLASS =
   "min-w-0 flex-1 rounded-lg border border-gus-accent/50 bg-gus-card px-2 py-1.5 font-mono text-xs text-gus-text outline-none focus:ring-2 focus:ring-gus-accent/60";
 
-/** `modified_ms` → etiqueta corta: "ahora", "hace 2 h", "hace 3 d", "12 sep". */
 function formatModified(ms: number | null | undefined): string | undefined {
   if (!ms) return undefined;
 
@@ -123,7 +105,6 @@ function toNoteFile(entry: VaultEntry): NoteFile {
   };
 }
 
-/** Etiqueta para la raíz del vault: su último segmento (`gus-vault`). */
 function rootLabel(vaultPath: string): string {
   return baseName(vaultPath.replace(/[\\/]+$/, "")) || vaultPath || "vault";
 }
@@ -143,7 +124,6 @@ function nextName(existing: NoteFile[]): string {
   }
 }
 
-/** Input inline de renombrar: Enter guarda, Esc cancela, al salir guarda. */
 function RenameField({
   initialValue,
   ariaLabel,
@@ -188,7 +168,7 @@ function RenameField({
 }
 
 export default function FileExplorer({
-  vaultPath = DEFAULT_VAULT_PATH,
+  vaultPath,
   files,
   activeId,
   onSelect,
@@ -196,10 +176,11 @@ export default function FileExplorer({
   refreshKey = 0,
   onFileDeleted,
   onBeforeFileAction,
+  expanded = false,
+  width,
 }: FileExplorerProps) {
   const staticMode = files !== undefined;
 
-  /** Carpeta actual = último elemento de la migaja de pan (breadcrumb). */
   const [trail, setTrail] = useState<FolderEntry[]>(() => [
     { name: rootLabel(vaultPath), path: vaultPath },
   ]);
@@ -218,16 +199,14 @@ export default function FileExplorer({
   );
   const [reloadKey, setReloadKey] = useState(0);
 
-  // Menú contextual compartido por archivos y carpetas (⋮ o clic derecho).
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [movingId, setMovingId] = useState<string | null>(null);
-  /** `null` = aún cargando los destinos; lista vacía = sin carpetas. */
   const [destinations, setDestinations] = useState<FolderEntry[] | null>(null);
+  const [dragEntry, setDragEntry] = useState<DragEntry | null>(null);
+  const [dragOverPath, setDragOverPath] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
-  /** Visor de imágenes (lightbox a pantalla completa). */
-  const [preview, setPreview] = useState<PreviewState | null>(null);
 
   function reload() {
     setReloadKey((key) => key + 1);
@@ -241,7 +220,6 @@ export default function FileExplorer({
     setDestinations(null);
   }
 
-  /** Abre el menú anclado a un botón ⋮ (posición del rectángulo). */
   function menuFromButton(
     event: ReactMouseEvent<HTMLButtonElement>,
     id: string,
@@ -251,7 +229,6 @@ export default function FileExplorer({
     openMenu(id, kind, rect.left, rect.bottom + 4);
   }
 
-  /** Abre el menú bajo el cursor del clic derecho. */
   function menuFromContext(
     event: ReactMouseEvent<HTMLElement>,
     id: string,
@@ -272,7 +249,79 @@ export default function FileExplorer({
     setDestinations(null);
   }
 
-  /** Abre el campo de renombrar de la entrada (archivo o carpeta). */
+  function startDrag(event: ReactDragEvent<HTMLElement>, entry: DragEntry) {
+    if (busy) {
+      event.preventDefault();
+      return;
+    }
+
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData(DRAG_ENTRY_MIME, JSON.stringify(entry));
+    event.dataTransfer.setData("text/plain", entry.path);
+    setDragEntry(entry);
+  }
+
+  function readDragEntry(event: ReactDragEvent<HTMLElement>): DragEntry | null {
+    try {
+      const raw = event.dataTransfer.getData(DRAG_ENTRY_MIME);
+      const parsed: unknown = JSON.parse(raw);
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        "kind" in parsed &&
+        "path" in parsed &&
+        (parsed.kind === "file" || parsed.kind === "folder") &&
+        typeof parsed.path === "string"
+      ) {
+        return { kind: parsed.kind, path: parsed.path };
+      }
+    } catch {
+    }
+
+    return dragEntry;
+  }
+
+  function canDropOnFolder(entry: DragEntry, folder: FolderEntry): boolean {
+    if (busy || renamingId === folder.path || entry.path === folder.path) return false;
+    if (entry.kind === "folder" && isInsidePath(folder.path, entry.path)) return false;
+    if (parentPath(entry.path) === folder.path) return false;
+    return true;
+  }
+
+  function dragOverFolder(event: ReactDragEvent<HTMLElement>, folder: FolderEntry) {
+    const entry = readDragEntry(event);
+    if (!entry || !canDropOnFolder(entry, folder)) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = "move";
+    setDragOverPath(folder.path);
+  }
+
+  function dropOnFolder(event: ReactDragEvent<HTMLElement>, folder: FolderEntry) {
+    const entry = readDragEntry(event);
+    setDragOverPath(null);
+    setDragEntry(null);
+    if (!entry || !canDropOnFolder(entry, folder)) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (entry.kind === "file") {
+      const file = items.find((item) => item.id === entry.path);
+      if (file) void moveFile(file, folder);
+      return;
+    }
+
+    const sourceFolder = folders.find((item) => item.path === entry.path);
+    if (sourceFolder) void moveFolder(sourceFolder, folder);
+  }
+
+  function clearDrag() {
+    setDragEntry(null);
+    setDragOverPath(null);
+  }
+
   function startRename(id: string) {
     setMenu(null);
     setConfirmId(null);
@@ -281,7 +330,6 @@ export default function FileExplorer({
     setRenamingId(id);
   }
 
-  // Cambiar de vault vuelve a empezar en la raíz.
   useEffect(() => {
     setTrail([{ name: rootLabel(vaultPath), path: vaultPath }]);
     setMenu(null);
@@ -289,21 +337,18 @@ export default function FileExplorer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vaultPath]);
 
-  // Escape cierra el menú y el visor de imágenes.
   useEffect(() => {
-    if (!menu && !preview) return;
+    if (!menu) return;
 
     function onKey(event: KeyboardEvent) {
       if (event.key !== "Escape") return;
       setMenu(null);
-      setPreview(null);
     }
 
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [menu, preview]);
+  }, [menu]);
 
-  // Carga carpetas, .md e imágenes reales (se omite en modo estático).
   useEffect(() => {
     if (staticMode) return;
 
@@ -342,47 +387,18 @@ export default function FileExplorer({
 
   const currentId = activeId ?? selectedId;
 
-  // ------------------------------------------------------------------
-  // Selección e imágenes
-  // ------------------------------------------------------------------
-
   function select(file: NoteFile) {
     setSelectedId(file.id);
-    if (file.kind === "image") {
-      openPreview(file);
-      return;
-    }
     onSelect?.(file);
-  }
-
-  /** Carga los bytes de la imagen como data URL (solo el último clic gana). */
-  function openPreview(file: NoteFile) {
-    const path = file.id;
-    setPreview({ path, name: file.name, src: null, error: null });
-
-    invoke<string>("read_vault_image", { path })
-      .then((src) => setPreview((prev) => (prev?.path === path ? { ...prev, src } : prev)))
-      .catch((error: unknown) =>
-        setPreview((prev) => (prev?.path === path ? { ...prev, error: String(error) } : prev)),
-      );
-  }
-
-  /** Sigue a la entrada cuando rename/move le cambian la ruta. */
-  function trackPathChange(from: string, to: string, toName: string) {
-    setPreview((prev) => (prev?.path === from ? { ...prev, path: to, name: toName } : prev));
   }
 
   function enterFolder(folder: FolderEntry) {
     closeMenu();
+    clearDrag();
     setTrail((prev) => [...prev, folder]);
   }
 
-  // ------------------------------------------------------------------
-  // Crear
-  // ------------------------------------------------------------------
-
   async function handleNewNote() {
-    // Modo estático: solo en memoria (pruebas / previsualización).
     if (staticMode) {
       const file: NoteFile = { id: createId(), name: nextName(items), kind: "note" };
       const next = [file, ...items];
@@ -396,7 +412,6 @@ export default function FileExplorer({
     setActionError(null);
     setBusyId("__new__");
     try {
-      // Rust decide el nombre final (nunca pisa un archivo existente).
       const path = await invoke<string>("create_vault_file", {
         path: joinPath(currentDir, "nueva-nota.md"),
         content: "# Nueva nota\n\n",
@@ -434,21 +449,16 @@ export default function FileExplorer({
     }
   }
 
-  // ------------------------------------------------------------------
-  // Renombrar
-  // ------------------------------------------------------------------
-
   async function commitRename(file: NoteFile, rawValue: string) {
     setRenamingId(null);
 
     const kind = file.kind === "image" ? "image" : "note";
     const target = renameTarget(file.id, rawValue, kind);
-    if (target === file.id) return; // sin cambios
+    if (target === file.id) return;
 
     setActionError(null);
     setBusyId(file.id);
     try {
-      // Solo las notas .md tienen ediciones pendientes que volcar.
       if (kind === "note") await onBeforeFileAction?.(file.id);
 
       const newPath = await invoke<string>("rename_vault_file", {
@@ -456,13 +466,10 @@ export default function FileExplorer({
         to: target,
       });
       const finalName = baseName(newPath);
-      trackPathChange(file.id, newPath, finalName);
       closeMenu();
       reload();
 
-      // Si era la nota abierta, avisar al padre para que actualice la ruta.
-      // (Las imágenes no viven en el editor: se ignora a propósito.)
-      if (kind === "note" && currentId === file.id) {
+      if (currentId === file.id) {
         onSelect?.({ ...file, id: newPath, name: finalName, updatedAt: "ahora" });
       }
     } catch (error) {
@@ -486,7 +493,6 @@ export default function FileExplorer({
         to: joinPath(parentPath(folder.path), name),
       });
       closeMenu();
-      // Si la carpeta renombrada está en la ruta abierta, hay que seguirla.
       setTrail((prev) =>
         prev.map((step) =>
           step.path === folder.path ? { name: baseName(newPath), path: newPath } : step,
@@ -500,22 +506,22 @@ export default function FileExplorer({
     }
   }
 
-  // ------------------------------------------------------------------
-  // Mover (solo archivos .md)
-  // ------------------------------------------------------------------
-
-  async function startMove(file: NoteFile) {
-    setMovingId(file.id);
+  async function startMove(path: string) {
+    setMovingId(path);
     setDestinations(null);
     setConfirmId(null);
     setActionError(null);
 
     try {
       const dirs = await invoke<VaultDir[]>("list_vault_dirs", { path: rootDir.path });
-      setDestinations([
-        { name: rootDir.name, path: rootDir.path },
-        ...dirs.map((dir) => ({ name: dir.relative, path: dir.path })),
-      ].filter((dest) => dest.path !== currentDir));
+      setDestinations(
+        [
+          { name: rootDir.name, path: rootDir.path },
+          ...dirs.map((dir) => ({ name: dir.relative, path: dir.path })),
+        ].filter(
+          (dest) => dest.path !== currentDir && !isInsidePath(dest.path, path),
+        ),
+      );
     } catch (error) {
       setActionError(String(error));
       setDestinations([]);
@@ -530,13 +536,13 @@ export default function FileExplorer({
 
       const newPath = await invoke<string>("move_vault_file", {
         from: file.id,
-        to_dir: dest.path,
+        toDir: dest.path,
       });
-      trackPathChange(file.id, newPath, baseName(newPath));
+      clearDrag();
       closeMenu();
       reload();
 
-      if (file.kind !== "image" && currentId === file.id) {
+      if (currentId === file.id) {
         onSelect?.({ ...file, id: newPath, name: baseName(newPath), updatedAt: "ahora" });
       }
     } catch (error) {
@@ -546,9 +552,50 @@ export default function FileExplorer({
     }
   }
 
-  // ------------------------------------------------------------------
-  // Eliminar
-  // ------------------------------------------------------------------
+  function rebasePath(path: string, from: string, to: string): string {
+    const relative = path.slice(from.length).replace(/^[\\/]+/, "");
+    return relative ? joinPath(to, relative) : to;
+  }
+
+  async function moveFolder(folder: FolderEntry, dest: FolderEntry) {
+    setActionError(null);
+    setBusyId(folder.path);
+    try {
+      const activeInside = activeId && isInsidePath(activeId, folder.path) ? activeId : null;
+      if (activeInside && !isImageName(activeInside)) {
+        await onBeforeFileAction?.(activeInside);
+      }
+
+      const newPath = await invoke<string>("rename_vault_dir", {
+        from: folder.path,
+        to: joinPath(dest.path, folder.name),
+      });
+
+      if (activeInside) {
+        const movedActivePath = rebasePath(activeInside, folder.path, newPath);
+        onSelect?.({
+          id: movedActivePath,
+          name: baseName(movedActivePath),
+          kind: isImageName(movedActivePath) ? "image" : "note",
+          updatedAt: "ahora",
+        });
+      }
+      setTrail((prev) =>
+        prev.map((step) =>
+          isInsidePath(step.path, folder.path)
+            ? { ...step, path: rebasePath(step.path, folder.path, newPath) }
+            : step,
+        ),
+      );
+      clearDrag();
+      closeMenu();
+      reload();
+    } catch (error) {
+      setActionError(String(error));
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   async function deleteFile(file: NoteFile) {
     setActionError(null);
@@ -556,10 +603,9 @@ export default function FileExplorer({
     try {
       if (file.kind !== "image") await onBeforeFileAction?.(file.id);
 
-      await invoke("delete_vault_file", { path: file.id });
+      await invoke("move_to_trash", { path: file.id });
       closeMenu();
-      setPreview((prev) => (prev?.path === file.id ? null : prev));
-      if (file.kind !== "image" && currentId === file.id) onFileDeleted?.(file.id);
+      if (currentId === file.id) onFileDeleted?.(file.id);
       reload();
     } catch (error) {
       setActionError(String(error));
@@ -572,12 +618,13 @@ export default function FileExplorer({
     setActionError(null);
     setBusyId(folder.path);
     try {
-      await invoke("delete_vault_dir", { path: folder.path });
+      // Si la nota abierta vive dentro, se vuelca antes de mover la carpeta.
+      const activeInside = activeId && isInsidePath(activeId, folder.path) ? activeId : null;
+      if (activeInside) await onBeforeFileAction?.(activeInside);
+
+      await invoke("move_to_trash", { path: folder.path });
       closeMenu();
-      // El visor mostraba una imagen de dentro: ya no existe.
-      setPreview((prev) =>
-        prev && isInsidePath(prev.path, folder.path) ? null : prev,
-      );
+      if (activeInside) onFileDeleted?.(activeInside);
       reload();
     } catch (error) {
       setActionError(String(error));
@@ -585,10 +632,6 @@ export default function FileExplorer({
       setBusyId(null);
     }
   }
-
-  // ------------------------------------------------------------------
-  // Derivados y clases
-  // ------------------------------------------------------------------
 
   const busy = busyId !== null;
   const noteCount = items.filter((file) => file.kind !== "image").length;
@@ -611,13 +654,18 @@ export default function FileExplorer({
   const menuItemClass =
     "flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-gus-accent/60 focus-visible:outline-none";
 
-  // Objetos del menú abierto (carpeta y archivo comparten id-único = ruta).
   const menuFolder = menu?.kind === "folder" ? folders.find((f) => f.path === menu.id) : undefined;
   const menuFile = menu?.kind === "file" ? items.find((f) => f.id === menu.id) : undefined;
   const menuTarget = menuFolder ?? menuFile;
 
   return (
-    <aside className="flex h-full w-60 shrink-0 flex-col gap-3 border-r border-gus-border bg-gus-panel p-3">
+    <aside
+      style={expanded ? undefined : { width }}
+      className={clsx(
+        "flex h-full shrink-0 flex-col gap-3 bg-gus-panel p-3",
+        expanded ? "w-full" : "w-60 border-r border-gus-border",
+      )}
+    >
       <header className="flex items-start justify-between gap-2 pl-1">
         <div className="min-w-0">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-gus-muted">
@@ -656,11 +704,10 @@ export default function FileExplorer({
         </div>
       </header>
 
-      {/* Ruta actual: raíz / carpeta1 / carpeta2 */}
       {!staticMode && trail.length > 0 && (
         <nav
           aria-label="Carpeta actual"
-          className="gus-scrollbar -mt-1 flex items-center gap-0.5 overflow-x-auto whitespace-nowrap text-[11px]"
+          className="-mt-1 flex flex-wrap items-center gap-x-0.5 gap-y-1 text-[11px]"
         >
           {trail.map((folder, index) => (
             <Fragment key={folder.path}>
@@ -672,9 +719,16 @@ export default function FileExplorer({
               <button
                 type="button"
                 onClick={() => setTrail(trail.slice(0, index + 1))}
+                onDragOver={(event) => dragOverFolder(event, folder)}
+                onDragLeave={() => {
+                  if (dragOverPath === folder.path) setDragOverPath(null);
+                }}
+                onDrop={(event) => dropOnFolder(event, folder)}
+                title={`${folder.path}\nTambién puedes soltar aquí para mover`}
                 aria-current={index === trail.length - 1 ? "true" : undefined}
                 className={clsx(
-                  "shrink-0 rounded px-1 py-0.5 transition-colors focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none",
+                  "min-w-0 max-w-full truncate rounded px-1 py-0.5 text-left transition-colors focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none",
+                  dragOverPath === folder.path && "bg-gus-accent/20 text-gus-accent ring-1 ring-gus-accent/50",
                   index === trail.length - 1
                     ? "text-gus-text"
                     : "text-gus-muted hover:text-gus-text",
@@ -704,7 +758,6 @@ export default function FileExplorer({
         </p>
       )}
 
-      {/* Cierra el menú al hacer clic (o clic derecho) fuera de él. */}
       {menu !== null && (
         <div
           className="fixed inset-0 z-20"
@@ -715,11 +768,22 @@ export default function FileExplorer({
       )}
 
       <ul className="gus-scrollbar flex-1 space-y-1 overflow-y-auto pr-1">
-        {/* Carpetas: clic = entrar, ⋮ / clic derecho = opciones. */}
         {folders.map((folder) => (
           <li
             key={folder.path}
-            className="group relative"
+            draggable={!staticMode && renamingId !== folder.path}
+            onDragStart={(event) => startDrag(event, { kind: "folder", path: folder.path })}
+            onDragEnd={clearDrag}
+            onDragOver={(event) => dragOverFolder(event, folder)}
+            onDragLeave={() => {
+              if (dragOverPath === folder.path) setDragOverPath(null);
+            }}
+            onDrop={(event) => dropOnFolder(event, folder)}
+            className={clsx(
+              "group relative rounded-lg transition-opacity",
+              dragEntry?.path === folder.path && "opacity-50",
+              dragOverPath === folder.path && "bg-gus-accent/15 ring-1 ring-gus-accent/50",
+            )}
             onContextMenu={(event) => menuFromContext(event, folder.path, "folder")}
           >
             <div className="flex items-center">
@@ -734,8 +798,8 @@ export default function FileExplorer({
                 <button
                   type="button"
                   onClick={() => enterFolder(folder)}
-                  title={folder.path}
-                  className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-transparent px-2 py-1.5 text-left text-gus-muted transition-colors hover:bg-gus-card hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
+                  title={`${folder.path}\nArrastra para mover`}
+                  className="flex min-w-0 flex-1 cursor-grab items-center gap-2 rounded-lg border border-transparent px-2 py-1.5 text-left text-gus-muted transition-colors hover:bg-gus-card hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none active:cursor-grabbing"
                 >
                   <Folder
                     className="h-4 w-4 shrink-0 text-gus-muted group-hover:text-gus-accent"
@@ -774,12 +838,10 @@ export default function FileExplorer({
           </li>
         ))}
 
-        {/* Archivos .md e imágenes. */}
         <AnimatePresence initial={false}>
           {items.map((file) => {
             const isCurrent = file.id === currentId;
-            const isPreviewing = preview?.path === file.id;
-            const isActive = isCurrent || isPreviewing;
+            const isActive = isCurrent;
             const isRenaming = renamingId === file.id;
             const isMenuOpen = menu?.id === file.id;
 
@@ -794,11 +856,18 @@ export default function FileExplorer({
                   ease: "easeOut",
                   layout: { type: "spring", stiffness: 500, damping: 45 },
                 }}
-                className="group relative"
+                className={clsx(
+                  "group relative rounded-lg transition-opacity",
+                  dragEntry?.path === file.id && "opacity-50",
+                )}
                 onContextMenu={(event) => menuFromContext(event, file.id, "file")}
               >
-                {/* El clip vive aquí para que el menú pueda sobresalir. */}
-                <div className="overflow-hidden">
+                <div
+                  className="overflow-hidden"
+                  draggable={!staticMode && !isRenaming}
+                  onDragStart={(event) => startDrag(event, { kind: "file", path: file.id })}
+                  onDragEnd={clearDrag}
+                >
                   <motion.div
                     initial={{ opacity: 0, y: -6 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -816,30 +885,23 @@ export default function FileExplorer({
                       <button
                         type="button"
                         onClick={() => select(file)}
+                        title={`${file.name}\nArrastra para mover`}
                         aria-current={isCurrent ? "true" : undefined}
                         className={clsx(
-                          "relative flex min-w-0 flex-1 items-center gap-2 rounded-lg border px-2 py-1.5 text-left transition-colors outline-none",
+                          "relative flex min-w-0 flex-1 cursor-grab items-center gap-2 rounded-lg border px-2 py-1.5 text-left outline-none transition-colors active:cursor-grabbing",
                           "focus-visible:ring-2 focus-visible:ring-gus-accent/60",
                           isActive
                             ? "border-transparent text-gus-text"
                             : "border-transparent text-gus-muted hover:bg-gus-card hover:text-gus-text",
                         )}
                       >
-                        {isActive &&
-                          (isCurrent ? (
-                            <motion.span
-                              layoutId="file-active"
-                              className="absolute inset-0 rounded-lg border border-gus-accent/40 bg-gus-card"
-                              transition={{ type: "spring", stiffness: 500, damping: 40 }}
-                            />
-                          ) : (
-                            // Previsualizando esta imagen con otra nota abierta:
-                            // mismo resaltado pero sin layoutId duplicado.
-                            <span
-                              aria-hidden="true"
-                              className="absolute inset-0 rounded-lg border border-gus-accent/40 bg-gus-card"
-                            />
-                          ))}
+                        {isActive && (
+                          <motion.span
+                            layoutId="file-active"
+                            className="absolute inset-0 rounded-lg border border-gus-accent/40 bg-gus-card"
+                            transition={{ type: "spring", stiffness: 500, damping: 40 }}
+                          />
+                        )}
                         {file.kind === "image" ? (
                           <ImageIcon
                             className={clsx(
@@ -920,7 +982,6 @@ export default function FileExplorer({
         )}
       </ul>
 
-      {/* Menú contextual ( ⋮ o clic derecho ), fijo en pantalla. */}
       {menu && menuTarget && (
         <div
           role="menu"
@@ -931,13 +992,13 @@ export default function FileExplorer({
           {confirmId === menu.id ? (
             <div className="p-3 text-xs">
               <p className="text-gus-text">
-                {menu.kind === "folder" ? "¿Eliminar la carpeta " : "¿Eliminar "}
-                <span className="font-mono break-all">{menuTarget.name}</span>?
+                {menu.kind === "folder" ? "¿Mover la carpeta " : "¿Mover "}
+                <span className="font-mono break-all">{menuTarget.name}</span> a la papelera?
               </p>
               <p className="mt-1 text-[11px] text-gus-muted">
                 {menu.kind === "folder"
-                  ? "Se borrará del disco con TODO su contenido y no se puede deshacer."
-                  : "Se borra del disco y no se puede deshacer."}
+                  ? "Se irá con TODO su contenido a ~/gus-vault/.gus-trash; se puede restaurar desde el menú lateral."
+                  : "Se moverá a la papelera de Gus (~/gus-vault/.gus-trash); se puede restaurar desde el menú lateral."}
               </p>
               <div className="mt-2.5 flex gap-2">
                 <button
@@ -949,7 +1010,7 @@ export default function FileExplorer({
                   disabled={busy}
                   className="rounded-md border border-rose-400/40 bg-rose-400/10 px-2 py-1 text-[11px] text-rose-300 transition-colors hover:bg-rose-400/20 focus-visible:ring-2 focus-visible:ring-rose-300/60 focus-visible:outline-none disabled:opacity-50"
                 >
-                  Eliminar
+                  Mover a la papelera
                 </button>
                 <button
                   type="button"
@@ -960,37 +1021,10 @@ export default function FileExplorer({
                 </button>
               </div>
             </div>
-          ) : menuFolder ? (
-            /* ------------------------- carpeta ------------------------- */
-            <div className="py-1">
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => startRename(menu.id)}
-                className={clsx(
-                  menuItemClass,
-                  "text-gus-muted hover:bg-gus-panel hover:text-gus-text",
-                )}
-              >
-                Renombrar
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => setConfirmId(menu.id)}
-                className={clsx(
-                  menuItemClass,
-                  "border-t border-gus-border text-rose-300 hover:bg-rose-400/10",
-                )}
-              >
-                Eliminar…
-              </button>
-            </div>
-          ) : menuFile && movingId === menu.id ? (
-            /* ------------------ archivo: mover a… ------------------ */
+          ) : movingId === menu.id && menuTarget ? (
             <div>
               <p className="border-b border-gus-border px-3 py-2 text-[10px] tracking-wider text-gus-muted uppercase">
-                Mover a…
+                Mover {menu.kind === "folder" ? "carpeta" : "archivo"} a…
               </p>
               <ul className="gus-scrollbar max-h-44 overflow-y-auto py-1">
                 {destinations === null && (
@@ -998,7 +1032,7 @@ export default function FileExplorer({
                 )}
                 {destinations?.length === 0 && (
                   <li className="px-3 py-2 text-[11px] text-gus-muted">
-                    Sin otras carpetas todavía.
+                    No hay carpetas de destino disponibles.
                   </li>
                 )}
                 {destinations?.map((dest) => (
@@ -1006,7 +1040,10 @@ export default function FileExplorer({
                     <button
                       type="button"
                       role="menuitem"
-                      onClick={() => void moveFile(menuFile, dest)}
+                      onClick={() => {
+                        if (menuFolder) void moveFolder(menuFolder, dest);
+                        else if (menuFile) void moveFile(menuFile, dest);
+                      }}
                       disabled={busy}
                       title={dest.path}
                       className={clsx(
@@ -1038,8 +1075,7 @@ export default function FileExplorer({
                 ← Volver
               </button>
             </div>
-          ) : menuFile ? (
-            /* ------------------------- archivo ------------------------- */
+          ) : menuFolder ? (
             <div className="py-1">
               <button
                 type="button"
@@ -1055,7 +1091,43 @@ export default function FileExplorer({
               <button
                 type="button"
                 role="menuitem"
-                onClick={() => void startMove(menuFile)}
+                onClick={() => void startMove(menuFolder.path)}
+                className={clsx(
+                  menuItemClass,
+                  "text-gus-muted hover:bg-gus-panel hover:text-gus-text",
+                )}
+              >
+                Mover a…
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => setConfirmId(menu.id)}
+                className={clsx(
+                  menuItemClass,
+                  "border-t border-gus-border text-rose-300 hover:bg-rose-400/10",
+                )}
+              >
+                Eliminar…
+              </button>
+            </div>
+          ) : menuFile ? (
+            <div className="py-1">
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => startRename(menu.id)}
+                className={clsx(
+                  menuItemClass,
+                  "text-gus-muted hover:bg-gus-panel hover:text-gus-text",
+                )}
+              >
+                Renombrar
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => void startMove(menuFile.id)}
                 className={clsx(
                   menuItemClass,
                   "text-gus-muted hover:bg-gus-panel hover:text-gus-text",
@@ -1076,44 +1148,6 @@ export default function FileExplorer({
               </button>
             </div>
           ) : null}
-        </div>
-      )}
-
-      {/* Visor de imágenes (lightbox): clic o Esc para cerrar. */}
-      {preview && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label={`Vista previa de ${preview.name}`}
-          onClick={() => setPreview(null)}
-          className="fixed inset-0 z-40 flex flex-col items-center justify-center gap-3 bg-black/85 p-6"
-        >
-          <div className="flex max-h-full w-full max-w-3xl flex-col items-center gap-3">
-            <div className="flex w-full items-center justify-between gap-3 text-xs text-white/70">
-              <span className="truncate font-mono">{preview.name}</span>
-              <button
-                type="button"
-                onClick={() => setPreview(null)}
-                className="shrink-0 rounded-md border border-white/20 px-2 py-1 transition-colors hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:outline-none"
-              >
-                Cerrar · Esc
-              </button>
-            </div>
-
-            {preview.src ? (
-              <img
-                src={preview.src}
-                alt={preview.name}
-                className="max-h-[70vh] max-w-full rounded-lg border border-white/10 object-contain"
-              />
-            ) : preview.error ? (
-              <p className="max-w-md text-center text-sm break-words text-rose-300">
-                {preview.error}
-              </p>
-            ) : (
-              <p className="text-sm text-white/60">Cargando imagen…</p>
-            )}
-          </div>
         </div>
       )}
     </aside>
