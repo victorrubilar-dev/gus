@@ -1,11 +1,6 @@
-/** Menús flotantes del editor: autocompletado `[[notas]]` y menú `/` (bloques).
- *
- * Comparten la misma carcasa posicionada sobre el cursor y el mismo estilo de
- * lista; lo único que cambia son los elementos y la acción al elegirlos.
- */
-
 import { type ReactNode } from "react";
 import clsx from "clsx";
+import { toLocalCoord } from "../lib/uiZoom";
 import { motion } from "framer-motion";
 import {
   Code,
@@ -27,23 +22,15 @@ import {
 import type { CaretAnchor } from "../lib/caretPosition";
 import { normalizeWikiText, wikiNoteBaseTitle, wikiNoteFolder, type WikiNote } from "../lib/wikiLink";
 
-/** Un bloque del menú `/`: qué inserta y con qué icono se muestra. */
 export interface SlashItem {
-  /** Identificador estable (para la `key` y para las pruebas). */
   id: string;
-  /** Nombre visible en el menú. */
   label: string;
-  /** Avance del snippet a la derecha (monoespaciado). */
   hint: string;
-  /** Texto markdown que se inserta al elegirlo. */
   snippet: string;
-  /** Dónde queda el cursor dentro del texto insertado. */
   caretOffset: number;
-  /** Icono de lucide. */
   Icon: LucideIcon;
 }
 
-/** Bloques del menú `/` (estilo Notion): se insertan en el cursor. */
 export const SLASH_ITEMS: SlashItem[] = [
   {
     id: "h1",
@@ -159,7 +146,6 @@ export const SLASH_ITEMS: SlashItem[] = [
   },
 ];
 
-/** Bloques que empiezan por `query` (sin acentos ni mayúsculas). */
 export function filterSlashItems(query: string): SlashItem[] {
   const wanted = normalizeWikiText(query);
   if (!wanted) return SLASH_ITEMS;
@@ -171,19 +157,19 @@ export function filterSlashItems(query: string): SlashItem[] {
   );
 }
 
-/** Máximo de alto del menú: si no cabe debajo del cursor, se pone encima. */
 const MENU_MAX_HEIGHT = 256;
 const MENU_WIDTH = 320;
 
-/** Carcasa común: caja `fixed` anclada al cursor, con scroll propio. */
 function MenuShell({ anchor, label, children }: { label: string; anchor: CaretAnchor; children: ReactNode }) {
-  const flip = anchor.top + MENU_MAX_HEIGHT + 12 > window.innerHeight;
+  const viewWidth = toLocalCoord(window.innerWidth);
+  const viewHeight = toLocalCoord(window.innerHeight);
+  const flip = anchor.top + MENU_MAX_HEIGHT + 12 > viewHeight;
   const top = flip
     ? Math.max(8, anchor.top - MENU_MAX_HEIGHT)
     : anchor.top + anchor.height + 6;
   const left = Math.min(
     Math.max(8, anchor.left),
-    Math.max(8, window.innerWidth - MENU_WIDTH - 8),
+    Math.max(8, viewWidth - MENU_WIDTH - 8),
   );
 
   return (
@@ -202,7 +188,6 @@ function MenuShell({ anchor, label, children }: { label: string; anchor: CaretAn
   );
 }
 
-/** Pie con las teclas del menú (compartido por ambos desplegables). */
 function MenuHints() {
   return (
     <p className="mt-1 border-t border-gus-border px-3 pt-1.5 pb-1 text-[10px] text-gus-muted/70">
@@ -212,23 +197,15 @@ function MenuHints() {
 }
 
 export interface WikiLinkMenuProps {
-  /** Ancla del cursor en el textarea. */
   anchor: CaretAnchor;
-  /** Notas filtradas (ya limitadas) para mostrar. */
   notes: WikiNote[];
-  /** La lista del vault todavía se está pidiendo. */
   loading: boolean;
-  /** Texto escrito entre los corchetes dobles. */
   query: string;
-  /** Elemento resaltado. */
   index: number;
-  /** Elige una nota y escribe su enlace. */
   onPick: (note: WikiNote) => void;
-  /** Resalta con el ratón. */
   onHover: (index: number) => void;
 }
 
-/** Desplegable de notas que aparece al escribir `[[`. */
 export function WikiLinkMenu({
   anchor,
   notes,
@@ -263,7 +240,6 @@ export function WikiLinkMenu({
             role="option"
             aria-selected={isActive}
             onClick={() => onPick(note)}
-            /* Sin evitar el mousedown el textarea pierde el foco y el menú se cierra. */
             onMouseDown={(event) => event.preventDefault()}
             onMouseEnter={() => onHover(position)}
             className={clsx(
@@ -288,19 +264,13 @@ export function WikiLinkMenu({
 }
 
 export interface SlashMenuProps {
-  /** Ancla del cursor en el textarea. */
   anchor: CaretAnchor;
-  /** Bloques filtrados por lo escrito tras la `/`. */
   items: SlashItem[];
-  /** Elemento resaltado. */
   index: number;
-  /** Inserta el bloque elegido. */
   onPick: (item: SlashItem) => void;
-  /** Resalta con el ratón. */
   onHover: (index: number) => void;
 }
 
-/** Menú `/` con los bloques insertables (tablas, listas, código…). */
 export function SlashMenu({ anchor, items, index, onPick, onHover }: SlashMenuProps) {
   const active = items.length > 0 ? Math.min(index, items.length - 1) : -1;
 
@@ -321,7 +291,6 @@ export function SlashMenu({ anchor, items, index, onPick, onHover }: SlashMenuPr
             role="option"
             aria-selected={isActive}
             onClick={() => onPick(item)}
-            /* Sin evitar el mousedown el textarea pierde el foco y el menú se cierra. */
             onMouseDown={(event) => event.preventDefault()}
             onMouseEnter={() => onHover(position)}
             className={clsx(

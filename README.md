@@ -20,9 +20,11 @@ WebView del sistema en lugar de meter un Chromium entero).
 
 ## ✨ Qué puede hacer
 
-- 📝 **Notas Markdown** — explorador de carpetas (crear, renombrar, mover y borrar), editor con renderizado en línea del markdown (la línea del cursor se muestra en crudo), vista «Ver crudo», vista previa a pantalla completa con casillas clicables y autoguardado con debounce de 500 ms.
+- 📝 **Notas Markdown** — explorador de carpetas (crear, renombrar, mover y borrar), editor con renderizado en línea del markdown (la línea del cursor se muestra en crudo), vista previa a pantalla completa con casillas clicables, deshacer/rehacer (Ctrl+Z / Ctrl+Shift+Z) y autoguardado con debounce de 500 ms.
 - 🏷️ **Etiquetas** — chips en la cabecera del editor; viven en el frontmatter `tags: [a, b]` del `.md` y se autocompletan con las etiquetas ya usadas en el vault.
 - 🧰 **Menú `/`** — inserta títulos, listas, tareas, citas, tablas, código, imágenes, separadores, fórmulas y diagramas; ↑↓, Intro y Esc.
+- 🔤 **Corrector ortográfico** — subrayado ondulado en palabras mal escritas y 7 idiomas elegibles (o desactivado) en Ajustes.
+- 🖱️ **Menú del editor** — clic derecho siempre visible con las sugerencias de corrección (y «Agregar al diccionario» / «Ignorar»), cortar/copiar/pegar/pegar sin formato/seleccionar todo, y submenús para insertar bloques (código, tablas, fórmulas, diagramas), texto (títulos, listas, citas) y formato (negrita, cursiva, tachado, código, enlace).
 - 📐 **Fórmulas y diagramas** — `$…$` / `$$…$$` con KaTeX y bloques ` ```mermaid ` con Mermaid, ambos con carga diferida.
 - 🖼️ **Visor de imágenes** — png, jpg, gif, webp y svg se abren en el panel derecho.
 - ↔️ **Panel ajustable** — divisor arrastrable entre explorador y panel (← →, Home/End; doble clic lo restablece); el ancho se recuerda entre sesiones.
@@ -33,6 +35,7 @@ WebView del sistema en lugar de meter un Chromium entero).
 - 🗃️ **Varios vaults** — panel de tarjetas con portadas y modo edición para la lista de vaults.
 - 📊 **Panel Resumen** — próximas tareas por prioridad, últimas notas modificadas, contadores y accesos rápidos.
 - ⌨️ **Paleta de comandos** — `Ctrl+K` / `Ctrl+P` filtra todas las notas del vault.
+- 🔍 **Escala de la interfaz** — Ctrl + «+» / Ctrl + «−» agrandan o achican toda la interfaz (Ctrl + 0 restablece); también desde Ajustes → Apariencia.
 - 🏠 **Local-first** — carpetas con archivos `.md` estándar, sincronizables con git o rsync; sin nube ni cuentas.
 
 ---
@@ -149,13 +152,14 @@ gus/
 │  │  ├─ SettingsPanel.tsx  # Configuración: categorías + buscador
 │  │  ├─ TrashView.tsx      # Papelera: lista, restaurar y vaciar .gus-trash
 │  │  ├─ NewTaskDialog.tsx  # Formulario superpuesto de nueva tarea
-│  │  ├─ SpellMenu.tsx      # Menú contextual del corrector (clic derecho)
+│  │  ├─ EditorContextMenu.tsx # Menú del clic derecho: corrector, edición, insertar/texto/formato
 │  │  └─ DatePicker.tsx     # Mini calendario integrado para elegir el plazo
 │  ├─ utils/
 │  │  └─ taskParser.ts      # Extrae - [ ] / - [x] de un .md: prioridad y #tags
 │  └─ lib/
 │     ├─ caretPosition.ts   # Posición del cursor en el textarea (ancla de menús)
 │     ├─ pointerOffset.ts   # Offset del texto bajo el puntero (menú contextual)
+│     ├─ pasteText.ts       # Limpia marcas markdown al pegar sin formato
 │     ├─ calendarDate.ts    # Fechas: AAAA-MM-DD, meses y rejillas (lunes 1.º)
 │     ├─ fileName.ts        # Utilidades de rutas y nombres
 │     ├─ listContinue.ts     # Intro en listas: continúa el marcador o lo retira

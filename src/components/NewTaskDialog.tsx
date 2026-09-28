@@ -18,34 +18,21 @@ const INPUT_CLASS =
 const LABEL_CLASS = "mb-1 block text-xs text-gus-muted";
 
 export interface NewTaskDialogProps {
-  /** Estado abierto/cerrado, controlado por la app. */
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
-/**
- * Menú superpuesto de «Nueva tarea» (mismo estilo que la paleta `Ctrl+K`):
- * un formulario flotante con nombre, descripción, etiquetas, prioridad y un
- * plazo opcional que se revela con el checkbox «Limitar fecha» y se elige en
- * un mini-calendario integrado (no usa el `<input type="date">`, cuyo
- * selector nativo se solapa con el menú en algunos webviews).
- * Al enviarse, publica el evento `task-created` con `publish_new_task`; las
- * vistas (Resumen, Tareas, Calendario) insertan la tarea en su almacén.
- * Sustituye a la antigua ventana nativa «nueva-tarea».
- */
 export default function NewTaskDialog({ open, onOpenChange }: NewTaskDialogProps) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
   const [due, setDue] = useState("");
-  /** Solo se pide plazo si el checkbox «Limitar fecha» está marcado. */
   const [dueEnabled, setDueEnabled] = useState(false);
   const [priority, setPriority] = useState<TaskPriority | null>(null);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Cada apertura empieza de cero (como la ventana que sustituye).
   useEffect(() => {
     if (!open) return;
     setTitle("");
@@ -59,7 +46,6 @@ export default function NewTaskDialog({ open, onOpenChange }: NewTaskDialogProps
     setSending(false);
   }, [open]);
 
-  // Escape cierra el menú (mientras no haya un envío en curso).
   useEffect(() => {
     if (!open) return;
 
@@ -74,7 +60,6 @@ export default function NewTaskDialog({ open, onOpenChange }: NewTaskDialogProps
     return () => window.removeEventListener("keydown", handleKey);
   }, [open, sending, onOpenChange]);
 
-  /** Vuelca lo tecleado en el campo de etiquetas a chips. */
   function commitTagInput() {
     const parsed = parseTagInput(tagInput);
     if (parsed.length === 0) return;
@@ -85,19 +70,17 @@ export default function NewTaskDialog({ open, onOpenChange }: NewTaskDialogProps
 
   function handleTagInputKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
     if (event.key === "Enter") {
-      event.preventDefault(); // Enter confirma la etiqueta, no crea la tarea
+      event.preventDefault();
       commitTagInput();
       return;
     }
 
-    // Backspace en el campo vacío elimina el último chip.
     if (event.key === "Backspace" && tagInput === "" && tags.length > 0) {
       setTags((prev) => prev.slice(0, -1));
     }
   }
 
   function handleTagInputChange(value: string) {
-    // Escribir una coma confirma al instante lo que haya tecleado.
     if (/[,，]/.test(value)) {
       setTags((prev) => normalizeTags([...prev, ...parseTagInput(value)]));
       setTagInput("");
@@ -114,7 +97,6 @@ export default function NewTaskDialog({ open, onOpenChange }: NewTaskDialogProps
       setError("La tarea necesita un nombre.");
       return;
     }
-    // Chips pendientes: «etiqueta» tecleada sin Enter/coma se añade al enviar.
     const allTags = normalizeTags([...tags, ...parseTagInput(tagInput)]);
 
     setSending(true);
@@ -148,7 +130,6 @@ export default function NewTaskDialog({ open, onOpenChange }: NewTaskDialogProps
           transition={{ duration: 0.15 }}
           className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 px-4 pt-[10vh] pb-8 backdrop-blur-[2px]"
           onMouseDown={(event) => {
-            // Clic fuera del panel ⇒ cerrar (salvo con un envío en curso).
             if (event.target === event.currentTarget && !sending) onOpenChange(false);
           }}
         >
@@ -163,7 +144,6 @@ export default function NewTaskDialog({ open, onOpenChange }: NewTaskDialogProps
             className="w-full max-w-xl overflow-hidden rounded-2xl border border-gus-border bg-gus-panel shadow-2xl shadow-black/40"
           >
             <form onSubmit={handleSubmit}>
-              {/* Cabecera */}
               <div className="flex items-center gap-2 border-b border-gus-border px-4 py-3">
                 <Plus className="h-4 w-4 shrink-0 text-gus-accent" aria-hidden="true" />
                 <h2 className="min-w-0 flex-1 truncate text-sm font-semibold text-gus-text">
@@ -174,7 +154,6 @@ export default function NewTaskDialog({ open, onOpenChange }: NewTaskDialogProps
                 </kbd>
               </div>
 
-              {/* Campos */}
               <div className="gus-scrollbar flex max-h-[62vh] flex-col gap-3 overflow-y-auto p-4">
                 {error && (
                   <p
@@ -185,7 +164,6 @@ export default function NewTaskDialog({ open, onOpenChange }: NewTaskDialogProps
                   </p>
                 )}
 
-                {/* Nombre (obligatorio) */}
                 <div>
                   <label htmlFor="tarea-nombre" className={LABEL_CLASS}>
                     Nombre <span className="text-rose-300">*</span>
@@ -205,7 +183,6 @@ export default function NewTaskDialog({ open, onOpenChange }: NewTaskDialogProps
                   />
                 </div>
 
-                {/* Descripción (opcional) */}
                 <div>
                   <label htmlFor="tarea-descripcion" className={LABEL_CLASS}>
                     Descripción <span className="text-gus-muted/70">(opcional)</span>
@@ -221,7 +198,6 @@ export default function NewTaskDialog({ open, onOpenChange }: NewTaskDialogProps
                   />
                 </div>
 
-                {/* Etiquetas (opcional) */}
                 <div>
                   <label htmlFor="tarea-etiquetas" className={LABEL_CLASS}>
                     Etiquetas <span className="text-gus-muted/70">(opcional)</span>
@@ -256,7 +232,6 @@ export default function NewTaskDialog({ open, onOpenChange }: NewTaskDialogProps
                   </div>
                 </div>
 
-                {/* Prioridad (opcional) */}
                 <div>
                   <span className={LABEL_CLASS} id="tarea-prioridad">
                     Prioridad <span className="text-gus-muted/70">(opcional)</span>
@@ -291,7 +266,6 @@ export default function NewTaskDialog({ open, onOpenChange }: NewTaskDialogProps
                   </div>
                 </div>
 
-                {/* Limitar fecha (opcional): el plazo se revela con el checkbox */}
                 <div>
                   <label className="flex w-fit cursor-pointer items-center gap-2 select-none">
                     <input
@@ -299,7 +273,6 @@ export default function NewTaskDialog({ open, onOpenChange }: NewTaskDialogProps
                       checked={dueEnabled}
                       onChange={(event) => {
                         setDueEnabled(event.target.checked);
-                        // Sin casilla no queda fecha que guardar.
                         if (!event.target.checked) setDue("");
                       }}
                       className="peer sr-only"
@@ -336,9 +309,6 @@ export default function NewTaskDialog({ open, onOpenChange }: NewTaskDialogProps
                         transition={{ duration: 0.16, ease: "easeOut" }}
                         className="overflow-hidden"
                       >
-                        {/* Calendario propio dentro del menú: sin selector
-                            nativo, se navega con las flechas o «Hoy» y el clic
-                            en un día fija la fecha. */}
                         <div className="pt-2">
                           <DatePicker value={due || null} onChange={(iso) => setDue(iso ?? "")} />
                         </div>
@@ -348,7 +318,6 @@ export default function NewTaskDialog({ open, onOpenChange }: NewTaskDialogProps
                 </div>
               </div>
 
-              {/* Pie: atisbos + acciones */}
               <div className="flex flex-wrap items-center justify-between gap-2 border-t border-gus-border px-4 py-3">
                 <span className="text-[11px] text-gus-muted">
                   <kbd className="rounded border border-gus-border bg-gus-card px-1 py-0.5">

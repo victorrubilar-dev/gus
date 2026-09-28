@@ -1,16 +1,14 @@
 @import "tailwindcss";
 
-/* Tema «Calico Dark» — la paleta oficial de la gata Gus: pelaje azabache,
-   manchas terracota, ojos verdes menta y pecho marfil. */
 @theme static {
-  --color-gus-bg: #0d0e11; /* Negro pelaje azabache */
-  --color-gus-panel: #16181f; /* Carbón suave para paneles */
-  --color-gus-card: #1f222b; /* Fondo de tarjetas y elementos */
-  --color-gus-border: #2a2e39; /* Bordes sutiles */
-  --color-gus-accent: #e07a5f; /* Naranja terracota de sus manchas */
-  --color-gus-eyes: #81b29a; /* Verde menta/felino de sus ojos */
-  --color-gus-text: #f4f1de; /* Blanco marfil de su pecho */
-  --color-gus-muted: #8d99ae; /* Texto secundario y etiquetas */
+  --color-gus-bg: #0d0e11;
+  --color-gus-panel: #16181f;
+  --color-gus-card: #1f222b;
+  --color-gus-border: #2a2e39;
+  --color-gus-accent: #e07a5f;
+  --color-gus-eyes: #81b29a;
+  --color-gus-text: #f4f1de;
+  --color-gus-muted: #8d99ae;
 }
 
 :root {
@@ -26,7 +24,6 @@ body {
   margin: 0;
 }
 
-/* Scrollbar discreta a la medida del tema de Gus */
 .gus-scrollbar {
   scrollbar-width: thin;
   scrollbar-color: var(--color-gus-border) transparent;
@@ -56,7 +53,6 @@ body {
   background: transparent;
 }
 
-/* Ajuste «Animaciones» desactivada: sin transiciones ni animaciones CSS. */
 .gus-no-motion *,
 .gus-no-motion *::before,
 .gus-no-motion *::after {
@@ -94,13 +90,6 @@ body {
   height: auto;
 }
 
-/* -----------------------------------------------------------------------
- * Editor con vista en vivo (InlinePreview): el texto del textarea va
- * transparente y la capa de atrás dibuja el markdown renderizado. El
- * cursor sigue siendo nativo (caret de color de acento) y la selección
- * es semitransparente para que el texto del overlay se lea por debajo.
- * -------------------------------------------------------------------- */
-
 .gus-source-area {
   color: transparent;
   -webkit-text-fill-color: transparent;
@@ -116,18 +105,10 @@ body {
   background: color-mix(in oklab, var(--color-gus-accent) 30%, transparent);
 }
 
-/* Durante la composición (IME) el navegador pinta él el texto: se restaura
- * y la capa de atrás se oculta para no duplicar los glifos. */
 .gus-source-text {
   color: var(--color-gus-text);
   -webkit-text-fill-color: var(--color-gus-text);
 }
-
-/* -----------------------------------------------------------------------
- * Corrector ortográfico: subrayado ondulado de las faltas que marca la capa
- * en vivo. Los decorados de texto no alteran el layout, así que el encaje
- * textarea/fantasma/overlay sigue intacto.
- * -------------------------------------------------------------------- */
 
 .gus-misspelled {
   text-decoration: underline wavy var(--color-rose-400);

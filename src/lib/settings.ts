@@ -8,6 +8,7 @@ export interface AppSettings {
   animations: boolean;
   accent: AccentKey;
   editorFontSize: number;
+  uiZoom: number;
   autoSave: boolean;
   hideCompletedTasks: boolean;
   calendarShowCompleted: boolean;
@@ -30,6 +31,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   animations: true,
   accent: "terracota",
   editorFontSize: 14,
+  uiZoom: 100,
   autoSave: true,
   hideCompletedTasks: false,
   calendarShowCompleted: true,
@@ -61,6 +63,10 @@ export function normalizeSettings(raw: unknown): AppSettings {
       typeof fontSize === "number" && Number.isFinite(fontSize)
         ? Math.min(22, Math.max(12, Math.round(fontSize)))
         : DEFAULT_SETTINGS.editorFontSize,
+    uiZoom:
+      typeof data.uiZoom === "number" && Number.isFinite(data.uiZoom)
+        ? Math.min(200, Math.max(50, Math.round(data.uiZoom / 10) * 10))
+        : DEFAULT_SETTINGS.uiZoom,
     autoSave: asBool(data.autoSave, DEFAULT_SETTINGS.autoSave),
     hideCompletedTasks: asBool(data.hideCompletedTasks, DEFAULT_SETTINGS.hideCompletedTasks),
     calendarShowCompleted: asBool(
@@ -110,7 +116,7 @@ export const SETTINGS_CATEGORIES: SettingsCategory[] = [
   {
     id: "appearance",
     label: "Apariencia",
-    keywords: "tema color animaciones movimiento diseño",
+    keywords: "tema color animaciones movimiento diseño escala zoom tamaño",
   },
   {
     id: "notes",
@@ -154,6 +160,14 @@ export type SettingDefinition =
       description: string;
       keywords: string;
       options: readonly number[];
+    }
+  | {
+      kind: "zoom";
+      category: SettingsCategoryId;
+      key: "uiZoom";
+      label: string;
+      description: string;
+      keywords: string;
     }
   | {
       kind: "select";
@@ -206,6 +220,15 @@ export const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     label: "Color de acento",
     description: "Color de botones, resaltados y acentos de toda la aplicación.",
     keywords: "color tema paleta terracota menta marfil cielo",
+  },
+  {
+    kind: "zoom",
+    category: "appearance",
+    key: "uiZoom",
+    label: "Escala de la interfaz",
+    description:
+      "Agranda o achica toda la interfaz. Atajos: Ctrl + «+» y Ctrl + «−»; Ctrl + 0 restablece.",
+    keywords: "zoom escala tamaño agrandar achicar grande pequeño atajo interfaz",
   },
   {
     kind: "choice",

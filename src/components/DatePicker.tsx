@@ -13,28 +13,18 @@ import {
 } from "../lib/calendarDate";
 
 export interface DatePickerProps {
-  /** Fecha elegida en `AAAA-MM-DD` o `null` si no hay. */
   value: string | null;
-  /** Se dispara al elegir (`AAAA-MM-DD`) o quitar (`null`) la fecha. */
   onChange: (value: string | null) => void;
 }
 
-/**
- * Mini-calendario integrado (lunes primero, mismo estilo que la pestaña
- * Calendario) para elegir la fecha de plazo de una tarea. Sustituye al
- * `<input type="date">`: el selector nativo se solapa con el menú
- * superpuesto en algunos webviews, en cambio este calendario vive dentro
- * del propio formulario y se navega con las flechas o el botón «Hoy».
- */
+/* Sustituye a `<input type="date">`: su selector nativo se solapa con el menú superpuesto en algunos webviews. */
 export default function DatePicker({ value, onChange }: DatePickerProps) {
   const [visibleMonth, setVisibleMonth] = useState<Date>(() => fromIso(value ?? "") ?? startOfMonth(new Date()));
 
-  /** Cambia de mes manteniendo la navegación anclada al día 1. */
   function shiftMonth(delta: number) {
     setVisibleMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + delta, 1));
   }
 
-  /** «Hoy»: salta al mes actual y marca hoy como fecha elegida. */
   function selectToday() {
     const now = new Date();
     setVisibleMonth(startOfMonth(now));
@@ -46,7 +36,6 @@ export default function DatePicker({ value, onChange }: DatePickerProps) {
 
   return (
     <div className="w-full max-w-80 overflow-hidden rounded-xl border border-gus-border bg-gus-card">
-      {/* Cabecera: mes visible + navegación */}
       <div className="flex items-center justify-between gap-2 px-2 pt-2">
         <button
           type="button"
@@ -82,7 +71,6 @@ export default function DatePicker({ value, onChange }: DatePickerProps) {
         </div>
       </div>
 
-      {/* Rejilla de días */}
       <div className="px-2 pt-2 pb-2">
         <div className="grid grid-cols-7" aria-hidden="true">
           {WEEKDAYS.map((weekday) => (
@@ -129,7 +117,6 @@ export default function DatePicker({ value, onChange }: DatePickerProps) {
         </div>
       </div>
 
-      {/* Resumen de la fecha elegida (o aviso de que aún no hay) */}
       <div className="flex items-center justify-between gap-2 border-t border-gus-border px-3 py-2">
         <span
           className={clsx(

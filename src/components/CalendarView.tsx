@@ -30,8 +30,6 @@ import {
 const INPUT_CLASS =
   "rounded-lg border border-gus-border bg-gus-card px-3 py-2 text-sm text-gus-text outline-none transition-colors focus:border-gus-accent/60";
 
-/** Pendientes primero; después, de mayor a menor prioridad y por orden
- * alfabético (así lo que urge se ve primero en el detalle del día). */
 function sortTasks(tasks: Task[]): Task[] {
   return [...tasks].sort(
     (a, b) =>
@@ -42,20 +40,12 @@ function sortTasks(tasks: Task[]): Task[] {
 }
 
 export interface CalendarViewProps {
-  /** Vault cuyo almacén oculto de tareas se muestra en el calendario. */
   vaultPath: string;
-  /** Cambia a la pestaña completa de tareas (p. ej. para editar sin fecha). */
   onOpenTasks: () => void;
-  /** Abre el menú superpuesto de «Nueva tarea» (lo monta la app). */
   onNewTask: () => void;
-  /** Muestra las tareas completadas (viene de los ajustes; por defecto sí). */
   showCompleted?: boolean;
 }
 
-/**
- * Vista resumen de calendario: mese actual, vencimientos y detalle del día
- * seleccionado. Lee y escribe exclusivamente el JSON oculto `.gus-tasks.json`.
- */
 export default function CalendarView({
   vaultPath,
   onOpenTasks,
@@ -74,20 +64,14 @@ export default function CalendarView({
   const [selectedIso, setSelectedIso] = useState(() => toIso(new Date()));
   const [reloadKey, setReloadKey] = useState(0);
 
-  /** Etiqueta por la que se filtra el calendario (null = sin filtro). */
   const [tagFilter, setTagFilter] = useState<string | null>(null);
 
   const itemsRef = useRef<Task[]>([]);
   const loadedRef = useRef(false);
-  /** Tareas creadas por la ventana nativa mientras el almacén aún cargaba. */
   const pendingNewTasksRef = useRef<Task[]>([]);
   const writeQueueRef = useRef<Promise<unknown>>(Promise.resolve());
 
   const todayIso = toIso(new Date());
-
-  // ------------------------------------------------------------------
-  // Almacén de tareas
-  // ------------------------------------------------------------------
 
   function commit(next: Task[]) {
     itemsRef.current = next;
@@ -132,10 +116,6 @@ export default function CalendarView({
     // `commit` cierra sobre este `vaultPath`, no hace falta añadirlo a las deps.
   }, [vaultPath, reloadKey]);
 
-  // ------------------------------------------------------------------
-  // Ventana nativa de creación (si se crea una tarea con el calendario abierto)
-  // ------------------------------------------------------------------
-
   function addTaskFromWindow(payload: NewTask) {
     const title = payload.title.trim();
     if (!title) return;
@@ -172,7 +152,6 @@ export default function CalendarView({
         else unlisten = fn;
       })
       .catch(() => {
-        // Fuera de Tauri no hay eventos.
       });
 
     return () => {
@@ -192,15 +171,8 @@ export default function CalendarView({
     );
   }
 
-  // ------------------------------------------------------------------
-  // Resumen y calendario
-  // ------------------------------------------------------------------
-
   const monthPrefix = `${visibleMonth.getFullYear()}-${pad(visibleMonth.getMonth() + 1)}`;
 
-  // Lo que se muestra: si los ajustes ocultan las completadas, no aparecen ni
-  // en las casillas del mes ni en el detalle del día. El filtro de etiqueta
-  // (si hay) recorta también las cifras del resumen.
   const matchesTag = (task: Task) =>
     !tagFilter ||
     task.tags.some((tag) => tag.toLowerCase() === tagFilter.toLowerCase());
@@ -215,7 +187,6 @@ export default function CalendarView({
   const dueThisMonth = pending.filter((task) => task.due?.startsWith(monthPrefix));
   const undated = pending.filter((task) => !task.due);
 
-  // Etiquetas del almacén, con recuento, para la barra de filtro.
   const tagCounts = new Map<string, { label: string; count: number }>();
   for (const task of items) {
     for (const tag of task.tags) {
@@ -229,7 +200,6 @@ export default function CalendarView({
     a.label.localeCompare(b.label, "es"),
   );
 
-  /** Activa o desactiva el filtro de una etiqueta (clic en cualquier chip). */
   function toggleTagFilter(tag: string) {
     setTagFilter((current) =>
       current?.toLowerCase() === tag.toLowerCase() ? null : tag,
@@ -315,7 +285,6 @@ export default function CalendarView({
         </div>
       </header>
 
-      {/* Filtro por etiquetas: clic en un chip = filtrar todo el calendario. */}
       {tagEntries.length > 0 && (
         <div
           role="group"
@@ -386,7 +355,6 @@ export default function CalendarView({
 
       {status === "ready" && (
         <>
-          {/* Resumen rápido */}
           <div className="grid grid-cols-2 gap-2 min-[900px]:grid-cols-4">
             {summary.map(({ label, value, className }) => (
               <div
@@ -402,7 +370,6 @@ export default function CalendarView({
           </div>
 
           <div className="grid min-h-0 gap-4 min-[900px]:grid-cols-[minmax(0,1fr)_280px]">
-            {/* Calendario del mes */}
             <div className="flex min-w-0 flex-col gap-3">
               <div className="flex items-center justify-between gap-2 rounded-xl border border-gus-border bg-gus-card px-3 py-2">
                 <button
@@ -523,7 +490,6 @@ export default function CalendarView({
               </div>
             </div>
 
-            {/* Detalle del día seleccionado */}
             <aside className="flex min-h-0 flex-col gap-3 rounded-xl border border-gus-border bg-gus-card p-4 min-[900px]:h-[calc(100%-3.25rem)]">
               <div>
                 <p className="text-[11px] uppercase tracking-wider text-gus-muted">

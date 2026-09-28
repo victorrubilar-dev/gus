@@ -1,47 +1,13 @@
-/**
- * Capa de «vista en vivo» detrás del textarea (estilo Obsidian).
- *
- * El textarea pinta su texto transparente (clase `gus-source-area`) y este
- * overlay dibuja por debajo el markdown renderizado de cada línea: títulos,
- * viñetas, casillas, citas, reglas horizontales y bloques de código. La única
- * excepción es la línea del cursor, que se ve como código fuente para poder
- * seguir editando `###`, `- [ ]`, etc.; en cuanto te mueves, se renderiza.
- *
- * Clave de la técnica: cada fila lleva su versión cruda **invisible**
- * («fantasma»), con la misma fuente y métricas que el textarea. Ese fantasma
- * fija la altura de la fila y su ajuste de línea, de modo que aunque el
- * renderizado oculte `###` o rompa distinto, el layout del textarea y del
- * overlay no se descuadra nunca y el cursor cae donde debe.
- *
- * Si los ajustes activan el corrector ortográfico, las faltas se subrayan en
- * esta misma capa: la onda cae bajo la palabra **renderizada**, que es donde
- * la lee el ojo (la fuente cruda con `**` desplazado el texto). En modo
- * «Ver crudo» (`raw`) la capa se usa igual pero solo para las ondas: repite
- * cada línea con texto invisible, porque el que se ve es el del textarea.
- */
-
-import { memo, type ReactNode, type Ref } from "react";
+import { memo, type CSSProperties, type ReactNode, type Ref } from "react";
 import clsx from "clsx";
 import type { SpellFn } from "../lib/spellCheck";
 
-/** Línea del cuerpo con su contexto de bloque. */
 export interface SourceLine {
-  /** Texto crudo de la línea. */
   text: string;
-  /** La línea es un delimitador de bloque cercado (``` o ~~~). */
   fence: boolean;
-  /** La línea abre, cierra o pertenece a un bloque de código cercado. */
   code: boolean;
 }
 
-/** Altura de fila en píxeles: la comparten textarea, fantasma y renderizado. */
-const LINE_HEIGHT = "leading-[23px]";
-
-/**
- * Marca cada línea y reparte los bloques de código cercados. El estado de la
- * valla (```/~~~) es lo único que depende de líneas anteriores, por eso se
- * clasifica de una pasada y se memoriza junto al cuerpo.
- */
 export function classifySource(lines: string[]): SourceLine[] {
   let open = false;
 
@@ -53,19 +19,13 @@ export function classifySource(lines: string[]): SourceLine[] {
   });
 }
 
-// ---------------------------------------------------------------------------
-// Tokenes en línea: énfasis, código, enlaces y `[[wikis]]`
-// ---------------------------------------------------------------------------
-
 type InlineKind = "code" | "wiki" | "image" | "link" | "bold" | "strike" | "italic";
 
 interface InlineToken {
-  /** Índice donde empieza el token. */
   at: number;
   kind: InlineKind;
 }
 
-/** Qué token (si alguno) empieza exactamente en la posición `i`. */
 function tokenAt(text: string, i: number): InlineToken | null {
   const char = text[i];
 
@@ -96,8 +56,6 @@ function tokenAt(text: string, i: number): InlineToken | null {
     if (text.indexOf("~~", i + 2) > i + 1) return { at: i, kind: "strike" };
   }
 
-  // Un asterisco suelto: cursiva si cierra dentro de la misma línea
-  // (`**` ya se resolvió arriba como negrita).
   if (char === "*" && text[i + 1] !== "*") {
     if (text.indexOf("*", i + 1) > i + 1) return { at: i, kind: "italic" };
   }
@@ -105,7 +63,6 @@ function tokenAt(text: string, i: number): InlineToken | null {
   return null;
 }
 
-/** Primer token de la línea (por la izquierda; a igualdad, el de más arriba). */
 function findToken(text: string): InlineToken | null {
   for (let i = 0; i < text.length; i++) {
     const found = tokenAt(text, i);
@@ -114,11 +71,6 @@ function findToken(text: string): InlineToken | null {
   return null;
 }
 
-/**
- * Segmentos ortográficos → nodos: solo las faltas llevan la clase de
- * subrayado ondulado; el resto queda como texto plano (mismas métricas, el
- * layout no se mueve ni un píxel).
- */
 function spellNodes(text: string, spell: SpellFn | null, key: string): ReactNode {
   if (!spell || text === "") return text;
 
@@ -147,13 +99,6 @@ function spellNodes(text: string, spell: SpellFn | null, key: string): ReactNode
   return nodes;
 }
 
-/**
- * Nodos renderizados de un fragmento en línea: los marcadores desaparecen
- * (`**negrita**` → negrita de verdad) y se recurre a `depth` para no buclar
- * con texto mal formado. Con corrector activo, los textos planos se pasan por
- * `spellNodes` para subrayar las faltas; el código en línea y las
- * `[[referencias]]` quedan fuera (son nombres, no prosa).
- */
 function inlineNodes(text: string, spell: SpellFn | null, depth = 0): ReactNode {
   if (depth > 4 || text === "") return spellNodes(text, spell, `d${depth}`);
 
@@ -267,22 +212,12 @@ function inlineNodes(text: string, spell: SpellFn | null, depth = 0): ReactNode 
   return nodes;
 }
 
-// ---------------------------------------------------------------------------
-// Renderizado por bloque de línea
-// ---------------------------------------------------------------------------
-
-/**
- * Nodos visibles y clases extra de la capa para una línea concreta. `spell`
- * es la segmentación ortográfica de los ajustes (`null` = apagado): los
- * bloques de código nunca se corrigen.
- */
 function visibleFor(
   line: SourceLine,
   spell: SpellFn | null,
 ): { nodes: ReactNode | null; layerClass: string } {
   const { text } = line;
 
-  // Bloques de código: el texto va literal (no se interpretan marcadores).
   if (line.code) {
     return { nodes: line.fence ? null : text, layerClass: "" };
   }
@@ -290,8 +225,6 @@ function visibleFor(
   const heading = /^(#{1,6})\s+(.*)$/.exec(text);
   if (heading) {
     const level = heading[1].length;
-    // Mismo espíritu que la vista previa, pero contenido a la altura de fila:
-    // `em` escala con la fuente elegida en los ajustes.
     const size = [
       "text-[1.5em] font-bold border-b border-gus-border",
       "text-[1.35em] font-bold border-b border-gus-border",
@@ -300,7 +233,7 @@ function visibleFor(
       "text-[1.07em] font-semibold text-gus-muted",
       "text-[1em] font-semibold text-gus-muted",
     ][level - 1];
-    const rest = heading[2].replace(/\s+#+\s*$/, ""); // quita los `#` de cierre
+    const rest = heading[2].replace(/\s+#+\s*$/, "");
     return { nodes: <span className={size}>{inlineNodes(rest, spell)}</span>, layerClass: "" };
   }
 
@@ -310,7 +243,6 @@ function visibleFor(
 
   const quote = /^(\s*)((?:>\s*)+)(.*)$/.exec(text);
   if (quote) {
-    // El borde va en la capa (no en la fila): no debe estrechar el fantasma.
     return {
       nodes: (
         <>
@@ -352,28 +284,14 @@ function visibleFor(
 }
 
 interface PreviewLineProps {
-  /** Texto crudo de la línea. */
   text: string;
-  /** La línea abre, cierra o pertenece a un bloque de código cercado. */
   code: boolean;
-  /** La línea es un delimitador de bloque cercado (``` o ~~~). */
   fence: boolean;
-  /** true si el cursor está en esta línea (se ve en crudo). */
   caret: boolean;
-  /** Modo «Ver crudo»: solo se dibujan las ondas (el texto es del textarea). */
   raw: boolean;
-  /** Segmentación del corrector de los ajustes (`null` = sin resaltado). */
   spell: SpellFn | null;
 }
 
-/**
- * Una fila del overlay. Con `raw` solo subraya (el textarea pinta el texto,
- * aquí la capa lo repite invisible para situar las ondas); con `caret` pinta
- * el texto tal cual; en el resto, fantasma invisible (métricas del textarea)
- * + capa renderizada encima. Las props son primitivas y `memo` compara por
- * valor: al teclear solo se vuelve a pintar la línea que cambió (y su
- * vecina, al moverse el cursor).
- */
 const PreviewLine = memo(function PreviewLine({
   text,
   code,
@@ -382,12 +300,10 @@ const PreviewLine = memo(function PreviewLine({
   raw,
   spell,
 }: PreviewLineProps) {
-  // Vista en vivo desactivada: el texto lo escribe el textarea (visible) y
-  // esta capa solo repite las líneas para tachar las faltas sin que se note.
   if (raw) {
     const marked = spell && !code ? spellNodes(text, spell, "w") : text;
     return (
-      <div className={clsx("min-h-[23px]", LINE_HEIGHT)}>
+      <div className="min-h-[var(--gus-row-h)]">
         <span className="block whitespace-pre-wrap break-words text-transparent">
           {text === "" ? "\u200B" : marked}
         </span>
@@ -397,10 +313,9 @@ const PreviewLine = memo(function PreviewLine({
 
   // Línea del cursor: código fuente visible para editar los marcadores.
   if (caret) {
-    // Dentro de código (valla incluida) no se corrige: es texto literal.
     const raw = spell && !code ? spellNodes(text, spell, "c") : text;
     return (
-      <div className={clsx("min-h-[23px]", LINE_HEIGHT)}>
+      <div className="min-h-[var(--gus-row-h)]">
         <span className="block whitespace-pre-wrap break-words">
           {text === "" ? "\u200B" : raw}
         </span>
@@ -411,8 +326,7 @@ const PreviewLine = memo(function PreviewLine({
   const { nodes, layerClass } = visibleFor({ text, fence, code }, spell);
 
   return (
-    <div className={clsx("relative min-h-[23px]", LINE_HEIGHT, code && "bg-gus-card")}>
-      {/* Fantasma: mismo texto con la métrica exacta del textarea. */}
+    <div className={clsx("relative min-h-[var(--gus-row-h)]", code && "bg-gus-card")}>
       <span className="block invisible whitespace-pre-wrap break-words">{text || "\u200B"}</span>
 
       {nodes !== null && (
@@ -431,49 +345,45 @@ const PreviewLine = memo(function PreviewLine({
 });
 
 export interface InlinePreviewProps {
-  /** Líneas clasificadas del cuerpo de la nota. */
   lines: SourceLine[];
-  /** Índice (0-based) de la línea del cursor. */
   caretLine: number;
-  /** Ancho del scrollbar del área, para no pisar su columna de texto. */
   scrollbarWidth?: number;
-  /** Tamaño de letra de los ajustes (px); debe ser el mismo que el textarea. */
   fontSize?: number;
-  /** Oculta la capa (mientras el IME compone texto el navegador pinta él). */
+  rowHeight?: number;
   hidden?: boolean;
-  /** Capa que el editor desplaza en sincronía con el textarea. */
   overlayRef?: Ref<HTMLDivElement>;
-  /** Segmentación ortográfica de los ajustes (`null` = sin corrector). */
   spell?: SpellFn | null;
-  /**
-   * Modo «Ver crudo»: no se renderiza markdown, solo se subrayan las faltas
-   * sobre texto invisible (el textarea pinta el suyo encima).
-   */
   raw?: boolean;
 }
 
-/** Overlay del markdown en vivo que se coloca detrás del textarea. */
 export default function InlinePreview({
   lines,
   caretLine,
   scrollbarWidth = 0,
   fontSize,
+  rowHeight = 23,
   hidden,
   overlayRef,
   spell = null,
   raw = false,
 }: InlinePreviewProps) {
+  // La interlínea real la fija MarkdownEditor (medida sobre el textarea): al
+  // escalar, el motor redondea las filas a píxeles enteros y el overlay debe
+  // imitar ese redondeo para no desfasarse.
+  const rootStyle: CSSProperties = {
+    right: scrollbarWidth,
+    fontSize: fontSize ? `${fontSize}px` : undefined,
+    lineHeight: `${rowHeight}px`,
+  };
+  (rootStyle as Record<string, string | number>)["--gus-row-h"] = `${rowHeight}px`;
+
   return (
     <div
       ref={overlayRef}
       aria-hidden="true"
-      style={{
-        right: scrollbarWidth,
-        fontSize: fontSize ? `${fontSize}px` : undefined,
-      }}
+      style={rootStyle}
       className={clsx(
         "gus-source-overlay pointer-events-none absolute inset-y-0 left-0 overflow-hidden bg-gus-bg px-6 py-4 font-mono text-sm",
-        LINE_HEIGHT,
         hidden && "invisible",
       )}
     >

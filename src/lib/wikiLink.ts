@@ -1,4 +1,4 @@
-// La extensión a la vista es necesaria para que los smoke tests con Node (sin el resolutor de Vite) puedan importar este módulo.
+// La extensión .ts es necesaria en los smoke tests con Node (sin el resolutor de Vite).
 import { safeFileName } from "./fileName.ts";
 
 export interface WikiNote {

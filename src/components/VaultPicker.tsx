@@ -15,46 +15,31 @@ import { invoke } from "@tauri-apps/api/core";
 import { joinPath } from "../lib/fileName";
 import gusIcon from "../assets/gus-icon-512.png";
 
-/** Un vault conocido: nombre visible + ruta de su carpeta. */
 export interface VaultInfo {
   name: string;
   path: string;
-  /** Imagen de portada opcional (ruta absoluta elegida por el usuario). */
   cover?: string | null;
 }
 
-/** Configuración que devuelve `load_app_config` (JSON en camelCase). */
 export interface VaultAppConfig {
   baseDir: string | null;
   vaults: VaultInfo[];
   lastVault: string | null;
-  /** Ajustes globales del panel de configuración (ausente ⇒ por defecto). */
   settings?: unknown;
 }
 
 interface VaultPickerProps {
   vaults: VaultInfo[];
-  /** Carpeta base elegida para crear los vaults nuevos. */
   baseDir: string;
-  /** Último vault abierto: se resalta con la píldora "último". */
   lastVault: string | null;
-  /** Hay una operación en curso (crear/abrir). */
   busy?: boolean;
-  /** Error devuelto por el backend, si lo hay. */
   error?: string | null;
-  /** Abre el vault indicado (pasa a ser el actual). */
   onOpen: (path: string) => void;
-  /** Crea `name` dentro de `baseDir`. Resuelve `false` si falló. */
   onCreate: (name: string, baseDir: string) => Promise<boolean>;
-  /** Añade una carpeta ya existente. Resuelve `false` si falló. */
   onAddExisting: (path: string) => Promise<boolean>;
-  /** Cambia únicamente el nombre visible del vault; no mueve su carpeta. */
   onRename: (path: string, name: string) => Promise<boolean>;
-  /** Establece (o quita con `null`) la imagen de portada del vault. */
   onSetCover: (path: string, cover: string | null) => Promise<boolean>;
-  /** Quita varios vaults de la lista a la vez (no borra archivos del disco). */
   onRemoveMany: (paths: string[]) => void;
-  /** Persiste la carpeta base elegida para los vaults nuevos. */
   onSelectBaseDir: (dir: string) => void;
 }
 
@@ -66,10 +51,6 @@ const INPUT_CLASS =
 const SMALL_BUTTON_CLASS =
   "rounded-lg px-3 py-1.5 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-gus-accent/60 disabled:opacity-50";
 
-/**
- * Fondo de una tarjeta de vault: siempre hay un fondo predeterminado y,
- * si el usuario eligió portada, se superpone la imagen (con fallback si falla).
- */
 function VaultBackground({ cover }: { cover?: string | null }) {
   const [src, setSrc] = useState<string | null>(null);
 
@@ -86,7 +67,6 @@ function VaultBackground({ cover }: { cover?: string | null }) {
         if (!cancelled) setSrc(dataUrl);
       })
       .catch(() => {
-        // Portada borrada o no legible → se queda el fondo predeterminado.
       });
 
     return () => {
@@ -96,7 +76,6 @@ function VaultBackground({ cover }: { cover?: string | null }) {
 
   return (
     <div aria-hidden="true" className="absolute inset-0">
-      {/* Fondo predeterminado siempre presente, debajo de la imagen. */}
       <div className="absolute inset-0 bg-gradient-to-br from-gus-panel via-gus-card to-gus-accent/25" />
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_20%,rgba(255,255,255,0.08),transparent_55%)]" />
       <img
@@ -118,11 +97,6 @@ function VaultBackground({ cover }: { cover?: string | null }) {
   );
 }
 
-/**
- * Pantalla principal estilo Obsidian: lista los vaults conocidos y permite
- * crear uno nuevo (eligiendo su carpeta con el explorador nativo) o abrir una
- * carpeta existente. Delega las operaciones de disco en los callbacks.
- */
 export default function VaultPicker({
   vaults,
   baseDir,
@@ -146,11 +120,9 @@ export default function VaultPicker({
   const [choosingBase, setChoosingBase] = useState(false);
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [renameInput, setRenameInput] = useState("");
-  /** Modo edición: muestra portada/renombrar y la selección múltiple. */
   const [editMode, setEditMode] = useState(false);
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(() => new Set());
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
-  /** Vault cuya portada se está eligiendo en este momento. */
   const [pickingCoverPath, setPickingCoverPath] = useState<string | null>(null);
 
   const shownError = localError ?? error;
@@ -176,7 +148,6 @@ export default function VaultPicker({
     }
   }
 
-  /** Abre el explorador nativo y añade la carpeta elegida al listado. */
   async function pickExistingVault() {
     if (busy || pickerBusy) return;
 
@@ -199,7 +170,6 @@ export default function VaultPicker({
     }
   }
 
-  /** Permite elegir con el explorador dónde se creará el siguiente vault. */
   async function pickBaseDirectory() {
     if (busy || pickerBusy) return;
 
@@ -223,7 +193,6 @@ export default function VaultPicker({
     }
   }
 
-  /** Abre el explorador nativo para elegir la portada de un vault. */
   async function pickCover(vault: VaultInfo) {
     if (busy || pickerBusy || pickingCoverPath) return;
 
@@ -252,7 +221,6 @@ export default function VaultPicker({
     }
   }
 
-  /** Vuelve al fondo predeterminado del vault. */
   async function resetCover(vault: VaultInfo) {
     if (busy || pickerBusy || pickingCoverPath) return;
     setLocalError(null);
@@ -285,7 +253,6 @@ export default function VaultPicker({
     if (ok) cancelRename();
   }
 
-  /** Activa/desactiva el menú de edición de los vaults. */
   function toggleEditMode() {
     const next = !editMode;
     setEditMode(next);
@@ -295,7 +262,6 @@ export default function VaultPicker({
     if (!next) cancelRename();
   }
 
-  /** Selecciona/deselecciona un vault para las acciones del modo edición. */
   function toggleSelect(path: string) {
     setConfirmBulkDelete(false);
     setSelectedPaths((prev) => {
@@ -315,7 +281,6 @@ export default function VaultPicker({
     );
   }
 
-  /** Elimina de la lista todos los vaults seleccionados (una sola llamada). */
   function removeSelected() {
     if (selectedPaths.size === 0) return;
     onRemoveMany([...selectedPaths]);
@@ -405,7 +370,6 @@ export default function VaultPicker({
         transition={{ duration: 0.35, ease: "easeOut" }}
         className="w-full max-w-6xl"
       >
-        {/* Cabecera + acciones pequeñas */}
         <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
           <div className="flex items-start gap-3">
             <img
@@ -487,7 +451,6 @@ export default function VaultPicker({
           </p>
         )}
 
-        {/* Menú de edición: portadas, renombrar y selección múltiple. */}
         {editMode && (
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-gus-accent/40 bg-gus-accent/10 px-3 py-2">
             <p className="text-xs text-gus-muted">
@@ -550,7 +513,6 @@ export default function VaultPicker({
           </div>
         )}
 
-        {/* Tarjetas de vaults (16:9, con fondo predeterminado o portada) */}
         <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {vaults.length === 0 && (
             <li className="rounded-xl border border-dashed border-gus-border px-3 py-10 text-center text-xs text-gus-muted sm:col-span-2 xl:col-span-3">
@@ -573,13 +535,11 @@ export default function VaultPicker({
                 className="group relative aspect-video overflow-hidden rounded-2xl border border-gus-border shadow-lg outline-none focus-within:ring-2 focus-within:ring-gus-accent/60"
               >
                 <VaultBackground cover={vault.cover} />
-                {/* Degradado para que el nombre siempre sea legible. */}
                 <div
                   aria-hidden="true"
                   className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-transparent"
                 />
 
-                {/* Toda la tarjeta abre el vault… */}
                 <button
                   type="button"
                   onClick={() => onOpen(vault.path)}
@@ -588,7 +548,6 @@ export default function VaultPicker({
                   className="absolute inset-0 z-0 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-gus-accent disabled:cursor-not-allowed"
                 />
 
-                {/* Modo edición: seleccionar la tarjeta para acciones múltiples. */}
                 {editMode && (
                   <button
                     type="button"
@@ -607,7 +566,6 @@ export default function VaultPicker({
                   </button>
                 )}
 
-                {/* Modo edición: opciones de portada y nombre. */}
                 {editMode && (
                   <div className="absolute top-2 right-2 z-10 flex gap-1">
                     <button
@@ -654,7 +612,6 @@ export default function VaultPicker({
                   </div>
                 )}
 
-                {/* Nombre + ubicación + botón pequeño para abrir. */}
                 <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex items-end justify-between gap-3 p-3">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
@@ -687,7 +644,6 @@ export default function VaultPicker({
                   )}
                 </div>
 
-                {/* Renombrar (dentro de la misma tarjeta 16:9). */}
                 {isRenaming && (
                   <form
                     onSubmit={(event) => {
@@ -744,7 +700,6 @@ export default function VaultPicker({
           })}
         </ul>
 
-        {/* Formulario: crear vault */}
         {mode === "create" && (
           <motion.form
             id="vault-create-form"

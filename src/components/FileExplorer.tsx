@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import clsx from "clsx";
+import { toLocalCoord } from "../lib/uiZoom";
 import {
   baseName,
   isImageName,
@@ -239,8 +240,10 @@ export default function FileExplorer({
   }
 
   function openMenu(id: string, kind: "file" | "folder", x: number, y: number) {
-    const left = Math.min(Math.max(8, x), window.innerWidth - MENU_WIDTH - 8);
-    const top = Math.min(Math.max(8, y), window.innerHeight - MENU_MAX_HEIGHT - 8);
+    const localX = toLocalCoord(x);
+    const localY = toLocalCoord(y);
+    const left = Math.min(Math.max(8, localX), toLocalCoord(window.innerWidth) - MENU_WIDTH - 8);
+    const top = Math.min(Math.max(8, localY), toLocalCoord(window.innerHeight) - MENU_MAX_HEIGHT - 8);
 
     setMenu({ id, kind, x: left, y: top });
     setRenamingId(null);

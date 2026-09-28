@@ -1,16 +1,7 @@
-/** Diagrama Mermaid dentro de la vista previa (```mermaid).
- *
- * La librería pesada se descarga solo cuando hay un diagrama que dibujar: el
- * primer render trae el módulo y los estilos del tema oscuro de Gus van por el
- * propio SVG.
- */
-
 import { useEffect, useRef, useState } from "react";
 
-/** Tipo del módulo por defecto de `mermaid` (sin importarlo al arrancar). */
 type MermaidApi = (typeof import("mermaid"))["default"];
 
-/** Carga diferida: una sola promesa para todo el proceso. */
 let mermaidPromise: Promise<MermaidApi> | null = null;
 
 function loadMermaid(): Promise<MermaidApi> {
@@ -21,7 +12,6 @@ function loadMermaid(): Promise<MermaidApi> {
     });
 
     mermaidPromise = promise;
-    // Si la descarga falla, el siguiente intento vuelve a pedirla.
     promise.catch(() => {
       if (mermaidPromise === promise) mermaidPromise = null;
     });
@@ -30,11 +20,9 @@ function loadMermaid(): Promise<MermaidApi> {
   return mermaidPromise;
 }
 
-/** Contador para que cada render use un id distinto (evita colisiones). */
 let renderCounter = 0;
 
 export interface MermaidDiagramProps {
-  /** Código fuente del diagrama (el interior del bloque `mermaid`). */
   code: string;
 }
 
@@ -43,11 +31,6 @@ export default function MermaidDiagram({ code }: MermaidDiagramProps) {
   const [status, setStatus] = useState<"drawing" | "ready" | "error">("drawing");
   const [error, setError] = useState<string | null>(null);
 
-  /**
-   * Código con calma: la vista en vivo re-renderiza con cada tecleo, así que
-   * el diagrama solo se vuelve a dibujar cuando la escritura se detiene.
-   * (En el primer render `renderCode` ya es el código: no se espera nada.)
-   */
   const [renderCode, setRenderCode] = useState(code);
 
   useEffect(() => {
@@ -72,7 +55,6 @@ export default function MermaidDiagram({ code }: MermaidDiagramProps) {
         setStatus("ready");
       })
       .catch((reason: unknown) => {
-        // Mermaid puede dejar un contenedor temporal detrás del error.
         document.getElementById(renderId)?.remove();
         document.getElementById(`d${renderId}`)?.remove();
         if (cancelled) return;
@@ -99,7 +81,6 @@ export default function MermaidDiagram({ code }: MermaidDiagramProps) {
         </div>
       )}
 
-      {/* El SVG se inyecta aquí (React no le pone hijos, no hay conflicto). */}
       <div ref={hostRef} />
     </div>
   );

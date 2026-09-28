@@ -13,8 +13,9 @@ import {
 import { AnimatePresence } from "framer-motion";
 import type { Components, UrlTransform } from "react-markdown";
 import { invoke } from "@tauri-apps/api/core";
+import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
 import clsx from "clsx";
-import { Check, Code, Eye, Pencil, X } from "lucide-react";
+import { Check, Eye, Pencil, X } from "lucide-react";
 import { pathWithTitle, safeFileName } from "../lib/fileName";
 import { listEnterEdit } from "../lib/listContinue";
 import {
@@ -31,6 +32,16 @@ import {
   type SpellLang,
 } from "../lib/spellCheck";
 import { offsetAtPointer } from "../lib/pointerOffset";
+import { toLocalCoord } from "../lib/uiZoom";
+import {
+  createHistory,
+  recordHistory,
+  redoHistory,
+  undoHistory,
+  type EditorHistory,
+  type HistorySnapshot,
+} from "../lib/editorHistory";
+import { stripPasteFormatting } from "../lib/pasteText";
 import { parseTagInput } from "../lib/markdownTasks";
 import {
   frontmatterLineOffset,
@@ -55,103 +66,65 @@ import {
 import { filterSlashItems, SlashMenu, WikiLinkMenu, type SlashItem } from "./EditorMenus";
 import InlinePreview, { classifySource } from "./InlinePreview";
 import MermaidDiagram from "./MermaidDiagram";
-import SpellMenu from "./SpellMenu";
+import EditorContextMenu, { type ContextSpell, type FormatKind } from "./EditorContextMenu";
 
-/** Nota ya persistida: la ruta puede cambiar si el título renombró el archivo. */
 export interface EditorDraft {
   path: string;
   title: string;
   content: string;
 }
 
-/** Acceso imperativo al editor (para volcar cambios a demanda del padre). */
 export interface MarkdownEditorHandle {
-  /** Vuelca ahora mismo lo pendiente. Resuelve `false` si el guardado falló. */
   flush: () => Promise<boolean>;
 }
 
 export interface MarkdownEditorProps {
-  /** Ruta actual del archivo .md de la nota seleccionada. */
   path: string;
-  /** Título de la nota (nombre del archivo sin .md). */
   title: string;
-  /** Contenido markdown de la nota seleccionada. */
   content: string;
-  /** Vault abierto: alimenta el autocompletado de `[[enlaces]]`. */
   vaultPath?: string | null;
-  /** Abre (o crea) la nota a la que apunta un `[[enlace]]` de la vista previa. */
   onOpenWikiLink?: (target: string) => void;
-  /** Autoguardado: se invoca con la nota ya guardada en disco. */
   autoSave?: (draft: EditorDraft) => void;
-  /** Retardo del autoguardado en ms (500 por defecto). */
   debounceMs?: number;
-  /** Tamaño de letra del área de texto en píxeles (viene de los ajustes). */
   fontSize?: number;
-  /** Idioma del corrector ortográfico (viene de los ajustes; `off` = sin resaltado). */
   spellLang?: SpellLang;
-  /** Palabras del diccionario personal (vienen de los ajustes). */
   spellWords?: string[];
-  /** Persiste el diccionario personal tras agregar o quitar una palabra. */
   onSpellWordsChange?: (words: string[]) => void;
-  /**
-   * Activa el autoguardado con retardo. Si está en `false` solo guardan
-   * Ctrl/Cmd+S y el volcado al salir de la nota (el guardado nunca se pierde).
-   */
   autoSaveEnabled?: boolean;
   className?: string;
-  /** Permite al padre forzar un volcado (`flush()`) antes de una acción sobre el archivo. */
   ref?: Ref<MarkdownEditorHandle>;
 }
 
 const DEFAULT_DEBOUNCE = 500;
 
-/** Preferencia de la vista en vivo en localStorage («0» = solo código crudo). */
-const INLINE_PREVIEW_KEY = "gus-editor-inline";
-
-/** Líneas máximas decoradas: más allá, el editor vuelve al código crudo. */
 const MAX_DECORATED_LINES = 10000;
 
 type SaveState = "idle" | "dirty" | "saved" | "error";
 
-/** Modo de vista del editor: escribir (textarea) o previsualizar (markdown). */
 type ViewMode = "edit" | "preview";
 
-/** Menú flotante del editor: autocompletado `[[notas]]` o menú `/` (bloques). */
 interface EditorMenu {
-  /** Disparador del menú. */
   kind: "wiki" | "slash";
-  /** Índice del texto donde empieza el disparador (`[[` o `/`). */
   start: number;
-  /** Texto escrito justo después del disparador (lo que se filtra). */
   query: string;
-  /** Elemento resaltado con las flechas. */
   index: number;
-  /** Posición del cursor, para anclar el menú encima. */
   anchor: CaretAnchor;
 }
 
-/** Menú contextual del corrector, anclado a una palabra concreta. */
-interface SpellMenuState {
-  /** Falta (con sugerencias) o palabra propia del usuario (para quitarla). */
-  mode: "misspelled" | "personal";
-  /** La palabra que se muestra en el menú. */
-  word: string;
-  /** Rango de la palabra dentro del cuerpo, para sustituirla. */
-  start: number;
-  end: number;
-  /** Sugerencias propuestas al abrir (las guarda, el texto puede cambiar). */
-  suggestions: string[];
-  /** Coordenadas del clic en el sistema de la ventana. */
+interface ContextMenuState {
+  spell: ContextSpell | null;
+  hasSelection: boolean;
   x: number;
   y: number;
 }
 
-/**
- * El renderizador markdown solo se descarga la primera vez que se abre la
- * vista previa: mantiene el arranque ligero. Con `remark-gfm` (tablas y
- * tachado), `remark-math` + `rehype-katex` (fórmulas `$…$`) y
- * `remarkWikiLinks` (`[[enlaces]]` entre notas).
- */
+const FORMAT_MARKERS: Record<Exclude<FormatKind, "link">, [string, string]> = {
+  bold: ["**", "**"],
+  italic: ["*", "*"],
+  strike: ["~~", "~~"],
+  code: ["`", "`"],
+};
+
 const MarkdownBody = lazy(async () => {
   const [
     { default: ReactMarkdown, defaultUrlTransform },
@@ -164,10 +137,8 @@ const MarkdownBody = lazy(async () => {
     import("remark-math"),
     import("rehype-katex"),
   ]);
-  // Tipos y fuentes de KaTeX: viajan en el mismo trozo diferido.
   await import("katex/dist/katex.min.css");
 
-  /** `wiki:destino` sobrevive al saneado de URLs; el resto, la norma. */
   const urlTransform: UrlTransform = (value) =>
     value.startsWith("wiki:") ? value : defaultUrlTransform(value);
 
@@ -192,6 +163,32 @@ function countWords(text: string): number {
   return trimmed ? trimmed.split(/\s+/).length : 0;
 }
 
+/** Altura real de fila del textarea en unidades locales (el motor la redondea al escalar). */
+function measureRowPitch(area: HTMLTextAreaElement | null): number | null {
+  if (!area) return null;
+  const prev = area.value;
+  const selStart = area.selectionStart;
+  const selEnd = area.selectionEnd;
+  try {
+    const rows = Math.ceil((area.clientHeight + 4) / 16) + 8;
+    area.value = Array(rows).fill("X").join("\n");
+    const first = area.scrollHeight;
+    area.value = Array(rows + 10).fill("X").join("\n");
+    const second = area.scrollHeight;
+    const pitch = (second - first) / 10;
+    return Number.isFinite(pitch) && pitch > 0 ? pitch : null;
+  } catch {
+    return null;
+  } finally {
+    area.value = prev;
+    try {
+      area.setSelectionRange(selStart, selEnd);
+    } catch {
+      // selección no aplicable
+    }
+  }
+}
+
 export default function MarkdownEditor({
   path,
   title: initialTitle,
@@ -212,43 +209,16 @@ export default function MarkdownEditor({
   const [content, setContent] = useState(initialContent);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
-  /** Escritura o vista previa; el botón de la cabecera alterna entre ambas. */
   const [viewMode, setViewMode] = useState<ViewMode>("edit");
-  /**
-   * Vista en vivo estilo Obsidian: el markdown se renderiza dentro del propio
-   * área y solo la línea del cursor se ve como código fuente. Se guarda en
-   * localStorage («0» = crudo); sin almacenamiento (SSR) arranca en vivo.
-   */
-  const [inline, setInline] = useState<boolean>(() => {
-    try {
-      return typeof localStorage === "undefined" || localStorage.getItem(INLINE_PREVIEW_KEY) !== "0";
-    } catch {
-      return true; // almacenamiento inaccesible: se comporta como por defecto
-    }
-  });
-  /** Línea (0-based) del cursor: esa se pinta en crudo en la capa de atrás. */
   const [caretLine, setCaretLine] = useState(0);
-  /** El IME está componiendo: el navegador pinta el texto, sin capa detrás. */
+  const [rowPitch, setRowPitch] = useState(23);
+  const [zoomTick, setZoomTick] = useState(0);
   const [composing, setComposing] = useState(false);
-  /** Ancho del scrollbar del área (mueve la columna de texto del overlay). */
   const [scrollbarWidth, setScrollbarWidth] = useState(0);
-  /** Motor del corrector del idioma elegido (`null` = off o aún en carga). */
   const [engine, setEngine] = useState<SpellEngine | null>(null);
-  /**
-   * Sube al agregar o ignorar una palabra: cambia la identidad de `spell`,
-   * que es lo que hace que las líneas memorizadas se repinten solas.
-   */
   const [spellRevision, setSpellRevision] = useState(0);
-  /** Menú del corrector abierto sobre una palabra concreta. */
-  const [spellMenu, setSpellMenu] = useState<SpellMenuState | null>(null);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
 
-  /**
-   * Carga perezosa del diccionario del idioma de los ajustes: mientras no
-   * llega (o si falla la descarga) no hay resaltado. Al cambiar de idioma el
-   * motor anterior se libera (en memoria solo vive uno). El diccionario
-   * personal y las ignoradas se consultan aparte, así que no hace falta
-   * recargar nada al tocarlas.
-   */
   useEffect(() => {
     if (!spellLang || spellLang === "off") {
       setEngine(null);
@@ -264,52 +234,38 @@ export default function MarkdownEditor({
     };
   }, [spellLang]);
 
-  /**
-   * Segmentación estable para la capa en vivo: cambia al cargar otro
-   * diccionario o al tocar el personal (`spellWords` llega nuevo de ajustes
-   * y `spellRevision` sube desde el menú), así que el repintado es justo el
-   * que hace falta.
-   */
   const spell = useMemo<SpellFn | null>(
     () => (engine ? (text: string) => spellSegments(text, engine.correct) : null),
     [engine, spellWords, spellRevision],
   );
 
-  /** Menú flotante sobre el cursor: `[[` (notas) o `/` (bloques). */
   const [menu, setMenu] = useState<EditorMenu | null>(null);
 
-  /** Ancla del recordatorio «/» cuando la línea del cursor está limpia. */
   const [lineHint, setLineHint] = useState<CaretAnchor | null>(null);
-  /** Notas del vault: alimentan `[[` y el estilo de los enlaces en la previa. */
   const [wikiNotes, setWikiNotes] = useState<WikiNote[]>([]);
   const [wikiNotesLoading, setWikiNotesLoading] = useState(false);
-  /** Etiqueta tecleada en la cabecera (los chips salen del frontmatter). */
   const [tagInput, setTagInput] = useState("");
-  /** Etiquetas de todo el vault: opciones del menú desplegable del campo. */
   const [vaultTags, setVaultTags] = useState<VaultTag[]>([]);
   const [tagMenuOpen, setTagMenuOpen] = useState(false);
   const [tagIndex, setTagIndex] = useState(0);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  /** Capa de la vista en vivo (se desplaza con el textarea). */
   const overlayRef = useRef<HTMLDivElement>(null);
-  /** Cursor que hay que fijar tras insertar un enlace o un bloque. */
+  const historyRef = useRef<EditorHistory>(createHistory());
+  const pendingRestoreRef = useRef<HistorySnapshot | null>(null);
+  const forceHistoryRef = useRef(false);
+  const skipHistoryRef = useRef(false);
   const pendingCaretRef = useRef<[number, number] | null>(null);
-  /** N.º de petición: solo la última lista de notas puede escribir estado. */
   const wikiRequestRef = useRef(0);
-  /** N.º de petición de etiquetas del vault (menú desplegable). */
   const tagRequestRef = useRef(0);
 
-  /** Ruta real del archivo: la propia tras un rename, aunque el padre aún no la pase. */
   const ownPathRef = useRef(path);
-  /** Invalida guardados en vuelo cuando cambia la nota seleccionada. */
   const sequenceRef = useRef(0);
   const dirtyRef = useRef(false);
   const autoSaveRef = useRef(autoSave);
   autoSaveRef.current = autoSave;
   dirtyRef.current = saveState === "dirty";
 
-  // Cambiar de nota (ruta ajena) ⇒ recargar; un rename originado aquí no.
   useEffect(() => {
     if (path === ownPathRef.current) return;
 
@@ -320,17 +276,18 @@ export default function MarkdownEditor({
     setSaveState("idle");
     setSaveError(null);
     setMenu(null);
-    // Los props de la nueva nota llegan en el mismo render que la ruta.
+    historyRef.current = createHistory();
+    pendingRestoreRef.current = null;
+    forceHistoryRef.current = false;
+    skipHistoryRef.current = false;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path]);
 
-  /** En la vista previa se distingue qué `[[enlaces]]` apuntan a notas reales. */
   useEffect(() => {
     if (viewMode === "preview") loadWikiNotes();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewMode, vaultPath, path]);
 
-  // Tras insertar un enlace o un bloque, el cursor vuelve al textarea.
   useEffect(() => {
     if (pendingCaretRef.current === null) return;
     const [from, to] = pendingCaretRef.current;
@@ -343,8 +300,6 @@ export default function MarkdownEditor({
     refreshCaretLine();
   }, [content]);
 
-  // El recordatorio «/» se (re)ancla a la línea del cursor: al cargar la nota,
-  // al cambiar de vista y tras cada tecleo o movimiento del cursor.
   useEffect(() => {
     if (viewMode === "preview") {
       setLineHint(null);
@@ -356,14 +311,11 @@ export default function MarkdownEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewMode, content]);
 
-  // La capa en vivo comparte scroll y columna de texto con el área: su
-  // scrollbar aparece o desaparece según el cuerpo de la nota.
   useEffect(() => {
     syncOverlayGeometry();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [content, inline, spell]);
+  }, [content, spell]);
 
-  /** Renombra si hace falta (título ≠ nombre del archivo) y escribe el contenido. */
   async function persist(): Promise<boolean> {
     const sequence = ++sequenceRef.current;
     const from = ownPathRef.current;
@@ -396,11 +348,6 @@ export default function MarkdownEditor({
   const persistRef = useRef(persist);
   persistRef.current = persist;
 
-  /**
-   * Volcado inmediato que el padre puede pedir antes de renombrar/mover/borrar
-   * el archivo. Marca como "limpio" para que el desmontaje no repita la escritura
-   * (y no recrie un archivo que ya no existiría).
-   */
   async function flush(): Promise<boolean> {
     if (!dirtyRef.current) return true;
 
@@ -412,7 +359,6 @@ export default function MarkdownEditor({
 
   useImperativeHandle(ref, () => ({ flush }), [flush]);
 
-  // Autoguardado con debounce (si está desactivado, solo Ctrl+S / al salir).
   useEffect(() => {
     if (saveState !== "dirty" || !autoSaveEnabled) return;
 
@@ -420,7 +366,6 @@ export default function MarkdownEditor({
     return () => clearTimeout(timer);
   }, [title, content, saveState, debounceMs, autoSaveEnabled]);
 
-  // Al desmontar (p. ej. cambiar de pestaña) se vuelca lo que quede pendiente.
   useEffect(() => {
     return () => {
       if (dirtyRef.current) {
@@ -435,28 +380,48 @@ export default function MarkdownEditor({
     setSaveState("dirty");
   }
 
+  function historySnapshot(): HistorySnapshot {
+    const area = textareaRef.current;
+    return {
+      content,
+      start: area?.selectionStart ?? content.length,
+      end: area?.selectionEnd ?? content.length,
+      at: Date.now(),
+    };
+  }
+
   function editContent(next: string) {
+    if (next !== content && !skipHistoryRef.current) {
+      recordHistory(historyRef.current, historySnapshot(), forceHistoryRef.current);
+      forceHistoryRef.current = false;
+    }
+    skipHistoryRef.current = false;
     setContent(next);
     setSaveState("dirty");
   }
 
-  /** Cambios del área de texto: el frontmatter oculto vuelve a su sitio. */
   function editBody(nextBody: string) {
     editContent(replaceBody(content, nextBody));
   }
 
-  /** Cambia entre el markdown renderizado en vivo y el código fuente crudo. */
-  function toggleInline() {
-    const next = !inline;
-    setInline(next);
-    try {
-      localStorage.setItem(INLINE_PREVIEW_KEY, next ? "1" : "0");
-    } catch {
-      // Sin almacenamiento disponible: la preferencia vale para esta sesión.
-    }
+  function applyHistoryState(target: HistorySnapshot) {
+    skipHistoryRef.current = true;
+    editContent(target.content);
+    pendingRestoreRef.current = target;
+    setMenu(null);
+    setContextMenu(null);
   }
 
-  /** Línea del cursor en el área: esa se pinta en crudo en la capa de atrás. */
+  function applyUndo() {
+    const target = undoHistory(historyRef.current, historySnapshot());
+    if (target) applyHistoryState(target);
+  }
+
+  function applyRedo() {
+    const target = redoHistory(historyRef.current, historySnapshot());
+    if (target) applyHistoryState(target);
+  }
+
   function refreshCaretLine() {
     const area = textareaRef.current;
     if (!area) return;
@@ -464,7 +429,6 @@ export default function MarkdownEditor({
     setCaretLine((current) => (current === line ? current : line));
   }
 
-  /** El overlay sigue el scroll y el ancho útil (scrollbar) del textarea. */
   function syncOverlayGeometry() {
     const area = textareaRef.current;
     if (!area) return;
@@ -476,17 +440,38 @@ export default function MarkdownEditor({
     setScrollbarWidth((current) => (current === width ? current : width));
   }
 
-  /** Estado de la casilla de la tarea de la línea `line` (1-based); `null` si no lo es. */
+  useEffect(() => {
+    const onZoom = () => setZoomTick((tick) => tick + 1);
+    window.addEventListener("gus:zoom", onZoom);
+    return () => window.removeEventListener("gus:zoom", onZoom);
+  }, []);
+
+  // El motor redondea la interlínea del textarea a píxeles enteros al escalar;
+  // medimos su altura real para que el overlay dibuje exactamente las mismas filas.
+  useEffect(() => {
+    const next = measureRowPitch(textareaRef.current);
+    if (next !== null) setRowPitch((current) => (Math.abs(current - next) < 0.01 ? current : next));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zoomTick, fontSize]);
+
+  // Tras deshacer o rehacer se recupera la selección guardada en el paso.
+  useEffect(() => {
+    const target = pendingRestoreRef.current;
+    if (!target) return;
+    pendingRestoreRef.current = null;
+    const area = textareaRef.current;
+    if (!area) return;
+    const max = area.value.length;
+    area.setSelectionRange(Math.min(target.start, max), Math.min(target.end, max));
+    refreshCaretLine();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [content]);
+
   function taskCheckedAt(line: number): boolean | null {
     const match = /^\s*(?:[-*+]|\d+[.)])\s+\[([ xX])\]/.exec(content.split("\n")[line - 1] ?? "");
     return match ? match[1] !== " " : null;
   }
 
-  /**
-   * Marca/desmarca la tarea de la línea `line` desde la vista previa: edita el
-   * markdown fuente y el autoguardado (debounce de 500 ms) lo persiste con
-   * `write_vault_file`.
-   */
   function toggleTaskAt(line: number) {
     const lines = content.split("\n");
     const source = lines[line - 1];
@@ -500,21 +485,12 @@ export default function MarkdownEditor({
     editContent(lines.join("\n"));
   }
 
-  // ------------------------------------------------------------------
-  // Etiquetas de la nota (chips en la cabecera → frontmatter `tags:`)
-  // ------------------------------------------------------------------
-
-  /**
-   * Escribe las etiquetas en el frontmatter sin tocar el cuerpo: el textarea
-   * no muestra ese bloque, así que su texto (y el cursor) no se mueven.
-   */
   function applyNoteTags(next: string[]) {
     const updated = setNoteTags(content, next);
     if (updated === content) return;
     editContent(updated);
   }
 
-  /** Pide las etiquetas de todo el vault para el menú desplegable. */
   function loadVaultTags() {
     if (!vaultPath) return;
 
@@ -524,18 +500,15 @@ export default function MarkdownEditor({
         if (request === tagRequestRef.current) setVaultTags(tags);
       })
       .catch(() => {
-        // Sin lista disponible: el campo sigue creando etiquetas a mano.
       });
   }
 
-  /** Añade la etiqueta elegida en el desplegable. */
   function pickTag(tag: string) {
     applyNoteTags([...parseNoteTags(content), tag]);
     setTagInput("");
     setTagIndex(0);
   }
 
-  /** Vuelca lo tecleado en el campo de etiquetas a chips. */
   function commitTagInput() {
     const parsed = parseTagInput(tagInput);
     if (parsed.length === 0) return;
@@ -571,7 +544,6 @@ export default function MarkdownEditor({
 
     if (event.key === "Enter") {
       event.preventDefault();
-      // Con opciones disponibles Intro elige la resaltada; si no, crea la tecleada.
       if (tagMenuOpen && options.length > 0) {
         pickTag(options[Math.min(tagIndex, options.length - 1)].tag);
         return;
@@ -580,7 +552,6 @@ export default function MarkdownEditor({
       return;
     }
 
-    // Backspace en el campo vacío elimina el último chip.
     if (event.key === "Backspace" && tagInput === "") {
       const tags = parseNoteTags(content);
       if (tags.length > 0) applyNoteTags(tags.slice(0, -1));
@@ -588,7 +559,6 @@ export default function MarkdownEditor({
   }
 
   function handleTagInputChange(value: string) {
-    // Escribir una coma confirma al instante lo que haya tecleado.
     if (/[,，]/.test(value)) {
       applyNoteTags([...parseNoteTags(content), ...parseTagInput(value)]);
       setTagInput("");
@@ -598,11 +568,6 @@ export default function MarkdownEditor({
     setTagIndex(0);
   }
 
-  // ------------------------------------------------------------------
-  // Menús del editor: autocompletado `[[` y bloques con `/`
-  // ------------------------------------------------------------------
-
-  /** Pide la lista de notas del vault (para `[[` y para los enlaces reales). */
   function loadWikiNotes() {
     if (!vaultPath) return;
 
@@ -621,11 +586,6 @@ export default function MarkdownEditor({
       });
   }
 
-  /**
-   * Muestra (o no) el recordatorio de «/»: solo cuando la línea del cursor
-   * está limpia. La nota vacía no lo necesita: su propio placeholder ya
-   * recuerda el comando.
-   */
   function syncLineHint(text: string, caret: number) {
     const area = textareaRef.current;
     if (!area || text === "" || area.selectionStart !== area.selectionEnd) {
@@ -648,7 +608,6 @@ export default function MarkdownEditor({
     );
   }
 
-  /** Abre (o cierra) el menú que toque según lo que haya antes del cursor. */
   function syncMenu(text: string, caret: number) {
     syncLineHint(text, caret);
 
@@ -690,26 +649,22 @@ export default function MarkdownEditor({
     setMenu(null);
   }
 
-  /** Cambio de texto: autoguarda y vuelve a evaluar el menú del cursor. */
   function handleContentChange(next: string) {
-    refreshCaretLine(); // el cursor ya apunta a la línea que corresponde
+    refreshCaretLine();
     editBody(next);
     // Los rangos del menú ortográfico ya no son fiables: se cierra.
-    setSpellMenu(null);
+    setContextMenu(null);
     const area = textareaRef.current;
     syncMenu(next, area?.selectionStart ?? next.length);
   }
 
-  /** El cursor se mueve (ratón o flechas): el menú debe seguirle o irse. */
   function handleCaretMove() {
     const area = textareaRef.current;
     if (!area) return;
-    refreshCaretLine(); // la línea decorada cambia con el cursor
-    setSpellMenu(null);
+    refreshCaretLine();
     syncMenu(area.value, area.selectionStart);
   }
 
-  /** El textarea se desplaza: menú, recordatorio y capa en vivo le siguen. */
   function handleScroll() {
     const area = textareaRef.current;
     if (!area) return;
@@ -718,7 +673,6 @@ export default function MarkdownEditor({
     syncOverlayGeometry();
   }
 
-  /** Sustituye `[start, cursor]` por `text` y deja el cursor en `caretOffset`. */
   function replaceRange(start: number, text: string, caretOffset: number) {
     const area = textareaRef.current;
     const current = area?.value ?? stripFrontmatter(content);
@@ -729,120 +683,191 @@ export default function MarkdownEditor({
     setMenu(null);
   }
 
-  /** Inserta el enlace de la nota elegida en el desplegable `[[`. */
   function insertWikiNote(note: WikiNote) {
     if (!menu) return;
     const text = wikiInsertText(wikiNotes, note);
     replaceRange(menu.start, text, text.length);
   }
 
-  /** Inserta el enlace tal cual (sin notas que coincidan, a mano). */
   function insertWikiRaw() {
     if (!menu) return;
     const text = `[[${menu.query}]]`;
     replaceRange(menu.start, text, text.length);
   }
 
-  /** Inserta el bloque del menú `/` con el cursor donde deja su snippet. */
   function insertSlashItem(item: SlashItem) {
     if (!menu) return;
     replaceRange(menu.start, item.snippet, item.caretOffset);
   }
 
-  // ------------------------------------------------------------------
-  // Menú contextual del corrector (clic derecho sobre una palabra)
-  // ------------------------------------------------------------------
+  function openEditorMenu(clientX: number, clientY: number) {
+    const area = textareaRef.current;
+    if (!area) return;
 
-  /**
-   * Botón derecho en el área: solo se intercepta si cae sobre una palabra en
-   * rojo (o sobre una del diccionario personal, para poder quitarla). Con
-   * selección —o sin corrector— manda el menú del sistema, que ya trae
-   * cortar/copiar/pegar.
-   */
-  function handleContextMenu(event: MouseEvent<HTMLTextAreaElement>) {
-    const area = event.currentTarget;
-    if (!engine || area.selectionStart !== area.selectionEnd) return;
+    const selStart = area.selectionStart;
+    const selEnd = area.selectionEnd;
+    let spell: ContextSpell | null = null;
 
-    // La palabra bajo el ratón; si no se puede ubicar, la del cursor.
-    const offset =
-      offsetAtPointer(area, event.clientX, event.clientY) ?? area.selectionStart;
-    const span = spellWordAt(area.value, offset, engine.correct);
-    if (!span) return;
+    if (engine) {
+      let span: ReturnType<typeof spellWordAt> = null;
+      if (selStart !== selEnd) {
+        const selected = area.value.slice(selStart, selEnd);
+        if (/^[\p{L}][\p{L}'’]*$/u.test(selected)) {
+          span = spellWordAt(area.value, selStart, engine.correct);
+        }
+      } else {
+        const offset = offsetAtPointer(area, clientX, clientY) ?? selStart;
+        span = spellWordAt(area.value, offset, engine.correct);
+      }
 
-    if (!span.bad) {
-      // Solo las palabras propias merecen menú: para quitarlas del diccionario.
-      if (!isPersonalWord(span.word)) return;
-      event.preventDefault();
-      setMenu(null);
-      setSpellMenu({
-        mode: "personal",
-        word: span.word,
-        start: span.start,
-        end: span.end,
-        suggestions: [],
-        x: event.clientX,
-        y: event.clientY,
-      });
-      return;
+      if (span) {
+        if (span.bad) {
+          spell = {
+            mode: "misspelled",
+            word: span.word,
+            start: span.start,
+            end: span.end,
+            suggestions: engine.suggest(span.word),
+          };
+        } else if (isPersonalWord(span.word)) {
+          spell = {
+            mode: "personal",
+            word: span.word,
+            start: span.start,
+            end: span.end,
+            suggestions: [],
+          };
+        }
+      }
     }
 
-    event.preventDefault();
-    setMenu(null); // el menú `[[`/`/` no debe competir con este
-    setSpellMenu({
-      mode: "misspelled",
-      word: span.word,
-      start: span.start,
-      end: span.end,
-      suggestions: engine.suggest(span.word),
-      x: event.clientX,
-      y: event.clientY,
+    setMenu(null);
+    setContextMenu({
+      spell,
+      hasSelection: selStart !== selEnd,
+      x: toLocalCoord(clientX),
+      y: toLocalCoord(clientY),
     });
   }
 
-  /** Sustituye la palabra del menú por `replacement` y deja el cursor tras ella. */
+  function handleContextMenu(event: MouseEvent<HTMLTextAreaElement>) {
+    event.preventDefault();
+    openEditorMenu(event.clientX, event.clientY);
+  }
+
   function applySpellReplacement(replacement: string) {
-    if (!spellMenu) return;
+    const spell = contextMenu?.spell;
     const area = textareaRef.current;
     const current = area?.value ?? stripFrontmatter(content);
-    const start = Math.min(spellMenu.start, current.length);
-    const end = Math.min(Math.max(spellMenu.end, start), current.length);
+    setContextMenu(null);
+    if (!spell) return;
+    const start = Math.min(spell.start, current.length);
+    const end = Math.min(Math.max(spell.end, start), current.length);
 
     pendingCaretRef.current = [start + replacement.length, start + replacement.length];
     editBody(`${current.slice(0, start)}${replacement}${current.slice(end)}`);
-    setSpellMenu(null);
   }
 
-  /** Agrega la palabra al diccionario personal y la persiste en ajustes. */
   function addSpellWord() {
-    if (!spellMenu) return;
-    if (addPersonalWord(spellMenu.word)) onSpellWordsChange?.(getPersonalWords());
+    const word = contextMenu?.spell?.word;
+    setContextMenu(null);
+    if (!word) return;
+    if (addPersonalWord(word)) onSpellWordsChange?.(getPersonalWords());
     setSpellRevision((value) => value + 1);
-    setSpellMenu(null);
   }
 
-  /** Olvida la palabra durante esta sesión (no se guarda en ningún sitio). */
   function ignoreSpellWord() {
-    if (!spellMenu) return;
-    ignoreWord(spellMenu.word);
+    const word = contextMenu?.spell?.word;
+    setContextMenu(null);
+    if (!word) return;
+    ignoreWord(word);
     setSpellRevision((value) => value + 1);
-    setSpellMenu(null);
   }
 
-  /** Quita la palabra del diccionario personal y actualiza los ajustes. */
   function removeSpellWord() {
-    if (!spellMenu) return;
-    removePersonalWord(spellMenu.word);
+    const word = contextMenu?.spell?.word;
+    setContextMenu(null);
+    if (!word) return;
+    removePersonalWord(word);
     onSpellWordsChange?.(getPersonalWords());
     setSpellRevision((value) => value + 1);
-    setSpellMenu(null);
   }
 
-  // Ctrl/Cmd + S guarda sin esperar al debounce; el resto de teclas dependen
-  // de si hay un menú abierto sobre el cursor.
+  async function cutSelection() {
+    const area = textareaRef.current;
+    const text = area ? area.value.slice(area.selectionStart, area.selectionEnd) : "";
+    setContextMenu(null);
+    if (!area || !text) return;
+    const copied = await writeText(text)
+      .then(() => true)
+      .catch(() => false);
+    if (copied) replaceRange(area.selectionStart, "", 0);
+  }
+
+  async function copySelection() {
+    const area = textareaRef.current;
+    const text = area ? area.value.slice(area.selectionStart, area.selectionEnd) : "";
+    setContextMenu(null);
+    if (!text) return;
+    await writeText(text).catch(() => undefined);
+  }
+
+  async function pasteClipboard(plain: boolean) {
+    const area = textareaRef.current;
+    setContextMenu(null);
+    if (!area) return;
+    try {
+      const raw = await readText();
+      if (!raw) return;
+      const text = plain ? stripPasteFormatting(raw) : raw;
+      replaceRange(area.selectionStart, text, text.length);
+    } catch {
+      // portapapeles no disponible en este entorno
+    }
+  }
+
+  function selectAllText() {
+    textareaRef.current?.select();
+    setContextMenu(null);
+  }
+
+  function applyFormat(kind: FormatKind) {
+    setContextMenu(null);
+    const area = textareaRef.current;
+    if (!area) return;
+    const start = area.selectionStart;
+    const selected = area.value.slice(start, area.selectionEnd);
+
+    if (kind === "link") {
+      replaceRange(start, `[${selected}]()`, `[${selected}](`.length);
+      return;
+    }
+
+    const [open, close] = FORMAT_MARKERS[kind];
+    const wrapped =
+      selected.startsWith(open) &&
+      selected.endsWith(close) &&
+      selected.length >= open.length + close.length
+        ? selected.slice(open.length, selected.length - close.length)
+        : open + selected + close;
+
+    if (selected) replaceRange(start, wrapped, wrapped.length);
+    else replaceRange(start, open + close, open.length);
+  }
+
+  function insertFromMenu(item: SlashItem) {
+    setContextMenu(null);
+    const area = textareaRef.current;
+    if (!area) return;
+    const pos = area.selectionStart;
+    area.setSelectionRange(pos, pos);
+    replaceRange(pos, item.snippet, item.caretOffset);
+  }
+
   function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
-    if (event.key === "Escape" && spellMenu) {
+    if (event.key === "Escape" && contextMenu) {
       event.preventDefault();
-      setSpellMenu(null);
+      setContextMenu(null);
       return;
     }
 
@@ -852,30 +877,39 @@ export default function MarkdownEditor({
       return;
     }
 
+    const mod = event.metaKey || event.ctrlKey;
+    const key = event.key.toLowerCase();
+    if (mod && !event.altKey && key === "z") {
+      event.preventDefault();
+      if (event.shiftKey) applyRedo();
+      else applyUndo();
+      return;
+    }
+    if (mod && !event.altKey && key === "y") {
+      event.preventDefault();
+      applyRedo();
+      return;
+    }
+    if (mod && !event.altKey && (key === "v" || key === "x")) {
+      // Pegar o cortar inicia un grupo de deshacer propio.
+      forceHistoryRef.current = true;
+    }
+
     if (menu) {
       handleMenuKeyDown(event);
-      // Solo si el menú no se comió la tecla (p. ej. «/» sin coincidencias).
       if (event.defaultPrevented) return;
     }
 
     handleListEnter(event);
   }
 
-  /**
-   * Intro en el texto: continúa las listas (`-`, `*`, `1.`, `- [ ]`…) con la
-   * misma sangría (y el número siguiente en las ordenadas); un Intro sobre un
-   * ítem vacío retira el marcador y cierra la lista. Si la línea no es de
-   * lista, el salto es el normal del sistema.
-   */
   function handleListEnter(event: KeyboardEvent<HTMLElement>) {
     if (event.key !== "Enter") return;
-    // Solo el Intro simple: Shift/Ctrl/Alt+Intro y la entrada IME son normales.
     if (event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) return;
     if (event.nativeEvent.isComposing) return;
 
     const area = event.target;
     if (!(area instanceof HTMLTextAreaElement)) return;
-    // Con selección, el salto sustituye lo seleccionado: no interferir.
     if (area.selectionStart !== area.selectionEnd) return;
 
     const edit = listEnterEdit(area.value, area.selectionStart);
@@ -885,7 +919,6 @@ export default function MarkdownEditor({
     replaceRange(edit.start, edit.insert, edit.caret - edit.start);
   }
 
-  /** Flechas, Intro/Tab y Esc mientras el menú está abierto. */
   function handleMenuKeyDown(event: KeyboardEvent<HTMLElement>) {
     if (!menu) return;
 
@@ -925,7 +958,7 @@ export default function MarkdownEditor({
     }
 
     const items = filterSlashItems(menu.query);
-    if (items.length === 0) return; // sin coincidencias se sigue escribiendo
+    if (items.length === 0) return;
     event.preventDefault();
     insertSlashItem(items[Math.min(menu.index, items.length - 1)]);
   }
@@ -948,39 +981,17 @@ export default function MarkdownEditor({
           ? "bg-rose-400"
           : "bg-gus-muted";
 
-  // El frontmatter no se escribe ni se previsualiza: el textarea y la vista
-  // previa comparten el cuerpo; sus líneas se descuentan de las posiciones de
-  // las tareas para que las casillas toquen la línea correcta del archivo.
   const body = stripFrontmatter(content);
   const previewOffset = frontmatterLineOffset(content);
   const words = countWords(body);
-  /** Líneas del cuerpo para la capa en vivo (el textarea normaliza CRLF). */
   const sourceLines = useMemo(() => body.split(/\r?\n/), [body]);
-  /** Clasificación de bloques (cercados) memorizada con las líneas. */
   const sourceInfo = useMemo(() => classifySource(sourceLines), [sourceLines]);
-  /**
-   * Vista en vivo activa: solo en modo edición y en notas de tamaño
-   * razonable; el resto vuelve al código fuente puro (sin capa de atrás).
-   */
-  const inlineActive = inline && viewMode === "edit" && sourceInfo.length <= MAX_DECORATED_LINES;
-  /**
-   * En «Ver crudo» también hay capa, pero solo con las ondas del corrector:
-   * repite cada línea con texto invisible para situar los subrayados bajo lo
-   * que el textarea pinta encima (mismo tope de líneas que la vista en vivo).
-   */
+  const inlineActive = viewMode === "edit" && sourceInfo.length <= MAX_DECORATED_LINES;
   const spellOverlay =
     spell !== null && viewMode === "edit" && sourceInfo.length <= MAX_DECORATED_LINES;
-  /** Chips de la cabecera: salen del frontmatter del propio archivo. */
   const noteTags = parseNoteTags(content);
-  /** Opciones del desplegable: etiquetas del vault que aún no están puestas. */
   const tagOptionList = tagOptions(vaultTags, tagInput, noteTags);
 
-  /**
-   * Renderizado del markdown en la vista previa, con el tema Calico
-   * (`--color-gus-bg` de fondo y `--color-gus-card` en bloques y citas).
-   * Las casillas de las tareas se pintan desde `li` y son clicables: editan el
-   * `- [ ]` de la línea que corresponde (la posición viene del propio nodo).
-   */
   const previewComponents: Components = {
     h1: ({ children }) => (
       <h1 className="mt-7 mb-3 border-b border-gus-border pb-2 text-3xl font-bold tracking-tight text-gus-text first:mt-0">
@@ -1012,7 +1023,6 @@ export default function MarkdownEditor({
     a: ({ href, children }) => {
       const wikiTarget = href ? decodeWikiUrl(href) : null;
 
-      // `[[enlace]]`: botón que la app convierte en «abrir esa nota».
       if (wikiTarget !== null) {
         const known = findWikiNote(wikiNotes, wikiTarget) !== null;
 
@@ -1067,7 +1077,6 @@ export default function MarkdownEditor({
         return <li className="leading-7">{children}</li>;
       }
 
-      // El bloque oculto mueve las líneas: se descuenta antes de leer el fuente.
       const sourceLine = line - previewOffset;
       const checked = taskCheckedAt(sourceLine) === true;
 
@@ -1108,7 +1117,6 @@ export default function MarkdownEditor({
       </pre>
     ),
     code: ({ className, children }) => {
-      // Los diagramas Mermaid se dibujan (la librería se descarga al vuelo).
       const language = /language-([\w-]+)/.exec(className ?? "")?.[1];
       if (language === "mermaid") {
         return <MermaidDiagram code={String(children).replace(/\n+$/, "")} />;
@@ -1139,11 +1147,9 @@ export default function MarkdownEditor({
     td: ({ children }) => (
       <td className="border-b border-gus-border/60 px-3 py-2 align-top text-gus-text">{children}</td>
     ),
-    // Las casillas las pinta el `li` (necesita la línea de origen).
     input: () => null,
   };
 
-  /** Panel de la vista «Previsualizar» (a pantalla completa, solo lectura). */
   function previewPane() {
     return (
       <div
@@ -1179,24 +1185,6 @@ export default function MarkdownEditor({
             className="min-w-0 flex-1 bg-transparent text-xl font-semibold text-gus-text outline-none placeholder:text-gus-muted"
           />
 
-          {/* Vista en vivo (estilo Obsidian) ↔ solo código fuente */}
-          {viewMode === "edit" && (
-            <button
-              type="button"
-              onClick={toggleInline}
-              title={
-                inline
-                  ? "Ver solo el código fuente, sin resaltar"
-                  : "Ver el markdown renderizado mientras escribes (como en Obsidian)"
-              }
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-gus-border bg-gus-card px-3 py-1.5 text-xs text-gus-muted outline-none transition-colors hover:border-gus-accent/50 hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60"
-            >
-              <Code className="h-4 w-4" aria-hidden="true" />
-              {inline ? "Ver crudo" : "Ver en vivo"}
-            </button>
-          )}
-
-          {/* Alterna entre edición y vista previa */}
           <button
             type="button"
             onClick={() => {
@@ -1221,7 +1209,6 @@ export default function MarkdownEditor({
           </button>
         </div>
 
-        {/* Etiquetas de la nota: chips del frontmatter, nunca como texto */}
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           {noteTags.map((tag) => (
             <span
@@ -1262,7 +1249,6 @@ export default function MarkdownEditor({
               className="w-full rounded-full border border-transparent bg-gus-card/60 px-2.5 py-0.5 text-[11px] text-gus-text outline-none transition-colors placeholder:text-gus-muted/70 focus:border-gus-accent/50"
             />
 
-            {/* Etiquetas ya usadas en el vault: clic o Intro para añadirlas */}
             {tagMenuOpen && (
               <div
                 id="gus-tag-menu"
@@ -1327,15 +1313,13 @@ export default function MarkdownEditor({
 
       {viewMode === "edit" ? (
         <div className="relative min-h-0 w-full flex-1 bg-gus-bg">
-          {/* Vista en vivo: markdown renderizado detrás del texto transparente
-              del textarea; la línea del cursor se pinta en crudo para poder
-              seguir editando `###`, `- [ ]`, etc. */}
           {(inlineActive || spellOverlay) && (
             <InlinePreview
               lines={sourceInfo}
               caretLine={caretLine}
               scrollbarWidth={scrollbarWidth}
               fontSize={fontSize}
+              rowHeight={rowPitch}
               hidden={composing}
               overlayRef={overlayRef}
               spell={spell}
@@ -1354,14 +1338,11 @@ export default function MarkdownEditor({
             onCompositionEnd={() => setComposing(false)}
             onBlur={() => {
               setMenu(null);
-              setSpellMenu(null);
+              setContextMenu(null);
             }}
             onContextMenu={handleContextMenu}
             placeholder="Escribe tu nota en markdown… — [[ enlazar otra nota · / insertar bloques"
             aria-label="Contenido de la nota"
-            /* El corrector SIEMPRE es el nuestro (capa de atrás en vivo y
-               capa de ondas en crudo): el nativo depende de diccionarios del
-               sistema y trae un menú propio que chocaría con el nuestro. */
             spellCheck={false}
             lang={spellLang !== undefined && spellLang !== "off" ? spellLang : undefined}
             style={fontSize ? { fontSize: `${fontSize}px` } : undefined}
@@ -1372,7 +1353,6 @@ export default function MarkdownEditor({
             )}
           />
 
-          {/* Recordatorio del comando «/» sobre la línea limpia del cursor. */}
           {lineHint && !menu && (
             <span
               aria-hidden="true"
@@ -1383,7 +1363,6 @@ export default function MarkdownEditor({
             </span>
           )}
 
-          {/* Menús flotantes anclados al cursor del textarea. */}
           <AnimatePresence>
             {menu?.kind === "wiki" && (
               <WikiLinkMenu
@@ -1410,19 +1389,24 @@ export default function MarkdownEditor({
             )}
           </AnimatePresence>
 
-          {/* Menú del corrector: solo sobre palabras en rojo o propias. */}
-          {spellMenu && (
-            <SpellMenu
-              mode={spellMenu.mode}
-              word={spellMenu.word}
-              x={spellMenu.x}
-              y={spellMenu.y}
-              suggestions={spellMenu.suggestions}
+          {contextMenu && (
+            <EditorContextMenu
+              x={contextMenu.x}
+              y={contextMenu.y}
+              spell={contextMenu.spell}
+              hasSelection={contextMenu.hasSelection}
               onPick={applySpellReplacement}
               onAdd={addSpellWord}
               onIgnore={ignoreSpellWord}
               onRemove={removeSpellWord}
-              onClose={() => setSpellMenu(null)}
+              onCut={() => void cutSelection()}
+              onCopy={() => void copySelection()}
+              onPaste={(plain) => void pasteClipboard(plain)}
+              onSelectAll={selectAllText}
+              onFormat={applyFormat}
+              onInsert={insertFromMenu}
+              onClose={() => setContextMenu(null)}
+              onReopen={openEditorMenu}
             />
           )}
         </div>

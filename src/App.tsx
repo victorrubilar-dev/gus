@@ -36,6 +36,7 @@ import { baseName, joinPath, safeFileName } from "./lib/fileName";
 import { findWikiNote, wikiTargetToPath, type WikiNote } from "./lib/wikiLink";
 import { accentHex, DEFAULT_SETTINGS, normalizeSettings, type AppSettings } from "./lib/settings";
 import { setPersonalWords } from "./lib/spellCheck";
+import { toLocalCoord, uiZoomFactor } from "./lib/uiZoom";
 import gusIcon from "./assets/gus-icon-512.png";
 import "./App.css";
 
@@ -91,7 +92,7 @@ const EXPLORER_WIDTH_KEY = "gus.explorer-width";
 function clampExplorerWidth(width: number): number {
   if (!Number.isFinite(width)) return EXPLORER_DEFAULT_WIDTH;
   // De sitio para el editor (y el menú, en su ancho máximo) siempre queda.
-  const hardMax = Math.max(EXPLORER_MIN_WIDTH, window.innerWidth - 700);
+  const hardMax = Math.max(EXPLORER_MIN_WIDTH, toLocalCoord(window.innerWidth) - 700);
   return Math.max(EXPLORER_MIN_WIDTH, Math.round(Math.min(width, hardMax)));
 }
 
@@ -191,6 +192,41 @@ function App() {
   useEffect(() => {
     setPersonalWords(settings.spellWords);
   }, [settings.spellWords]);
+
+  /** Escala global de la interfaz (Ajustes o atajos Ctrl + «+»/«−»/0). */
+  useEffect(() => {
+    document.documentElement.style.setProperty("zoom", String(settings.uiZoom / 100));
+    window.dispatchEvent(new Event("gus:zoom"));
+  }, [settings.uiZoom]);
+
+  useEffect(() => {
+    function handleZoomKey(event: KeyboardEvent) {
+      if ((!event.ctrlKey && !event.metaKey) || event.altKey) return;
+      // Se acepta event.key y event.code: el layout latam no genera "=" en la tecla física.
+      const zoomIn =
+        event.key === "+" ||
+        event.key === "=" ||
+        event.code === "Equal" ||
+        event.code === "NumpadAdd";
+      const zoomOut =
+        event.key === "-" ||
+        event.key === "_" ||
+        event.code === "Minus" ||
+        event.code === "NumpadSubtract";
+      const zoomReset = event.key === "0" || event.code === "Digit0";
+      let next: number | null = null;
+      if (zoomIn) next = settings.uiZoom + 10;
+      else if (zoomOut) next = settings.uiZoom - 10;
+      else if (zoomReset) next = 100;
+      if (next === null) return;
+      event.preventDefault();
+      const zoom = Math.min(200, Math.max(50, Math.round(next)));
+      if (zoom !== settings.uiZoom) handleSettingsChange({ ...settings, uiZoom: zoom });
+    }
+
+    window.addEventListener("keydown", handleZoomKey);
+    return () => window.removeEventListener("keydown", handleZoomKey);
+  }, [settings]);
 
   function handleSelectNote(file: NoteFile) {
     if (file.kind === "image") {
@@ -379,7 +415,7 @@ function App() {
     document.body.style.userSelect = "none";
 
     const onMove = (moveEvent: PointerEvent) => {
-      changeSidebarWidth(startWidth + (moveEvent.clientX - startX), false);
+      changeSidebarWidth(startWidth + (moveEvent.clientX - startX) / uiZoomFactor(), false);
     };
     const onEnd = () => {
       handle.removeEventListener("pointermove", onMove);
@@ -443,7 +479,7 @@ function App() {
     document.body.style.userSelect = "none";
 
     const onMove = (moveEvent: PointerEvent) => {
-      changeExplorerWidth(startWidth + (moveEvent.clientX - startX), false);
+      changeExplorerWidth(startWidth + (moveEvent.clientX - startX) / uiZoomFactor(), false);
     };
     const onEnd = () => {
       handle.removeEventListener("pointermove", onMove);

@@ -4,49 +4,31 @@ import { Command } from "cmdk";
 import { invoke } from "@tauri-apps/api/core";
 import { FileText, Loader2, Search } from "lucide-react";
 
-/** Una nota devuelta por el comando Rust `list_vault_notes`. */
 export interface VaultNote {
-  /** Nombre del archivo con extensión, p. ej. `diario.md`. */
   name: string;
-  /** Ruta completa del archivo. */
   path: string;
-  /** Ruta relativa al vault con `/`, p. ej. `viajes/diario.md`. */
   relative: string;
-  /** Última modificación en milisegundos desde el epoch. */
   modified_ms?: number | null;
 }
 
 export interface CommandPaletteProps {
-  /** Estado abierto/cerrado, controlado por la app. */
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Vault activo; sin vault la paleta no se muestra ni escucha atajos. */
   vaultPath: string | null;
-  /** Selecciona una nota de los resultados (la app la abre en el editor). */
   onSelectNote: (note: { path: string; name: string }) => void;
 }
 
 type LoadState = "loading" | "ready" | "error";
 
-/** Carpeta que se muestra junto al título («raíz» si la nota está en la raíz). */
 function folderOf(note: VaultNote): string {
   const slash = note.relative.lastIndexOf("/");
   return slash === -1 ? "raíz" : note.relative.slice(0, slash);
 }
 
-/** Título de la nota sin extensión `.md`. */
 function titleOf(note: VaultNote): string {
   return note.name.replace(/\.md$/i, "");
 }
 
-/**
- * Paleta de comandos flotante (`Ctrl+K` / `Ctrl+P`): lista todas las notas
- * `.md` del vault y filtra en tiempo real mientras escribes. Al pulsar Enter
- * (o clic) se cierra y selecciona la nota en la app.
- *
- * El panel lo anima framer-motion; la lista, el filtrado y la navegación con
- * flechas las hace `cmdk`.
- */
 export default function CommandPalette({
   open,
   onOpenChange,
@@ -57,11 +39,9 @@ export default function CommandPalette({
   const [status, setStatus] = useState<LoadState>("loading");
   const [error, setError] = useState<string | null>(null);
 
-  // Refleja el estado abierto para que el atajo global nunca vea un valor viejo.
   const openRef = useRef(open);
   openRef.current = open;
 
-  // Atajo global: Ctrl/⌘ + K o Ctrl/⌘ + P abre y cierra la paleta.
   useEffect(() => {
     if (!vaultPath) return;
 
@@ -76,7 +56,6 @@ export default function CommandPalette({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [vaultPath, onOpenChange]);
 
-  // Escape cierra la paleta mientras esté abierta.
   useEffect(() => {
     if (!open) return;
 
@@ -90,7 +69,6 @@ export default function CommandPalette({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [open, onOpenChange]);
 
-  // Cada vez que se abre se recargan las notas (recoge renombrados y altas).
   useEffect(() => {
     if (!open || !vaultPath) return;
     let cancelled = false;
@@ -125,7 +103,6 @@ export default function CommandPalette({
           transition={{ duration: 0.15 }}
           className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 px-4 pt-[12vh] backdrop-blur-[2px]"
           onMouseDown={(event) => {
-            // Clic fuera del panel ⇒ cerrar.
             if (event.target === event.currentTarget) onOpenChange(false);
           }}
         >
@@ -140,7 +117,6 @@ export default function CommandPalette({
             className="w-full max-w-xl overflow-hidden rounded-2xl border border-gus-border bg-gus-panel shadow-2xl shadow-black/40"
           >
             <Command loop label="Paleta de comandos">
-              {/* Buscador */}
               <div className="flex items-center gap-2 border-b border-gus-border px-4 py-3">
                 <Search className="h-4 w-4 shrink-0 text-gus-accent" aria-hidden="true" />
                 <Command.Input
@@ -194,8 +170,7 @@ export default function CommandPalette({
                       ))}
                     </Command.Group>
 
-                    {/* Solo con la lista cargada: durante la carga no hay items
-                        y cmdk lo contaría como «sin coincidencias». */}
+                    {/* Solo con la lista cargada: durante la carga cmdk contaría «sin coincidencias». */}
                     <Command.Empty className="px-3 py-6 text-center text-sm text-gus-muted">
                       No hay notas que coincidan
                     </Command.Empty>
@@ -203,7 +178,6 @@ export default function CommandPalette({
                 )}
               </Command.List>
 
-              {/* Pistas de teclado */}
               <div className="flex items-center justify-between gap-2 border-t border-gus-border px-4 py-2 text-[11px] text-gus-muted">
                 <span>
                   <kbd className="rounded border border-gus-border bg-gus-card px-1 py-0.5">↑</kbd>{" "}

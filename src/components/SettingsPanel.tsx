@@ -3,7 +3,9 @@ import {
   CalendarDays,
   Check,
   ListTodo,
+  Minus,
   Palette,
+  Plus,
   RotateCcw,
   Search,
   SlidersHorizontal,
@@ -36,13 +38,10 @@ const INPUT_CLASS =
   "rounded-lg border border-gus-border bg-gus-card px-3 py-2 text-sm text-gus-text outline-none transition-colors focus:border-gus-accent/60 placeholder:text-gus-muted";
 
 export interface SettingsPanelProps {
-  /** Ajustes actuales (persistidos en el `config.json`). */
   settings: AppSettings;
-  /** Se dispara con los ajustes completos tras cada cambio (se guardan ya). */
   onChange: (next: AppSettings) => void;
 }
 
-/** Interruptor accesible para los ajustes booleanos. */
 function Toggle({
   on,
   onPressed,
@@ -75,10 +74,6 @@ function Toggle({
   );
 }
 
-/**
- * Panel de configuración de la aplicación: categorías a la izquierda, ajustes
- * a la derecha y un buscador que filtra en todas las categorías.
- */
 export default function SettingsPanel({ settings, onChange }: SettingsPanelProps) {
   const [activeCategory, setActiveCategory] = useState<SettingsCategoryId>("general");
   const [query, setQuery] = useState("");
@@ -86,7 +81,6 @@ export default function SettingsPanel({ settings, onChange }: SettingsPanelProps
   const normalizedQuery = query.trim().toLowerCase();
   const searching = normalizedQuery.length > 0;
 
-  /** Índice de texto de cada definición (etiqueta + descripción + categoría). */
   const searchable = useMemo(
     () =>
       SETTINGS_DEFINITIONS.map((definition) => {
@@ -106,7 +100,6 @@ export default function SettingsPanel({ settings, onChange }: SettingsPanelProps
     [],
   );
 
-  /** Grupos a mostrar: resultados de búsqueda o la categoría activa. */
   const groups = useMemo(() => {
     const matches = searchable.filter(({ haystack }) =>
       haystack.includes(normalizedQuery),
@@ -166,6 +159,41 @@ export default function SettingsPanel({ settings, onChange }: SettingsPanelProps
               </button>
             );
           })}
+        </div>
+      );
+    }
+
+    if (definition.kind === "zoom") {
+      const current = settings[definition.key];
+      const clamp = (value: number) => Math.min(200, Math.max(50, value));
+      return (
+        <div className="flex items-center gap-1 rounded-lg border border-gus-border bg-gus-panel p-1">
+          <button
+            type="button"
+            aria-label="Achicar la interfaz"
+            disabled={current <= 50}
+            onClick={() => update(definition.key, clamp(current - 10))}
+            className="rounded-md p-1.5 text-gus-muted outline-none transition-colors hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/70 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Minus className="h-4 w-4" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            title="Restablecer (Ctrl+0)"
+            onClick={() => update(definition.key, 100)}
+            className="min-w-[3.5rem] rounded-md px-2 py-1 text-sm font-medium tabular-nums text-gus-text outline-none transition-colors hover:text-gus-accent focus-visible:ring-2 focus-visible:ring-gus-accent/70"
+          >
+            {current}%
+          </button>
+          <button
+            type="button"
+            aria-label="Agrandar la interfaz"
+            disabled={current >= 200}
+            onClick={() => update(definition.key, clamp(current + 10))}
+            className="rounded-md p-1.5 text-gus-muted outline-none transition-colors hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/70 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Plus className="h-4 w-4" aria-hidden="true" />
+          </button>
         </div>
       );
     }
@@ -278,7 +306,6 @@ export default function SettingsPanel({ settings, onChange }: SettingsPanelProps
       </header>
 
       <div className="flex min-h-0 flex-1">
-        {/* Categorías */}
         <nav
           aria-label="Categorías de configuración"
           className="gus-scrollbar flex w-52 shrink-0 flex-col gap-1 overflow-y-auto border-r border-gus-border p-3"
@@ -314,7 +341,6 @@ export default function SettingsPanel({ settings, onChange }: SettingsPanelProps
           })}
         </nav>
 
-        {/* Ajustes */}
         <div className="gus-scrollbar min-h-0 flex-1 overflow-y-auto px-6 py-5">
           {searching && (
             <p className="mb-4 text-xs text-gus-muted" role="status">

@@ -1,3 +1,5 @@
+import { toLocalCoord } from "./uiZoom";
+
 interface CaretLocator {
   caretRangeFromPoint?: (x: number, y: number) => { startContainer: Node; startOffset: number } | null;
   caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
@@ -11,7 +13,7 @@ export function offsetAtPointer(
   y: number,
 ): number | null {
   const native = nativeOffset(area, x, y);
-  if (native !== null) return native <= area.value.length ? native : null;
+  if (native !== null && native <= area.value.length) return native;
   return geometricOffset(area, x, y);
 }
 
@@ -32,14 +34,22 @@ function nativeOffset(area: HTMLTextAreaElement, x: number, y: number): number |
 
   if (node === null) return null;
   if (node.nodeType === Node.TEXT_NODE) return node.parentElement === area ? offset : null;
-  return node === area ? offset : null;
+  // En <textarea> el offset de un nodo elemento es índice de hijo (0), no carácter: no sirve.
+  return null;
 }
 
 function geometricOffset(area: HTMLTextAreaElement, x: number, y: number): number | null {
   const value = area.value;
   if (value.includes("\t")) return null;
 
-  const rect = area.getBoundingClientRect();
+  // Evento y rect vienen en viewport: se pasan a espacio local (zoom).
+  x = toLocalCoord(x);
+  y = toLocalCoord(y);
+  const viewportRect = area.getBoundingClientRect();
+  const rect = {
+    top: toLocalCoord(viewportRect.top),
+    left: toLocalCoord(viewportRect.left),
+  };
   const view = getComputedStyle(area);
   const lineHeight = Number.parseFloat(view.lineHeight);
   const padLeft = Number.parseFloat(view.paddingLeft) || 0;
@@ -94,7 +104,7 @@ function wrapStarts(line: string, cap: number): number[] {
     starts.push(breakAt);
     rowStart = breakAt;
     lastSpace = -1;
-    i = breakAt - 1; // la siguiente vuelta relee la fila que acaba de empezar
+    i = breakAt - 1;
   }
   return starts;
 }

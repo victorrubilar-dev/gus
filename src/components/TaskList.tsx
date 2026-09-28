@@ -151,39 +151,27 @@ export default function TaskList({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
 
-  /** Edición en curso de las etiquetas de una fila (null = ninguna). */
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTags, setEditTags] = useState<string[]>([]);
   const [editInput, setEditInput] = useState("");
-  /** Esc durante la edición: el blur posterior no debe guardar. */
   const editCancelledRef = useRef(false);
 
   const [reloadKey, setReloadKey] = useState(0);
 
-  /** Etiqueta por la que se filtra la vista (null = sin filtro). */
   const [tagFilter, setTagFilter] = useState<string | null>(null);
-  /**
-   * Vista activa: **el tablero Kanban es el que aparece primero** al entrar
-   * en la zona de tareas; la lista clásica queda como opción alternativa.
-   */
   const [view, setView] = useState<"list" | "board">("board");
 
-  // --- Tareas escritas en las notas `.md` del vault -----------------
   const [noteTasks, setNoteTasks] = useState<NoteTask[]>([]);
   const [noteStatus, setNoteStatus] = useState<"loading" | "ready" | "error">("loading");
   const [noteError, setNoteError] = useState<string | null>(null);
-  /** Error al escribir la casilla en el `.md` de una nota. */
   const [noteSyncError, setNoteSyncError] = useState<string | null>(null);
   const [notesReloadKey, setNotesReloadKey] = useState(0);
 
-  /** Serializa las escrituras para no pisar cambios rápidos. */
   const writeQueueRef = useRef<Promise<unknown>>(Promise.resolve());
-  /** Ídem para las escrituras en los `.md` de las notas. */
   const noteQueueRef = useRef<Promise<unknown>>(Promise.resolve());
   const onTasksChangeRef = useRef(onTasksChange);
   onTasksChangeRef.current = onTasksChange;
 
-  // Carga el JSON oculto e importa el `tareas.md` antiguo una sola vez.
   useEffect(() => {
     if (!fileMode || !vaultPath) return;
 
@@ -210,11 +198,6 @@ export default function TaskList({
     };
   }, [fileMode, vaultPath, reloadKey]);
 
-  /**
-   * Lee todas las notas del vault y extrae sus líneas `- [ ]` / `- [x]` con
-   * `parseMarkdownTasks`. Se relee en cada montaje para no perder lo que el
-   * editor haya cambiado en la pestaña Notas.
-   */
   useEffect(() => {
     if (!fileMode || !vaultPath) return;
 
@@ -240,7 +223,7 @@ export default function TaskList({
 
           batch.forEach((note, offset) => {
             const content = contents[offset];
-            if (content == null) return; // borrada entre medias ⇒ se ignora
+            if (content == null) return;
 
             const slash = note.relative.lastIndexOf("/");
             const folder = slash === -1 ? "" : note.relative.slice(0, slash);
@@ -276,13 +259,11 @@ export default function TaskList({
     onTasksChangeRef.current?.(next);
   }
 
-  /** Estado local para el modo estático (sin vault). */
   function updateLocal(next: Task[]) {
     setItems(next);
     notify(next);
   }
 
-  /** Actualiza la interfaz y encola el guardado en `.gus-tasks.json`. */
   function commitTasks(next: Task[]) {
     setItems(next);
     setSyncError(null);
@@ -296,15 +277,9 @@ export default function TaskList({
     }
   }
 
-  // ------------------------------------------------------------------
-  // Ventana nativa: crear tarea (el formulario vive en una ventana aparte)
-  // ------------------------------------------------------------------
-
-  /** Inserta la tarea que envía el menú de creación (evento `task-created`). */
   function addTaskFromWindow(task: NewTask) {
     const cleanTitle = task.title.trim();
     if (!cleanTitle) return;
-    // Sin almacén leído no se escribe nada (mejor esperar a que recargue).
     if (fileMode && status !== "ready") return;
 
     const tags = normalizeTags(task.tags);
@@ -329,12 +304,9 @@ export default function TaskList({
     }
   }
 
-  /** Callback más reciente, para que la suscripción única no quede obsoleto. */
   const addTaskRef = useRef(addTaskFromWindow);
   addTaskRef.current = addTaskFromWindow;
 
-  // Escucha la tarea creada en la ventana nativa. En el navegador
-  // (`pnpm dev` sin Tauri) no hay eventos y la lista queda como está.
   useEffect(() => {
     let disposed = false;
     let unlisten: (() => void) | undefined;
@@ -347,7 +319,6 @@ export default function TaskList({
         else unlisten = fn;
       })
       .catch(() => {
-        // Fuera de Tauri no hay eventos.
       });
 
     return () => {
@@ -356,12 +327,8 @@ export default function TaskList({
     };
   }, []);
 
-  // ------------------------------------------------------------------
-  // Edición de etiquetas de una fila
-  // ------------------------------------------------------------------
-
   function startEditTags(task: Task) {
-    if (editingId === task.id) return; // ya está abierto: no perder lo tecleado
+    if (editingId === task.id) return;
 
     editCancelledRef.current = false;
     setEditingId(task.id);
@@ -369,7 +336,6 @@ export default function TaskList({
     setEditInput("");
   }
 
-  /** Guarda las etiquetas editadas (o las descarta si `cancel` es true). */
   function closeEditTags(cancel: boolean) {
     const id = editingId;
     setEditingId(null);
@@ -388,7 +354,7 @@ export default function TaskList({
     if (event.key === "Escape") {
       event.preventDefault();
       editCancelledRef.current = true;
-      setEditingId(null); // cierra sin guardar
+      setEditingId(null);
       return;
     }
 
@@ -399,7 +365,7 @@ export default function TaskList({
         setEditTags((prev) => normalizeTags([...prev, ...parsed]));
         setEditInput("");
       } else {
-        event.currentTarget.blur(); // ⇒ blur = guardar y cerrar
+        event.currentTarget.blur();
       }
       return;
     }
@@ -417,10 +383,6 @@ export default function TaskList({
     closeEditTags(false);
   }
 
-  // ------------------------------------------------------------------
-  // Toggle / borrar
-  // ------------------------------------------------------------------
-
   function toggle(id: string) {
     const row = items.find((task) => task.id === id);
     if (!row) return;
@@ -431,17 +393,12 @@ export default function TaskList({
       items.map((task) => {
         if (task.id !== id) return task;
         const next = { ...task, completes };
-        // Al completar, «En progreso» deja de tener sentido.
         if (completes) delete next.doing;
         return next;
       }),
     );
   }
 
-  /**
-   * Cicla la bandera de prioridad de una fila del almacén:
-   * sin prioridad → baja → media → alta → urgente → sin prioridad.
-   */
   function cyclePriority(id: string) {
     const row = items.find((task) => task.id === id);
     if (!row) return;
@@ -457,7 +414,6 @@ export default function TaskList({
     );
   }
 
-  /** Mueve una tarea a otra columna del tablero Kanban. */
   function moveTask(id: string, column: KanbanColumnId) {
     commitTasks(
       items.map((task) => {
@@ -473,14 +429,12 @@ export default function TaskList({
     );
   }
 
-  /** Activa o desactiva el filtro de una etiqueta (clic en cualquier chip). */
   function toggleTagFilter(tag: string) {
     setTagFilter((current) =>
       current?.toLowerCase() === tag.toLowerCase() ? null : tag,
     );
   }
 
-  /** ¿La tarea encaja con el filtro de etiqueta activo? (sin filtro = sí). */
   function matchesTag(tags: string[]): boolean {
     if (!tagFilter) return true;
     const wanted = tagFilter.toLowerCase();
@@ -494,11 +448,6 @@ export default function TaskList({
     commitTasks(items.filter((task) => task.id !== id));
   }
 
-  /**
-   * Marca/desmarca una tarea de nota: solo se reescribe la checkbox dentro de
-   * su `.md` (texto, `#tag`s y `📅` quedan intactos). La actualización es
-   * optimista y, si la escritura falla, se deshace mostrando el error.
-   */
   function toggleNoteTask(task: NoteTask) {
     const completes = !task.completed;
     const previous = noteTasks;
@@ -519,7 +468,6 @@ export default function TaskList({
           await invoke("write_vault_file", { path: task.notePath, content: next });
         }
 
-        // Relee la nota entera: al cambiar la checkbox los índices pueden moverse.
         setNoteTasks((prev) =>
           sortNoteTasks([
             ...prev.filter((row) => row.notePath !== task.notePath),
@@ -533,28 +481,24 @@ export default function TaskList({
           ]),
         );
       } catch (error) {
-        setNoteTasks(previous); // deshacer el optimismo
+        setNoteTasks(previous);
         setNoteSyncError(String(error));
       }
     });
   }
 
-  // Las pendientes arriba, las completadas al final (stable sort ⇒ reordenamiento animado).
   const visible = [...items]
     .filter((task) => (!hideCompleted || !task.completes) && matchesTag(task.tags))
     .sort((a, b) => Number(a.completes) - Number(b.completes));
   const done = items.filter((task) => task.completes).length;
 
-  // El tablero ignora «ocultar completadas»: su columna es el resumen de eso.
   const boardItems = items.filter((task) => matchesTag(task.tags));
 
-  // Tareas de las notas: pendientes primero (el orden ya viene del parser).
   const noteVisible = noteTasks.filter(
     (task) => (!hideCompleted || !task.completed) && matchesTag(task.tags),
   );
   const noteDone = noteTasks.filter((task) => task.completed).length;
 
-  // Etiquetas usadas por todas las tareas, con recuento, para la barra de filtro.
   const tagCounts = new Map<string, { label: string; count: number }>();
   for (const task of [...items, ...noteTasks]) {
     for (const tag of task.tags) {
@@ -627,7 +571,6 @@ export default function TaskList({
       </header>
 
       <div className="flex flex-col gap-2">
-        {/* El formulario de creación vive en un menú superpuesto global. */}
         <button
           type="button"
           onClick={onNewTask}
@@ -646,7 +589,7 @@ export default function TaskList({
 
       </div>
 
-      {/* Filtro por etiquetas: clic en un chip = filtrar por esa etiqueta. */}      {tagEntries.length > 0 && (
+      {tagEntries.length > 0 && (
         <div
           role="group"
           aria-label="Filtrar tareas por etiqueta"
@@ -691,9 +634,6 @@ export default function TaskList({
       )}
 
       <div className="gus-scrollbar flex-1 space-y-6 overflow-y-auto pr-1">
-        {/* ---------------------------------------------------------- */}
-        {/* Vista «Tablero» (Kanban): columnas con tarjetas arrastrables  */}
-        {/* ---------------------------------------------------------- */}
         {view === "board" && (
           <div className="space-y-3">
             {status === "loading" && (
@@ -721,9 +661,6 @@ export default function TaskList({
           </div>
         )}
 
-        {/* ---------------------------------------------------------- */}
-        {/* Tareas rápidas: almacén oculto `.gus-tasks.json`             */}
-        {/* ---------------------------------------------------------- */}
         {view === "list" && (
         <h3 className="text-[11px] font-semibold uppercase tracking-wider text-gus-muted">
           Rápidas
@@ -781,7 +718,6 @@ export default function TaskList({
                     </span>
                   </label>
 
-                  {/* Bandera de prioridad: clic para subir de nivel. */}
                   <button
                     type="button"
                     onClick={() => cyclePriority(task.id)}
@@ -818,14 +754,12 @@ export default function TaskList({
                   )}
 
                   {isEditing ? (
-                    /* Editor desplegable: chips con × + campo para escribir. */
                     <div className="absolute top-full right-11 z-30 mt-1 w-60 rounded-xl border border-gus-border bg-gus-card p-2 shadow-xl shadow-black/40">
                       <p className="mb-1.5 text-[10px] tracking-wider text-gus-muted uppercase">
                         Etiquetas de "{task.title}"
                       </p>
                       <div
                         className="flex flex-wrap gap-1.5"
-                        // El ratón no debe quitarle el foco al input (se guarda al salir).
                         onMouseDown={(event) => event.preventDefault()}
                       >
                         {editTags.map((tag) => (
@@ -865,7 +799,6 @@ export default function TaskList({
                       />
                     </div>
                   ) : (
-                    /* Chips = filtro por la etiqueta; el «+» abre el editor. */
                     <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
                       {task.tags.map((tag) => {
                         const active =
@@ -948,9 +881,6 @@ export default function TaskList({
         </ul>
         )}
 
-        {/* ---------------------------------------------------------- */}
-        {/* Tareas escritas en las notas `.md` del vault                 */}
-        {/* ---------------------------------------------------------- */}
         {fileMode && view === "list" && (
           <section aria-labelledby="notas-tareas-heading">
             <h3

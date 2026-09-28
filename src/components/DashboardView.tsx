@@ -21,28 +21,20 @@ import { NEW_TASK_EVENT } from "../lib/newTask";
 import { loadTaskStore, type Task } from "../lib/taskStore";
 import { PRIORITY_CLASS, PRIORITY_LABEL, priorityRank } from "../lib/taskPriority";
 
-/** Pestañas a las que puede saltar el resumen. */
 export type DashboardTab = "notes" | "tasks" | "calendar" | "settings";
 
-/** Entrada del comando `list_recent_notes`. */
 interface RecentNote {
   name: string;
   path: string;
-  /** Ruta relativa al vault con `/`, p. ej. `viajes/diario.md`. */
   relative: string;
   modified_ms: number | null;
 }
 
 export interface DashboardViewProps {
-  /** Vault activo (su almacén de tareas y sus notas). */
   vaultPath: string;
-  /** Nombre visible del vault, para el encabezado. */
   vaultName: string;
-  /** Cambia de pestaña dentro de la app. */
   onNavigate: (tab: DashboardTab) => void;
-  /** Abre el menú superpuesto de «Nueva tarea» (lo monta la app). */
   onNewTask: () => void;
-  /** Abre una nota concreta en el editor (el padre salta a «Notas»). */
   onOpenNote: (file: NoteFile) => void;
 }
 
@@ -51,7 +43,6 @@ const ICON_BOX =
 
 const CARD = "rounded-xl border border-gus-border bg-gus-card";
 
-/** Hoy en formato ISO `AAAA-MM-DD` (hora local). */
 function todayIso(): string {
   const today = new Date();
   return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(
@@ -59,7 +50,6 @@ function todayIso(): string {
   ).padStart(2, "0")}`;
 }
 
-/** Fecha ISO → «15 oct» (con año si no es el actual). */
 function shortDate(iso: string): string {
   const date = new Date(`${iso}T00:00:00`);
   if (Number.isNaN(date.getTime())) return iso;
@@ -71,7 +61,6 @@ function shortDate(iso: string): string {
   });
 }
 
-/** Chip de vencimiento: vencida (rosa) / hoy (ámbar) / fecha normal. */
 function dueChip(due: string): { label: string; title: string; className: string } {
   const today = todayIso();
   if (due < today) {
@@ -95,7 +84,6 @@ function dueChip(due: string): { label: string; title: string; className: string
   };
 }
 
-/** «ahora» · «hace 5 min» · «hace 3 h» · «hace 2 d» · «15 oct». */
 function relativeTime(ms: number | null): string {
   if (ms == null) return "sin fecha";
 
@@ -108,17 +96,12 @@ function relativeTime(ms: number | null): string {
   return new Date(ms).toLocaleDateString("es-ES", { day: "numeric", month: "short" });
 }
 
-/** Carpeta de una nota relativa (`viajes/diario.md` → `viajes`). */
 function folderOf(relative: string): string {
   const parts = relative.split("/");
   parts.pop();
   return parts.join("/") || "raíz";
 }
 
-/**
- * Panel de resumen («Inicio»): próximas tareas ordenadas por fecha, últimos
- * vencimientos, últimas notas modificadas y accesos rápidos a cada sección.
- */
 export default function DashboardView({
   vaultPath,
   vaultName,
@@ -135,17 +118,12 @@ export default function DashboardView({
   const [notesStatus, setNotesStatus] = useState<"loading" | "ready" | "error">("loading");
   const [notesError, setNotesError] = useState<string | null>(null);
 
-  /** Recarga tareas y notas a la vez (botón «Actualizar»). */
   const [reloadKey, setReloadKey] = useState(0);
 
   const tasksRef = useRef<Task[]>([]);
   /** Cancela cargas de notas obsoletas al cambiar de vault o recargar. */
   const notesRequestRef = useRef(0);
   const writeQueueRef = useRef<Promise<unknown>>(Promise.resolve());
-
-  // ------------------------------------------------------------------
-  // Carga de datos
-  // ------------------------------------------------------------------
 
   useEffect(() => {
     let cancelled = false;
@@ -191,7 +169,6 @@ export default function DashboardView({
       });
   }, [vaultPath, reloadKey]);
 
-  // La ventana nativa de tareas publica `task-created`: refrescamos el resumen.
   useEffect(() => {
     let disposed = false;
     let unlisten: (() => void) | undefined;
@@ -202,7 +179,6 @@ export default function DashboardView({
         else unlisten = fn;
       })
       .catch(() => {
-        // Fuera de Tauri no hay eventos.
       });
 
     return () => {
@@ -210,10 +186,6 @@ export default function DashboardView({
       unlisten?.();
     };
   }, []);
-
-  // ------------------------------------------------------------------
-  // Acciones
-  // ------------------------------------------------------------------
 
   function toggle(id: string) {
     const next = tasksRef.current.map((task) =>
@@ -228,19 +200,12 @@ export default function DashboardView({
       .catch((error: unknown) => setSyncError(String(error)));
   }
 
-  // ------------------------------------------------------------------
-  // Datos derivados
-  // ------------------------------------------------------------------
-
   const today = todayIso();
   const pending = tasks.filter((task) => !task.completes);
   const overdue = pending.filter((task) => task.due && task.due < today);
   const dueToday = pending.filter((task) => task.due === today);
   const done = tasks.length - pending.length;
 
-  // Primero lo que urge (prioridad de mayor a menor); a igual prioridad, la
-  // fecha más próxima antes (las vencidas solas quedan arriba) y al final
-  // las que no tienen plazo.
   const upcoming = [...pending]
     .sort(
       (a, b) =>
@@ -267,7 +232,6 @@ export default function DashboardView({
   return (
     <section className="gus-scrollbar h-full overflow-y-auto p-6">
       <div className="mx-auto flex max-w-6xl flex-col gap-4">
-        {/* Encabezado */}
         <header className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className={ICON_BOX}>
@@ -300,7 +264,6 @@ export default function DashboardView({
           </p>
         )}
 
-        {/* Cifras rápidas → saltan a su sección */}
         <div className="grid grid-cols-2 gap-2 min-[900px]:grid-cols-4">
           {stats.map(({ label, value, className, tab }, index) => (
             <motion.button
@@ -330,9 +293,7 @@ export default function DashboardView({
         </div>
 
         <div className="grid gap-4 min-[900px]:grid-cols-[minmax(0,1fr)_300px]">
-          {/* Columna principal */}
           <div className="flex min-w-0 flex-col gap-4">
-            {/* Próximas tareas */}
             <div className={clsx(CARD, "flex flex-col gap-3 p-4")}>
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
@@ -453,7 +414,6 @@ export default function DashboardView({
               )}
             </div>
 
-            {/* Últimas notas */}
             <div className={clsx(CARD, "flex flex-col gap-3 p-4")}>
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
@@ -532,9 +492,7 @@ export default function DashboardView({
             </div>
           </div>
 
-          {/* Columna lateral */}
           <aside className="flex flex-col gap-4">
-            {/* Progreso */}
             <div className={clsx(CARD, "p-4")}>
               <h3 className="text-sm font-semibold">Tu progreso</h3>
               <p className="mt-1 text-xs text-gus-muted">
@@ -552,7 +510,6 @@ export default function DashboardView({
               <p className="mt-1.5 text-right text-[11px] text-gus-muted">{progress}%</p>
             </div>
 
-            {/* Accesos rápidos */}
             <div className={clsx(CARD, "flex flex-col gap-2 p-4")}>
               <h3 className="text-sm font-semibold">Accesos rápidos</h3>
 
