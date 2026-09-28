@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "description": "Gus — app de escritorio para notas en Markdown y tareas privadas, local-first (Tauri v2 + React).",
-  "license": "MIT",
+  "license": "GPL-3.0-or-later",
   "author": "victorrubilar-dev",
   "repository": {
     "type": "git",

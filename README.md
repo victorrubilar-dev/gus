@@ -5,7 +5,7 @@
 
 
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Tauri](https://img.shields.io/badge/Tauri-v2-24C8DB.svg)](https://tauri.app/)
 [![Made with](https://img.shields.io/badge/React-19-61DAFB.svg)](https://react.dev/)
 
@@ -20,7 +20,7 @@ WebView del sistema en lugar de meter un Chromium entero).
 
 ## ✨ Qué puede hacer
 
-- 📝 **Notas Markdown** — explorador de carpetas (crear, renombrar, mover y borrar), editor con renderizado en línea del markdown (la línea del cursor se muestra en crudo), vista previa a pantalla completa con casillas clicables, deshacer/rehacer (Ctrl+Z / Ctrl+Shift+Z) y autoguardado con debounce de 500 ms.
+- 📝 **Notas Markdown** — explorador de carpetas (crear, renombrar, mover y borrar), editor con renderizado en línea del markdown (la línea del cursor se muestra en crudo), tablas en vivo al estilo Obsidian sin fuente a la vista (clic en una celda para escribir en ella como en Excel; Tab/Enter recorren las celdas y añaden filas), vista previa a pantalla completa con casillas clicables, deshacer/rehacer (Ctrl+Z / Ctrl+Shift+Z) y autoguardado con debounce de 500 ms.
 - 🏷️ **Etiquetas** — chips en la cabecera del editor; viven en el frontmatter `tags: [a, b]` del `.md` y se autocompletan con las etiquetas ya usadas en el vault.
 - 🧰 **Menú `/`** — inserta títulos, listas, tareas, citas, tablas, código, imágenes, separadores, fórmulas y diagramas; ↑↓, Intro y Esc.
 - 🔤 **Corrector ortográfico** — subrayado ondulado en palabras mal escritas y 7 idiomas elegibles (o desactivado) en Ajustes.
@@ -195,5 +195,5 @@ pnpm build                         # build completo
 
 ## 📄 Licencia
 
-Distribuido bajo la licencia [MIT](LICENSE) — mira el archivo [LICENSE](LICENSE)
+Distribuido bajo la licencia [GNU General Public License v3.0](LICENSE) — mira el archivo [LICENSE](LICENSE)
 para más detalles.
