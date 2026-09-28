@@ -1,4 +1,4 @@
-import { type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import clsx from "clsx";
 import { toLocalCoord } from "../lib/uiZoom";
 import { motion } from "framer-motion";
@@ -160,7 +160,28 @@ export function filterSlashItems(query: string): SlashItem[] {
 const MENU_MAX_HEIGHT = 256;
 const MENU_WIDTH = 320;
 
-function MenuShell({ anchor, label, children }: { label: string; anchor: CaretAnchor; children: ReactNode }) {
+function MenuShell({
+  anchor,
+  label,
+  activeIndex,
+  children,
+}: {
+  label: string;
+  anchor: CaretAnchor;
+  activeIndex?: number;
+  children: ReactNode;
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Navegar con ↑↓ mantiene visible la opción activa dentro del cuadro
+  // (si no, sale del área recortada y solo se ve con la rueda del ratón).
+  useEffect(() => {
+    if (activeIndex === undefined || activeIndex < 0) return;
+    scrollRef.current
+      ?.querySelector('[aria-selected="true"]')
+      ?.scrollIntoView({ block: "nearest" });
+  }, [activeIndex, children]);
+
   const viewWidth = toLocalCoord(window.innerWidth);
   const viewHeight = toLocalCoord(window.innerHeight);
   const flip = anchor.top + MENU_MAX_HEIGHT + 12 > viewHeight;
@@ -174,6 +195,7 @@ function MenuShell({ anchor, label, children }: { label: string; anchor: CaretAn
 
   return (
     <motion.div
+      ref={scrollRef}
       role="listbox"
       aria-label={label}
       initial={{ opacity: 0, y: -4 }}
@@ -218,7 +240,7 @@ export function WikiLinkMenu({
   const active = notes.length > 0 ? Math.min(index, notes.length - 1) : -1;
 
   return (
-    <MenuShell anchor={anchor} label="Notas para enlazar">
+    <MenuShell anchor={anchor} label="Notas para enlazar" activeIndex={active}>
       {loading && notes.length === 0 && (
         <p className="px-3 py-2 text-xs text-gus-muted">Buscando notas del vault…</p>
       )}
@@ -275,7 +297,7 @@ export function SlashMenu({ anchor, items, index, onPick, onHover }: SlashMenuPr
   const active = items.length > 0 ? Math.min(index, items.length - 1) : -1;
 
   return (
-    <MenuShell anchor={anchor} label="Bloques para insertar">
+    <MenuShell anchor={anchor} label="Bloques para insertar" activeIndex={active}>
       {items.length === 0 && (
         <p className="px-3 py-2 text-xs text-gus-muted">Ningún bloque coincide.</p>
       )}

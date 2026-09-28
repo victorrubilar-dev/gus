@@ -99,6 +99,12 @@ const DEFAULT_DEBOUNCE = 500;
 
 const MAX_DECORATED_LINES = 10000;
 
+/** Retardo antes de mostrar la pista «/»: solo si el cursor se queda quieto. */
+const HINT_DELAY_MS = 1500;
+
+/** Marca persistente: el usuario ya usó el menú «/»; la pista no vuelve. */
+const SLASH_HINT_KEY = "gus-slash-hint-used";
+
 type SaveState = "idle" | "dirty" | "saved" | "error";
 
 type ViewMode = "edit" | "preview";
@@ -241,7 +247,16 @@ export default function MarkdownEditor({
 
   const [menu, setMenu] = useState<EditorMenu | null>(null);
 
-  const [lineHint, setLineHint] = useState<CaretAnchor | null>(null);
+  const [lineHint, setLineHint] = useState(false);
+  const [slashHintUsed, setSlashHintUsed] = useState(() => {
+    try {
+      return localStorage.getItem(SLASH_HINT_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const hintTimerRef = useRef<number | null>(null);
+  const hintLineRef = useRef(-1);
   const [wikiNotes, setWikiNotes] = useState<WikiNote[]>([]);
   const [wikiNotesLoading, setWikiNotesLoading] = useState(false);
   const [tagInput, setTagInput] = useState("");
@@ -280,6 +295,9 @@ export default function MarkdownEditor({
     pendingRestoreRef.current = null;
     forceHistoryRef.current = false;
     skipHistoryRef.current = false;
+    clearHintTimer();
+    hintLineRef.current = -1;
+    setLineHint(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path]);
 
@@ -302,7 +320,9 @@ export default function MarkdownEditor({
 
   useEffect(() => {
     if (viewMode === "preview") {
-      setLineHint(null);
+      setLineHint(false);
+      clearHintTimer();
+      hintLineRef.current = -1;
       return;
     }
     refreshCaretLine();
@@ -310,6 +330,27 @@ export default function MarkdownEditor({
     if (area) syncLineHint(area.value, area.selectionStart);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewMode, content]);
+
+  // Usar el menú «/» una vez desactiva la pista para siempre.
+  useEffect(() => {
+    if (menu?.kind !== "slash" || slashHintUsed) return;
+    setSlashHintUsed(true);
+    clearHintTimer();
+    setLineHint(false);
+    try {
+      localStorage.setItem(SLASH_HINT_KEY, "1");
+    } catch {
+      // Sin almacenamiento: la pista solo se olvida en esta sesión.
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [menu]);
+
+  // Al desmontar no queda ningún temporizador de la pista colgando.
+  useEffect(() => {
+    return () => {
+      if (hintTimerRef.current !== null) window.clearTimeout(hintTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     syncOverlayGeometry();
@@ -586,26 +627,40 @@ export default function MarkdownEditor({
       });
   }
 
+  function clearHintTimer() {
+    if (hintTimerRef.current === null) return;
+    window.clearTimeout(hintTimerRef.current);
+    hintTimerRef.current = null;
+  }
+
   function syncLineHint(text: string, caret: number) {
     const area = textareaRef.current;
-    if (!area || text === "" || area.selectionStart !== area.selectionEnd) {
-      setLineHint(null);
-      return;
-    }
-    if (lineAtCaret(text, caret).trim() !== "") {
-      setLineHint(null);
+    const onEmptyLine =
+      !!area &&
+      text !== "" &&
+      area.selectionStart === area.selectionEnd &&
+      lineAtCaret(text, caret).trim() === "";
+
+    if (!onEmptyLine || slashHintUsed) {
+      clearHintTimer();
+      hintLineRef.current = -1;
+      setLineHint(false);
       return;
     }
 
-    const next = caretAnchor(area, caret);
-    setLineHint((current) =>
-      current &&
-      current.top === next.top &&
-      current.left === next.left &&
-      current.height === next.height
-        ? current
-        : next,
-    );
+    const line = text.slice(0, caret).split("\n").length - 1;
+
+    // Mismo hueco: se respeta lo que ya hubiera (visible o en espera).
+    if (line === hintLineRef.current) return;
+
+    // Línea nueva: la pista aparece solo si el cursor se queda quieto 1,5 s.
+    hintLineRef.current = line;
+    clearHintTimer();
+    setLineHint(false);
+    hintTimerRef.current = window.setTimeout(() => {
+      hintTimerRef.current = null;
+      setLineHint(true);
+    }, HINT_DELAY_MS);
   }
 
   function syncMenu(text: string, caret: number) {
@@ -669,7 +724,6 @@ export default function MarkdownEditor({
     const area = textareaRef.current;
     if (!area) return;
     if (menu) setMenu({ ...menu, anchor: caretAnchor(area, area.selectionStart) });
-    setLineHint((current) => (current ? caretAnchor(area, area.selectionStart) : current));
     syncOverlayGeometry();
   }
 
@@ -1324,6 +1378,7 @@ export default function MarkdownEditor({
               overlayRef={overlayRef}
               spell={spell}
               raw={!inlineActive}
+              slashHint={lineHint && !menu && !slashHintUsed}
             />
           )}
 
@@ -1352,16 +1407,6 @@ export default function MarkdownEditor({
               composing && "gus-source-text",
             )}
           />
-
-          {lineHint && !menu && (
-            <span
-              aria-hidden="true"
-              style={{ position: "fixed", top: lineHint.top, left: lineHint.left + 8 }}
-              className="pointer-events-none max-w-[60vw] select-none truncate font-mono text-sm leading-[23px] text-gus-muted/70"
-            >
-              Pulsa «/» para insertar bloques…
-            </span>
-          )}
 
           <AnimatePresence>
             {menu?.kind === "wiki" && (

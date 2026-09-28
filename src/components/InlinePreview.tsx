@@ -289,6 +289,7 @@ interface PreviewLineProps {
   fence: boolean;
   caret: boolean;
   raw: boolean;
+  hint?: boolean;
   spell: SpellFn | null;
 }
 
@@ -298,6 +299,7 @@ const PreviewLine = memo(function PreviewLine({
   fence,
   caret,
   raw,
+  hint = false,
   spell,
 }: PreviewLineProps) {
   if (raw) {
@@ -314,10 +316,18 @@ const PreviewLine = memo(function PreviewLine({
   // Línea del cursor: código fuente visible para editar los marcadores.
   if (caret) {
     const raw = spell && !code ? spellNodes(text, spell, "c") : text;
+    // La pista «/» se dibuja dentro de la propia línea vacía (ghost):
+    // nunca flota sobre el texto y hace scroll con el contenido.
+    const ghost = hint && text.trim() === "";
     return (
       <div className="min-h-[var(--gus-row-h)]">
         <span className="block whitespace-pre-wrap break-words">
           {text === "" ? "\u200B" : raw}
+          {ghost && (
+            <span className="ml-1 italic text-gus-muted/50">
+              Pulsa «/» para insertar bloques…
+            </span>
+          )}
         </span>
       </div>
     );
@@ -354,6 +364,7 @@ export interface InlinePreviewProps {
   overlayRef?: Ref<HTMLDivElement>;
   spell?: SpellFn | null;
   raw?: boolean;
+  slashHint?: boolean;
 }
 
 export default function InlinePreview({
@@ -366,6 +377,7 @@ export default function InlinePreview({
   overlayRef,
   spell = null,
   raw = false,
+  slashHint = false,
 }: InlinePreviewProps) {
   // La interlínea real la fija MarkdownEditor (medida sobre el textarea): al
   // escalar, el motor redondea las filas a píxeles enteros y el overlay debe
@@ -395,6 +407,7 @@ export default function InlinePreview({
           fence={line.fence}
           caret={!raw && index === caretLine}
           raw={raw}
+          hint={slashHint}
           spell={spell}
         />
       ))}
