@@ -48,6 +48,17 @@ export function tagOptions(vaultTags: VaultTag[], query: string, current: string
   );
 }
 
+/**
+ * Texto escrito en el campo de etiquetas de la nota: solo la coma separa una
+ * etiqueta de otra, así «Unidad 2» se guarda como una sola etiqueta.
+ */
+export function parseNoteTagInput(text: string): string[] {
+  return text
+    .split(/[,，]+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
 export function setNoteTags(content: string, tags: string[] | string): string {
   const clean = normalizeTags(tags);
   const newline = content.includes("\r\n") ? "\r\n" : "\n";

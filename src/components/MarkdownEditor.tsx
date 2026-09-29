@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ClipboardEvent,
   type KeyboardEvent,
   type MouseEvent,
   type Ref,
@@ -15,9 +16,14 @@ import type { Components, UrlTransform } from "react-markdown";
 import { invoke } from "@tauri-apps/api/core";
 import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
 import clsx from "clsx";
-import { Check, Eye, Pencil, X } from "lucide-react";
+import { Check, ChevronDown, Eye, FileDown, Pencil, X } from "lucide-react";
 import { pathWithTitle, safeFileName } from "../lib/fileName";
 import { listEnterEdit } from "../lib/listContinue";
+import {
+  renumberAfterPaste,
+  renumberOrderedLists,
+  type PasteRange,
+} from "../lib/listNumbering";
 import {
   addPersonalWord,
   getPersonalWords,
@@ -34,6 +40,15 @@ import {
 import { offsetAtPointer } from "../lib/pointerOffset";
 import { toLocalCoord } from "../lib/uiZoom";
 import {
+  adjacentTableCell,
+  resolveTableCaret,
+  sourceSegments,
+  tableCellRange,
+  tableRows,
+  type TableCellCaret,
+  type TableLine,
+} from "../lib/tableLayout";
+import {
   createHistory,
   recordHistory,
   redoHistory,
@@ -42,9 +57,9 @@ import {
   type HistorySnapshot,
 } from "../lib/editorHistory";
 import { stripPasteFormatting } from "../lib/pasteText";
-import { parseTagInput } from "../lib/markdownTasks";
 import {
   frontmatterLineOffset,
+  parseNoteTagInput,
   parseNoteTags,
   replaceBody,
   setNoteTags,
@@ -67,6 +82,7 @@ import { filterSlashItems, SlashMenu, WikiLinkMenu, type SlashItem } from "./Edi
 import InlinePreview, { classifySource } from "./InlinePreview";
 import MermaidDiagram from "./MermaidDiagram";
 import EditorContextMenu, { type ContextSpell, type FormatKind } from "./EditorContextMenu";
+import PdfExportDialog from "./PdfExportDialog";
 
 export interface EditorDraft {
   path: string;
@@ -91,6 +107,13 @@ export interface MarkdownEditorProps {
   spellWords?: string[];
   onSpellWordsChange?: (words: string[]) => void;
   autoSaveEnabled?: boolean;
+  /**
+   * Nota que debe abrir el diálogo de exportación a PDF en cuanto esté lista
+   * (viene del clic derecho en el explorador).
+   */
+  autoExportPath?: string | null;
+  /** Aviso de que la exportación automática ya se ha mostrado. */
+  onAutoExportShown?: () => void;
   className?: string;
   ref?: Ref<MarkdownEditorHandle>;
 }
@@ -169,6 +192,16 @@ function countWords(text: string): number {
   return trimmed ? trimmed.split(/\s+/).length : 0;
 }
 
+/**
+ * Rango completo de la línea que contiene la posición `at`, con su salto final
+ * incluido: es lo que corta Ctrl+X cuando no hay selección, como en VS Code.
+ */
+function lineRangeAt(value: string, at: number): [number, number] {
+  const start = at === 0 ? 0 : value.lastIndexOf("\n", at - 1) + 1;
+  const newline = value.indexOf("\n", at);
+  return [start, newline === -1 ? value.length : newline + 1];
+}
+
 /** Altura real de fila del textarea en unidades locales (el motor la redondea al escalar). */
 function measureRowPitch(area: HTMLTextAreaElement | null): number | null {
   if (!area) return null;
@@ -195,6 +228,24 @@ function measureRowPitch(area: HTMLTextAreaElement | null): number | null {
   }
 }
 
+/** Columnas monoespaciadas que caben en una fila del textarea (para tablas). */
+function measureTableCols(area: HTMLTextAreaElement | null): number | null {
+  if (!area) return null;
+  const style = getComputedStyle(area);
+  const ctx = document.createElement("canvas").getContext("2d");
+  if (!ctx) return null;
+  ctx.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+  const char = ctx.measureText("0").width;
+  const width =
+    area.clientWidth -
+    parseFloat(style.paddingLeft) -
+    parseFloat(style.paddingRight) -
+    parseFloat(style.borderLeftWidth) -
+    parseFloat(style.borderRightWidth);
+  if (!(char > 0) || !(width > 0)) return null;
+  return Math.floor(width / char);
+}
+
 export default function MarkdownEditor({
   path,
   title: initialTitle,
@@ -208,6 +259,8 @@ export default function MarkdownEditor({
   spellWords = [],
   onSpellWordsChange,
   autoSaveEnabled = true,
+  autoExportPath,
+  onAutoExportShown,
   className,
   ref,
 }: MarkdownEditorProps) {
@@ -216,8 +269,13 @@ export default function MarkdownEditor({
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("edit");
+  const [headerMenu, setHeaderMenu] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [caretLine, setCaretLine] = useState(0);
+  const [tableCaret, setTableCaret] = useState<TableCellCaret | null>(null);
+  const prevTableLineRef = useRef(-1);
   const [rowPitch, setRowPitch] = useState(23);
+  const [tableCols, setTableCols] = useState<number | null>(null);
   const [zoomTick, setZoomTick] = useState(0);
   const [composing, setComposing] = useState(false);
   const [scrollbarWidth, setScrollbarWidth] = useState(0);
@@ -239,6 +297,28 @@ export default function MarkdownEditor({
       alive = false;
     };
   }, [spellLang]);
+
+  const headerMenuRef = useRef<HTMLDivElement>(null);
+
+  /** El menú de la cabecera se cierra al pulsar fuera de él. */
+  useEffect(() => {
+    if (!headerMenu) return;
+    const onPointerDown = (event: Event) => {
+      const target = event.target;
+      if (target instanceof Node && headerMenuRef.current?.contains(target)) return;
+      setHeaderMenu(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [headerMenu]);
+
+  /** El explorador pide exportar esta nota en cuanto esté abierta. */
+  useEffect(() => {
+    if (!autoExportPath || autoExportPath !== path) return;
+    setHeaderMenu(false);
+    setExportOpen(true);
+    onAutoExportShown?.();
+  }, [autoExportPath, path]);
 
   const spell = useMemo<SpellFn | null>(
     () => (engine ? (text: string) => spellSegments(text, engine.correct) : null),
@@ -298,6 +378,8 @@ export default function MarkdownEditor({
     clearHintTimer();
     hintLineRef.current = -1;
     setLineHint(false);
+    setTableCaret(null);
+    prevTableLineRef.current = -1;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path]);
 
@@ -323,6 +405,7 @@ export default function MarkdownEditor({
       setLineHint(false);
       clearHintTimer();
       hintLineRef.current = -1;
+      setTableCaret(null);
       return;
     }
     refreshCaretLine();
@@ -441,8 +524,41 @@ export default function MarkdownEditor({
     setSaveState("dirty");
   }
 
-  function editBody(nextBody: string) {
-    editContent(replaceBody(content, nextBody));
+  /**
+   * Guarda el cuerpo de la nota. Antes renumera la lista numerada que contiene
+   * al cursor, de modo que al borrar o insertar una línea las que siguen se
+   * actualizan y no quedan huecos (6, 7, 8, 10) ni números duplicados.
+   * Si el cambio viene de un pegado (`paste`), una lista abierta por lo pegado
+   * arranca en 1. Devuelve el cuerpo final y la posición corregida del cursor.
+   */
+  function editBody(nextBody: string, paste?: PasteRange): { body: string; caret: number } {
+    const area = textareaRef.current;
+    const pending = pendingCaretRef.current;
+    // Mientras el usuario escribe, el DOM ya refleja el cambio y su cursor es
+    // el válido; en los cambios programáticos (menús, pegado, corrección
+    // ortográfica) el cursor llega fijado en pendingCaretRef.
+    const domCaret = area && area.value === nextBody ? area.selectionStart : null;
+    const hint = domCaret ?? pending?.[0] ?? area?.selectionStart ?? nextBody.length;
+    const caret = Math.min(Math.max(hint, 0), nextBody.length);
+
+    // Con un IME en marcha no se renumera: tocar el texto rompería la
+    // composición (al terminarla volverá a entrar por aquí).
+    let result: { body: string; caret: number } = { body: nextBody, caret };
+    if (!composing) {
+      result = paste
+        ? renumberAfterPaste(nextBody, caret, paste)
+        : renumberOrderedLists(nextBody, caret);
+    }
+
+    const finalContent = replaceBody(content, result.body);
+    // Si el texto final no es el que hay en el textarea, React reescribirá su
+    // valor al renderizar y el cursor saltaría al final: hay que recolocarlo.
+    if (finalContent !== content && (area === null || area.value !== result.body)) {
+      pendingCaretRef.current = [result.caret, result.caret];
+    }
+
+    editContent(finalContent);
+    return result;
   }
 
   function applyHistoryState(target: HistorySnapshot) {
@@ -466,8 +582,45 @@ export default function MarkdownEditor({
   function refreshCaretLine() {
     const area = textareaRef.current;
     if (!area) return;
-    const line = area.value.slice(0, area.selectionStart).split("\n").length - 1;
+    const selStart = area.selectionStart;
+    const selEnd = area.selectionEnd;
+    const line = area.value.slice(0, selStart).split("\n").length - 1;
     setCaretLine((current) => (current === line ? current : line));
+
+    // Solo hay modo celda si ese bloque se renderiza como tabla (si no cabe en
+    // una línea se queda en crudo y el caret responsable es el nativo).
+    const inTable =
+      inlineActive &&
+      tableCols !== null &&
+      sourceSegments(sourceInfo, false, tableCols).some(
+        (segment) => segment.kind === "table" && line >= segment.start && line <= segment.end,
+      );
+
+    if (!inTable) {
+      setTableCaret(null);
+      prevTableLineRef.current = line;
+      return;
+    }
+
+    let resolved = resolveTableCaret(sourceInfo, line, selStart, selEnd);
+
+    // La fila del separador (|---|) no es editable: se reubica en la cabecera
+    // o en la primera fila de datos según desde dónde se llegó, siempre al
+    // final del contenido para que escribir añada sin pisar nada.
+    if (resolved?.onDelimiter) {
+      const targetLine =
+        prevTableLineRef.current === resolved.blockStart
+          ? resolved.blockStart + 2
+          : resolved.blockStart;
+      const range = tableCellRange(sourceInfo, targetLine, resolved.col);
+      if (range) {
+        area.setSelectionRange(range.end, range.end);
+        resolved = resolveTableCaret(sourceInfo, targetLine, range.end, range.end);
+      }
+    }
+
+    setTableCaret(resolved);
+    prevTableLineRef.current = resolved ? resolved.line : line;
   }
 
   function syncOverlayGeometry() {
@@ -494,6 +647,23 @@ export default function MarkdownEditor({
     if (next !== null) setRowPitch((current) => (Math.abs(current - next) < 0.01 ? current : next));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [zoomTick, fontSize]);
+
+  // Ancho disponible en columnas para las tablas: sigue cualquier cambio del
+  // contenedor (ventana, barra lateral, scrollbars). El textarea se desmonta
+  // en modo vista previa, por eso se reobserva al volver a editar.
+  useEffect(() => {
+    if (viewMode !== "edit") return;
+    const area = textareaRef.current;
+    if (!area) return;
+    const update = () => {
+      const cols = measureTableCols(area);
+      setTableCols((current) => (current === cols ? current : cols));
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(area);
+    return () => observer.disconnect();
+  }, [viewMode]);
 
   // Tras deshacer o rehacer se recupera la selección guardada en el paso.
   useEffect(() => {
@@ -551,7 +721,7 @@ export default function MarkdownEditor({
   }
 
   function commitTagInput() {
-    const parsed = parseTagInput(tagInput);
+    const parsed = parseNoteTagInput(tagInput);
     if (parsed.length === 0) return;
 
     applyNoteTags([...parseNoteTags(content), ...parsed]);
@@ -601,7 +771,7 @@ export default function MarkdownEditor({
 
   function handleTagInputChange(value: string) {
     if (/[,，]/.test(value)) {
-      applyNoteTags([...parseNoteTags(content), ...parseTagInput(value)]);
+      applyNoteTags([...parseNoteTags(content), ...parseNoteTagInput(value)]);
       setTagInput("");
       return;
     }
@@ -706,11 +876,10 @@ export default function MarkdownEditor({
 
   function handleContentChange(next: string) {
     refreshCaretLine();
-    editBody(next);
+    const final = editBody(next);
     // Los rangos del menú ortográfico ya no son fiables: se cierra.
     setContextMenu(null);
-    const area = textareaRef.current;
-    syncMenu(next, area?.selectionStart ?? next.length);
+    syncMenu(final.body, final.caret);
   }
 
   function handleCaretMove() {
@@ -727,13 +896,51 @@ export default function MarkdownEditor({
     syncOverlayGeometry();
   }
 
-  function replaceRange(start: number, text: string, caretOffset: number) {
+  /** Clic sobre una celda de la tabla: selecciona su contenido (estilo Excel). */
+  function handleCellMouseDown(event: MouseEvent<HTMLTextAreaElement>) {
+    if (event.button !== 0 || !inlineActive) return;
+    const overlay = overlayRef.current;
+    if (!overlay) return;
+
+    const cell = Array.from(overlay.querySelectorAll<HTMLElement>("[data-cell]")).find(
+      (element) => {
+        const rect = element.getBoundingClientRect();
+        return (
+          event.clientX >= rect.left &&
+          event.clientX <= rect.right &&
+          event.clientY >= rect.top &&
+          event.clientY <= rect.bottom
+        );
+      },
+    );
+    if (!cell) return;
+
+    const line = Number(cell.dataset.line);
+    const col = Number(cell.dataset.col);
+    const range = tableCellRange(sourceInfo, line, col);
+    const area = textareaRef.current;
+    if (!range || !area) return;
+
+    event.preventDefault();
+    area.focus();
+    area.setSelectionRange(range.start, range.end);
+    handleCaretMove();
+  }
+
+  function replaceRange(
+    start: number,
+    text: string,
+    caretOffset: number,
+    kind: "insert" | "paste" = "insert",
+  ) {
     const area = textareaRef.current;
     const current = area?.value ?? stripFrontmatter(content);
     const cursor = Math.max(area?.selectionEnd ?? current.length, start);
 
     pendingCaretRef.current = [start + caretOffset, start + caretOffset];
-    editBody(`${current.slice(0, start)}${text}${current.slice(cursor)}`);
+    const paste: PasteRange | undefined =
+      kind === "paste" ? { from: start, to: start + text.length } : undefined;
+    editBody(`${current.slice(0, start)}${text}${current.slice(cursor)}`, paste);
     setMenu(null);
   }
 
@@ -849,13 +1056,61 @@ export default function MarkdownEditor({
 
   async function cutSelection() {
     const area = textareaRef.current;
-    const text = area ? area.value.slice(area.selectionStart, area.selectionEnd) : "";
     setContextMenu(null);
-    if (!area || !text) return;
+    if (!area) return;
+    // Sin selección se corta la línea entera, igual que con Ctrl+X.
+    const [start, end] =
+      area.selectionEnd > area.selectionStart
+        ? [area.selectionStart, area.selectionEnd]
+        : lineRangeAt(area.value, area.selectionStart);
+    const text = area.value.slice(start, end);
+    if (!text) return;
     const copied = await writeText(text)
       .then(() => true)
       .catch(() => false);
-    if (copied) replaceRange(area.selectionStart, "", 0);
+    if (!copied) return;
+    area.setSelectionRange(start, end);
+    replaceRange(start, "", 0);
+  }
+
+  /**
+   * Corta la línea entera del cursor (Ctrl+X sin selección, como en VS Code).
+   * Se selecciona antes para que `replaceRange` borre la línea completa.
+   */
+  function cutCurrentLine(clip?: DataTransfer | null): boolean {
+    const area = textareaRef.current;
+    if (!area) return false;
+
+    const [start, end] = lineRangeAt(area.value, area.selectionStart);
+    if (end <= start) return false;
+
+    setContextMenu(null);
+    const text = area.value.slice(start, end);
+    // El texto va al portapapeles: si el evento lo trae, ahí mismo; en todo
+    // caso, por el plugin (el mismo que lee «Pegar» del menú).
+    clip?.setData("text/plain", text);
+    void writeText(text).catch(() => undefined);
+
+    area.setSelectionRange(start, end);
+    replaceRange(start, "", 0);
+    return true;
+  }
+
+  /**
+   * Ctrl+X sin selección: corta la línea entera. Con selección manda el corte
+   * nativo, que ya lleva el texto al portapapeles.
+   */
+  function handleCut(event: ClipboardEvent<HTMLTextAreaElement>) {
+    const area = textareaRef.current;
+    if (!area || event.defaultPrevented) return;
+    if (area.selectionEnd > area.selectionStart) return;
+
+    const [start, end] = lineRangeAt(area.value, area.selectionStart);
+    if (end <= start) return;
+
+    event.preventDefault();
+    forceHistoryRef.current = true;
+    cutCurrentLine(event.clipboardData);
   }
 
   async function copySelection() {
@@ -874,10 +1129,26 @@ export default function MarkdownEditor({
       const raw = await readText();
       if (!raw) return;
       const text = plain ? stripPasteFormatting(raw) : raw;
-      replaceRange(area.selectionStart, text, text.length);
+      replaceRange(area.selectionStart, text, text.length, "paste");
     } catch {
       // portapapeles no disponible en este entorno
     }
+  }
+
+  /**
+   * Ctrl+V (y el pegado nativo en general): se intercepta para que una línea
+   * numerada pegada en un sitio nuevo arranque en 1, como lista nueva.
+   */
+  function handlePaste(event: ClipboardEvent<HTMLTextAreaElement>) {
+    const area = textareaRef.current;
+    if (!area || event.defaultPrevented) return;
+    const text = event.clipboardData?.getData("text/plain") ?? "";
+    // Sin texto que pegar se deja el comportamiento nativo (p. ej. vacío).
+    if (!text) return;
+
+    event.preventDefault();
+    setContextMenu(null);
+    replaceRange(area.selectionStart, text, text.length, "paste");
   }
 
   function selectAllText() {
@@ -919,9 +1190,10 @@ export default function MarkdownEditor({
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
-    if (event.key === "Escape" && contextMenu) {
+    if (event.key === "Escape" && (contextMenu || headerMenu)) {
       event.preventDefault();
       setContextMenu(null);
+      setHeaderMenu(false);
       return;
     }
 
@@ -949,10 +1221,24 @@ export default function MarkdownEditor({
       forceHistoryRef.current = true;
     }
 
+    if (mod && !event.altKey && key === "x") {
+      // Sin selección, Ctrl+X corta la línea entera (como en VS Code). Si se
+      // corta aquí no llega a emitirse el evento nativo de corte, así que no
+      // hay doble corte.
+      const area = event.target instanceof HTMLTextAreaElement ? event.target : null;
+      if (area && area.selectionStart === area.selectionEnd && cutCurrentLine()) {
+        event.preventDefault();
+        return;
+      }
+    }
+
     if (menu) {
       handleMenuKeyDown(event);
       if (event.defaultPrevented) return;
     }
+
+    handleTableNav(event);
+    if (event.defaultPrevented) return;
 
     handleListEnter(event);
   }
@@ -971,6 +1257,59 @@ export default function MarkdownEditor({
 
     event.preventDefault();
     replaceRange(edit.start, edit.insert, edit.caret - edit.start);
+  }
+
+  function focusTableCell(line: number, col: number, select: boolean) {
+    const range = tableCellRange(sourceInfo, line, col);
+    const area = textareaRef.current;
+    if (!range || !area) return;
+    area.focus();
+    if (select) area.setSelectionRange(range.start, range.end);
+    else area.setSelectionRange(range.end, range.end);
+    handleCaretMove();
+  }
+
+  function appendTableCellRow(cell: TableCellCaret) {
+    const rows = body.split("\n");
+    const at = cell.blockEnd + 1;
+    rows.splice(at, 0, `|${"  |".repeat(cell.cols)}`);
+    const nextBody = rows.join("\n");
+    const nextLines: TableLine[] = rows.map((text, index) => ({
+      text,
+      code: sourceInfo[index]?.code ?? false,
+    }));
+    const range = tableCellRange(nextLines, at, 0);
+    if (range) {
+      pendingRestoreRef.current = {
+        content: nextBody,
+        start: range.end,
+        end: range.end,
+        at: Date.now(),
+      };
+    }
+    editBody(nextBody);
+  }
+
+  /** Tab / Shift+Tab y Enter recorren las celdas como en Excel. */
+  function handleTableNav(event: KeyboardEvent<HTMLElement>) {
+    const cell = tableCaret;
+    if (!cell || menu || event.nativeEvent.isComposing) return;
+
+    if (event.key === "Tab") {
+      event.preventDefault();
+      const target = adjacentTableCell(cell, event.shiftKey ? -1 : 1);
+      if (target) focusTableCell(target.line, target.col, false);
+      else if (!event.shiftKey) appendTableCellRow(cell);
+      return;
+    }
+
+    if (event.key !== "Enter" || event.metaKey || event.ctrlKey || event.altKey) return;
+    event.preventDefault();
+    const rows = tableRows(cell);
+    const index = rows.indexOf(cell.line);
+    const target = rows[index + (event.shiftKey ? -1 : 1)];
+    if (target !== undefined) focusTableCell(target, cell.col, false);
+    else if (!event.shiftKey) appendTableCellRow(cell);
   }
 
   function handleMenuKeyDown(event: KeyboardEvent<HTMLElement>) {
@@ -1261,6 +1600,40 @@ export default function MarkdownEditor({
               </>
             )}
           </button>
+
+          <div ref={headerMenuRef} className="relative shrink-0">
+            <button
+              type="button"
+              onClick={() => setHeaderMenu((open) => !open)}
+              aria-haspopup="menu"
+              aria-expanded={headerMenu}
+              aria-label="Más opciones de la nota"
+              title="Más opciones"
+              className="inline-flex h-[30px] items-center rounded-lg border border-gus-border bg-gus-card px-2 text-xs text-gus-muted outline-none transition-colors hover:border-gus-accent/50 hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60"
+            >
+              <ChevronDown className="h-4 w-4" aria-hidden="true" />
+            </button>
+
+            {headerMenu && (
+              <div
+                role="menu"
+                className="absolute right-0 z-30 mt-1.5 w-52 overflow-hidden rounded-lg border border-gus-border bg-gus-card py-1 shadow-xl"
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setHeaderMenu(false);
+                    setExportOpen(true);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-gus-muted transition-colors hover:bg-gus-panel hover:text-gus-text focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-gus-accent/60 focus-visible:outline-none"
+                >
+                  <FileDown className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  Exportar a PDF
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -1379,6 +1752,8 @@ export default function MarkdownEditor({
               spell={spell}
               raw={!inlineActive}
               slashHint={lineHint && !menu && !slashHintUsed}
+              tableCols={tableCols}
+              tableCaret={tableCaret}
             />
           )}
 
@@ -1387,6 +1762,9 @@ export default function MarkdownEditor({
             value={body}
             onChange={(event) => handleContentChange(event.target.value)}
             onKeyDown={handleKeyDown}
+            onCut={handleCut}
+            onPaste={handlePaste}
+            onMouseDown={handleCellMouseDown}
             onSelect={handleCaretMove}
             onScroll={handleScroll}
             onCompositionStart={() => setComposing(true)}
@@ -1400,11 +1778,19 @@ export default function MarkdownEditor({
             aria-label="Contenido de la nota"
             spellCheck={false}
             lang={spellLang !== undefined && spellLang !== "off" ? spellLang : undefined}
-            style={fontSize ? { fontSize: `${fontSize}px` } : undefined}
+            style={
+              fontSize || tableCaret
+                ? {
+                    ...(fontSize ? { fontSize: `${fontSize}px` } : {}),
+                    ...(tableCaret && !composing ? { caretColor: "transparent" } : {}),
+                  }
+                : undefined
+            }
             className={clsx(
               "gus-scrollbar relative h-full w-full resize-none px-6 py-4 font-mono text-sm leading-[23px] text-gus-text outline-none placeholder:text-gus-muted focus:outline-none",
               inlineActive && "gus-source-area",
               composing && "gus-source-text",
+              tableCaret && !composing && "gus-cell-edit",
             )}
           />
 
@@ -1457,6 +1843,12 @@ export default function MarkdownEditor({
         </div>
       ) : (
         previewPane()
+      )}
+
+      {exportOpen && (
+        <PdfExportDialog title={title} onClose={() => setExportOpen(false)}>
+          <MarkdownBody components={previewComponents}>{body}</MarkdownBody>
+        </PdfExportDialog>
       )}
     </div>
   );

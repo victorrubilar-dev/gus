@@ -115,3 +115,123 @@ body {
   text-decoration-skip-ink: none;
   text-underline-offset: 0.2em;
 }
+
+/* Edición de tablas por celda: el caret y la selección nativos del textarea
+   quedarían en coordenadas de origen, así que se ocultan mientras el cursor
+   está dentro de una tabla (el resaltado lo dibuja el overlay). */
+.gus-cell-edit::selection {
+  background: transparent;
+}
+
+/* Caret sintético dentro de la celda activa (posición real del texto). */
+.gus-cell-caret {
+  display: inline-block;
+  width: 0;
+  height: 1.15em;
+  border-left: 2px solid var(--color-gus-accent);
+  vertical-align: -0.2em;
+  animation: gus-cell-blink 1.1s steps(1) infinite;
+}
+
+@keyframes gus-cell-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+/* ——— Exportación a PDF ——————————————————————————————————————
+   La nota se maqueta dentro de una hoja A4. La tira tiene una columna por
+   página (CSS Multicol) y la ventana solo enseña la columna actual: lo que se
+   ve en la previsualización es exactamente lo que se captura para el PDF. */
+
+.gus-pdf-window {
+  position: relative;
+  width: 210mm;
+  height: 297mm;
+  overflow: hidden;
+  background-color: #ffffff;
+  color: var(--color-gus-text);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    sans-serif;
+}
+
+/* Paleta de la página: clara (por defecto) u oscura. Al cambiar las variables
+   aquí dentro, todos los estilos de la nota (que usan var(--color-gus-*))
+   se recolocan solos. */
+.gus-pdf-window[data-theme="light"] {
+  --color-gus-bg: #ffffff;
+  --color-gus-panel: #ffffff;
+  --color-gus-card: #f2f4f7;
+  --color-gus-border: #d7dbe3;
+  --color-gus-text: #161920;
+  --color-gus-muted: #5d6675;
+  --color-gus-accent: #c2593f;
+  --color-gus-eyes: #2f7d5f;
+  color-scheme: light;
+}
+
+.gus-pdf-window[data-theme="dark"] {
+  --color-gus-bg: #0d0e11;
+  --color-gus-panel: #16181f;
+  --color-gus-card: #1f222b;
+  --color-gus-border: #2a2e39;
+  --color-gus-text: #f4f1de;
+  --color-gus-muted: #8d99ae;
+  --color-gus-accent: #e07a5f;
+  --color-gus-eyes: #81b29a;
+  color-scheme: dark;
+}
+
+/* Recorta las columnas vecinas: solo se enseña (y se captura) la que toca,
+   con los márgenes de la hoja alrededor. */
+.gus-pdf-page {
+  position: absolute;
+  top: calc((297mm - 1010px) / 2);
+  left: calc((210mm - 680px) / 2);
+  width: 680px;
+  height: 1010px;
+  overflow: hidden;
+}
+
+.gus-pdf-strip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 1010px;
+  column-width: 680px;
+  column-gap: 0;
+  column-fill: auto;
+  orphans: 2;
+  widows: 2;
+}
+
+/* Cortes de página con sentido: los títulos no quedan huérfanos y las piezas
+   compactas (código, tablas, imágenes…) no se parten en dos. */
+.gus-pdf-strip h1,
+.gus-pdf-strip h2,
+.gus-pdf-strip h3,
+.gus-pdf-strip h4,
+.gus-pdf-strip h5,
+.gus-pdf-strip h6,
+.gus-pdf-strip pre,
+.gus-pdf-strip table,
+.gus-pdf-strip blockquote,
+.gus-pdf-strip figure,
+.gus-pdf-strip li,
+.gus-pdf-strip .gus-mermaid {
+  break-inside: avoid;
+}
+
+.gus-pdf-strip h1,
+.gus-pdf-strip h2,
+.gus-pdf-strip h3,
+.gus-pdf-strip h4,
+.gus-pdf-strip h5,
+.gus-pdf-strip h6 {
+  break-after: avoid;
+}
+
+.gus-pdf-strip img {
+  max-width: 100%;
+  height: auto;
+}

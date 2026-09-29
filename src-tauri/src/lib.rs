@@ -44,6 +44,12 @@ fn is_image_file(path: &std::path::Path) -> bool {
     image_mime(path).is_some()
 }
 
+fn is_pdf_file(path: &std::path::Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("pdf"))
+}
+
 fn base64_encode(data: &[u8]) -> String {
     const ALPHABET: &[u8; 64] =
         b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -145,6 +151,63 @@ fn write_vault_file(path: String, content: String) -> Result<(), String> {
     std::fs::write(&path, content).map_err(|err| format!("No se pudo escribir «{path}»: {err}"))
 }
 
+/// Descodifica Base64: es como viaja el PDF desde el navegador hasta aquí.
+fn decode_base64(input: &str) -> Result<Vec<u8>, String> {
+    fn digit(byte: u8) -> Option<u8> {
+        match byte {
+            b'A'..=b'Z' => Some(byte - b'A'),
+            b'a'..=b'z' => Some(byte - b'a' + 26),
+            b'0'..=b'9' => Some(byte - b'0' + 52),
+            b'+' => Some(62),
+            b'/' => Some(63),
+            _ => None,
+        }
+    }
+
+    let mut out = Vec::with_capacity(input.len() / 4 * 3);
+    let mut acc: u32 = 0;
+    let mut bits: u32 = 0;
+
+    for byte in input.bytes() {
+        if byte == b'=' || byte.is_ascii_whitespace() {
+            continue;
+        }
+        let value =
+            digit(byte).ok_or_else(|| "El contenido recibido no es Base64 válido".to_string())?;
+        acc = (acc << 6) | u32::from(value);
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((acc >> bits) as u8);
+        }
+    }
+
+    Ok(out)
+}
+
+/// Escribe el PDF exportado en la ruta que haya elegido el usuario.
+#[tauri::command]
+fn write_pdf_file(path: String, data: String) -> Result<(), String> {
+    let path = expand_home(&path);
+    // Algunos diálogos no añaden la extensión que se pidió en el filtro.
+    let path = if path.to_lowercase().ends_with(".pdf") {
+        path
+    } else {
+        format!("{path}.pdf")
+    };
+    let bytes = decode_base64(&data)?;
+
+    if let Some(parent) = std::path::Path::new(&path).parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent).map_err(|err| {
+                format!("No se pudo crear el directorio «{}»: {err}", parent.display())
+            })?;
+        }
+    }
+
+    std::fs::write(&path, bytes).map_err(|err| format!("No se pudo escribir «{path}»: {err}"))
+}
+
 fn ensure_entry(path: &str) -> Result<(), String> {
     let path_ref = std::path::Path::new(path);
 
@@ -225,7 +288,11 @@ fn list_vault_entries(path: String) -> Result<Vec<VaultEntry>, String> {
             continue;
         };
         let is_dir = metadata.is_dir();
-        if !is_dir && !is_md_file(&entry_path) && !is_image_file(&entry_path) {
+        if !is_dir
+            && !is_md_file(&entry_path)
+            && !is_image_file(&entry_path)
+            && !is_pdf_file(&entry_path)
+        {
             continue;
         }
 
@@ -762,6 +829,37 @@ fn read_vault_image(path: String) -> Result<String, String> {
         std::fs::read(&path).map_err(|err| format!("No se pudo leer «{path}»: {err}"))?;
 
     Ok(format!("data:{mime};base64,{}", base64_encode(&bytes)))
+}
+
+#[tauri::command]
+fn read_vault_pdf(path: String) -> Result<String, String> {
+    let path = expand_home(&path);
+
+    if !is_pdf_file(std::path::Path::new(&path)) {
+        return Err(format!("Formato no soportado (solo PDF): «{path}»"));
+    }
+
+    if !std::path::Path::new(&path).is_file() {
+        return Err(format!("No existe el archivo «{path}»"));
+    }
+
+    const MAX_BYTES: u64 = 60 * 1024 * 1024;
+    let metadata =
+        std::fs::metadata(&path).map_err(|err| format!("No se pudo leer «{path}»: {err}"))?;
+    if metadata.len() > MAX_BYTES {
+        return Err(format!(
+            "El PDF pesa {} MB y el límite son 60 MB",
+            metadata.len() / (1024 * 1024)
+        ));
+    }
+
+    let bytes =
+        std::fs::read(&path).map_err(|err| format!("No se pudo leer «{path}»: {err}"))?;
+
+    Ok(format!(
+        "data:application/pdf;base64,{}",
+        base64_encode(&bytes)
+    ))
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1620,6 +1718,7 @@ pub fn run() {
             list_vault_tags,
             read_vault_file,
             write_vault_file,
+            write_pdf_file,
             rename_vault_file,
             list_vault_entries,
             list_vault_dirs,
@@ -1635,6 +1734,7 @@ pub fn run() {
             rename_vault_dir,
             move_vault_file,
             read_vault_image,
+            read_vault_pdf,
             load_app_config,
             save_app_config,
             vault_dir_exists,
@@ -1657,6 +1757,90 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("gus-{label}-{}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("create temp vault");
         dir
+    }
+
+    /** Codificador de referencia para contrastar `decode_base64`. */
+    fn to_base64(bytes: &[u8]) -> String {
+        const ALPHABET: &[u8; 64] =
+            b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        let mut out = String::new();
+
+        for chunk in bytes.chunks(3) {
+            let tail = [
+                chunk[0],
+                chunk.get(1).copied().unwrap_or(0),
+                chunk.get(2).copied().unwrap_or(0),
+            ];
+            let packed =
+                (u32::from(tail[0]) << 16) | (u32::from(tail[1]) << 8) | u32::from(tail[2]);
+            out.push(ALPHABET[(packed >> 18) as usize & 63] as char);
+            out.push(ALPHABET[(packed >> 12) as usize & 63] as char);
+            out.push(if chunk.len() > 1 {
+                ALPHABET[(packed >> 6) as usize & 63] as char
+            } else {
+                '='
+            });
+            out.push(if chunk.len() > 2 {
+                ALPHABET[packed as usize & 63] as char
+            } else {
+                '='
+            });
+        }
+
+        out
+    }
+
+    #[test]
+    fn decode_base64_matches_reference_encoder() {
+        let cases: [&[u8]; 7] = [
+            b"",
+            b"A",
+            b"AB",
+            b"ABC",
+            b"ABCD",
+            b"%PDF-1.7\n",
+            &[0, 1, 2, 3, 4, 250, 251, 252, 253, 254, 255],
+        ];
+
+        for bytes in cases {
+            let encoded = to_base64(bytes);
+            assert_eq!(
+                decode_base64(&encoded).expect("base64 válido"),
+                bytes.to_vec(),
+                "fallo con {encoded:?}",
+            );
+            // El relleno y los saltos de línea no deben confundir al lector.
+            let wrapped = encoded.replace('-', "+").replace('_', "/");
+            assert_eq!(decode_base64(&wrapped).expect("base64 válido"), bytes.to_vec());
+        }
+    }
+
+    #[test]
+    fn decode_base64_rejects_invalid_characters() {
+        assert!(decode_base64("hola??").is_err());
+        assert!(decode_base64("abc$").is_err());
+        assert!(decode_base64("ññññ").is_err());
+    }
+
+    #[test]
+    fn write_pdf_file_saves_decoded_bytes_and_completes_extension() {
+        let dir = temp_vault("pdf-export");
+        let target = dir.join("nota.pdf");
+        let payload = b"%PDF-1.7\nfin";
+
+        write_pdf_file(
+            target.to_string_lossy().into_owned(),
+            to_base64(payload),
+        )
+        .expect("escribir el pdf");
+
+        assert_eq!(std::fs::read(&target).expect("leer el pdf"), payload);
+
+        // Si el diálogo no añadió la extensión, se completa.
+        let bare = dir.join("sin-extension");
+        write_pdf_file(bare.to_string_lossy().into_owned(), to_base64(b"x")).expect("escribir");
+        assert!(dir.join("sin-extension.pdf").exists());
+        assert!(!bare.exists());
     }
 
     #[test]
@@ -1800,6 +1984,15 @@ mod tests {
         assert_eq!(
             frontmatter_tags("---\ntags: [casa, \"a: b\"]\n---\nTexto"),
             vec!["casa", "a: b"]
+        );
+        // Las etiquetas con espacios no se parten: solo la coma separa.
+        assert_eq!(
+            frontmatter_tags("---\ntags: [Unidad 2, Examen final]\n---\nX"),
+            vec!["Unidad 2", "Examen final"]
+        );
+        assert_eq!(
+            frontmatter_tags("---\ntags:\n- Unidad 2\n---\nX"),
+            vec!["Unidad 2"]
         );
         assert_eq!(
             frontmatter_tags("---\ntags:\n- uno\n- dos\ntitle: X\n---\nTexto"),
@@ -2377,6 +2570,7 @@ mod tests {
         std::fs::write(dir.join("b-nota.md"), "").expect("write md");
         std::fs::write(dir.join("a-nota.md"), "").expect("write md");
         std::fs::write(dir.join("imagen.png"), [1, 2, 3]).expect("write png");
+        std::fs::write(dir.join("manual.pdf"), "%PDF-1.4").expect("write pdf");
         std::fs::write(dir.join("datos.txt"), "x").expect("write txt");
         std::fs::write(dir.join(".oculta.md"), "").expect("write oculta");
         std::fs::create_dir(dir.join("zz-carpeta")).expect("mkdir");
@@ -2385,7 +2579,10 @@ mod tests {
         let entries = list_vault_entries(dir.to_string_lossy().into_owned())
             .expect("debe listarse");
         let names: Vec<&str> = entries.iter().map(|entry| entry.name.as_str()).collect();
-        assert_eq!(names, ["zz-carpeta", "a-nota.md", "b-nota.md", "imagen.png"]);
+        assert_eq!(
+            names,
+            ["zz-carpeta", "a-nota.md", "b-nota.md", "imagen.png", "manual.pdf"]
+        );
         assert!(entries[0].is_dir);
         assert!(!entries[1].is_dir);
         assert!(entries[1].modified_ms.is_some());
@@ -2525,6 +2722,33 @@ mod tests {
         assert!(err.contains("solo imágenes"), "mensaje = {err}");
 
         let err = read_vault_image(dir.join("no-existe.png").to_string_lossy().into_owned())
+            .expect_err("no existe");
+        assert!(err.contains("No existe"), "mensaje = {err}");
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn read_vault_pdf_devuelve_data_url() {
+        let dir = temp_vault("pdf-read");
+        let pdf = dir.join("clase.pdf");
+        std::fs::write(&pdf, b"Man").expect("write pdf");
+
+        let url = read_vault_pdf(pdf.to_string_lossy().into_owned()).expect("debe leerse");
+        assert_eq!(url, "data:application/pdf;base64,TWFu");
+
+        std::fs::write(dir.join("a.PDF"), b"Ma").expect("write pdf mayúsculas");
+        assert_eq!(
+            read_vault_pdf(dir.join("a.PDF").to_string_lossy().into_owned()).expect("PDF"),
+            "data:application/pdf;base64,TWE="
+        );
+
+        std::fs::write(dir.join("d.txt"), b"Man").expect("write txt");
+        let err = read_vault_pdf(dir.join("d.txt").to_string_lossy().into_owned())
+            .expect_err("no es pdf");
+        assert!(err.contains("solo PDF"), "mensaje = {err}");
+
+        let err = read_vault_pdf(dir.join("no-existe.pdf").to_string_lossy().into_owned())
             .expect_err("no existe");
         assert!(err.contains("No existe"), "mensaje = {err}");
 

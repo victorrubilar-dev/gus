@@ -1,6 +1,8 @@
 import {
   Fragment,
+  forwardRef,
   useEffect,
+  useImperativeHandle,
   useRef,
   useState,
   type DragEvent as ReactDragEvent,
@@ -8,11 +10,11 @@ import {
 } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
+  File as FileIcon,
   FileText,
   Folder,
   FolderPlus,
   Image as ImageIcon,
-  MoreVertical,
   Plus,
   RefreshCw,
 } from "lucide-react";
@@ -23,6 +25,7 @@ import {
   baseName,
   isImageName,
   isInsidePath,
+  isPdfName,
   joinPath,
   parentPath,
   renameTarget,
@@ -32,7 +35,7 @@ import {
 export interface NoteFile {
   id: string;
   name: string;
-  kind?: "note" | "image";
+  kind?: "note" | "image" | "pdf";
   updatedAt?: string;
 }
 
@@ -44,9 +47,16 @@ export interface FileExplorerProps {
   onFilesChange?: (files: NoteFile[]) => void;
   refreshKey?: number;
   onFileDeleted?: (path: string) => void;
-  expanded?: boolean;
   width?: number;
   onBeforeFileAction?: (path: string) => void | Promise<void>;
+  /** Exporta la nota a PDF (la abre en el editor con el diálogo listo). */
+  onExportPdf?: (file: NoteFile) => void;
+}
+
+/** Acciones imperativas que el explorador expone a la app (botón de bienvenida). */
+export interface FileExplorerHandle {
+  /** Crea una nota en la carpeta actual y la abre. */
+  newNote: () => void;
 }
 
 interface VaultEntry {
@@ -101,7 +111,7 @@ function toNoteFile(entry: VaultEntry): NoteFile {
   return {
     id: entry.path,
     name: entry.name,
-    kind: isImageName(entry.name) ? "image" : "note",
+    kind: isImageName(entry.name) ? "image" : isPdfName(entry.name) ? "pdf" : "note",
     updatedAt: formatModified(entry.modified_ms),
   };
 }
@@ -168,19 +178,25 @@ function RenameField({
   );
 }
 
-export default function FileExplorer({
-  vaultPath,
-  files,
-  activeId,
-  onSelect,
-  onFilesChange,
-  refreshKey = 0,
-  onFileDeleted,
-  onBeforeFileAction,
-  expanded = false,
-  width,
-}: FileExplorerProps) {
+const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function FileExplorer(
+  {
+    vaultPath,
+    files,
+    activeId,
+    onSelect,
+    onFilesChange,
+    refreshKey = 0,
+    onFileDeleted,
+    onBeforeFileAction,
+    onExportPdf,
+    width,
+  },
+  ref,
+) {
   const staticMode = files !== undefined;
+
+  /** El botón «Nueva nota» de la pantalla de bienvenida hace lo mismo que «+». */
+  useImperativeHandle(ref, () => ({ newNote: () => void handleNewNote() }));
 
   const [trail, setTrail] = useState<FolderEntry[]>(() => [
     { name: rootLabel(vaultPath), path: vaultPath },
@@ -209,6 +225,11 @@ export default function FileExplorer({
   const [dragOverPath, setDragOverPath] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
+  /** Handler más reciente de Supr: el listener de window se engancha una sola vez. */
+  const deleteKeyRef = useRef<(event: KeyboardEvent) => void>(() => {});
+  /** Raíz de la lista de filas: para anclar el menú a la fila bajo el teclado. */
+  const listRef = useRef<HTMLUListElement | null>(null);
+
   function reload() {
     setReloadKey((key) => key + 1);
   }
@@ -219,15 +240,6 @@ export default function FileExplorer({
     setConfirmId(null);
     setMovingId(null);
     setDestinations(null);
-  }
-
-  function menuFromButton(
-    event: ReactMouseEvent<HTMLButtonElement>,
-    id: string,
-    kind: "file" | "folder",
-  ) {
-    const rect = event.currentTarget.getBoundingClientRect();
-    openMenu(id, kind, rect.left, rect.bottom + 4);
   }
 
   function menuFromContext(
@@ -352,6 +364,84 @@ export default function FileExplorer({
     return () => window.removeEventListener("keydown", onKey);
   }, [menu]);
 
+  // El manejador siempre refleja el último render (menú, confirmación y props vivos).
+  useEffect(() => {
+    deleteKeyRef.current = handleDeleteKey;
+  });
+
+  /** Localiza la fila en el DOM para anclar el menú en la posición del teclado. */
+  function findRowElement(id: string): HTMLElement | null {
+    for (const row of listRef.current?.querySelectorAll<HTMLElement>("[data-entry-id]") ?? []) {
+      if (row.dataset.entryId === id) return row;
+    }
+    return null;
+  }
+
+  /**
+   * Supr: borra el archivo o carpeta resaltado en dos pasos — la primera pulsación
+   * abre el confirm del menú anclado a la fila; la segunda lo mueve a la papelera.
+   */
+  function handleDeleteKey(event: KeyboardEvent) {
+    if (event.key !== "Delete" || event.repeat || event.defaultPrevented) return;
+    if (staticMode || busy) return;
+
+    // No interceptar teclas dentro de campos (renombrado, editor, paleta…).
+    const target = event.target;
+    if (
+      target instanceof HTMLElement &&
+      target.closest("input, textarea, select, [contenteditable]")
+    ) {
+      return;
+    }
+
+    // Paso 2: el confirm está abierto → otra vez Supr lo confirma.
+    if (menu && confirmId === menu.id) {
+      event.preventDefault();
+      if (menuFolder) void deleteFolder(menuFolder);
+      else if (menuFile) void deleteFile(menuFile);
+      return;
+    }
+
+    // Con el menú ya abierto, Supr marca «Eliminar…» en ese mismo menú.
+    if (menu) {
+      event.preventDefault();
+      setConfirmId(menu.id);
+      return;
+    }
+
+    // Destino: la fila bajo el evento o, en su defecto, la resaltada.
+    const row = target instanceof Element ? target.closest<HTMLElement>("[data-entry-id]") : null;
+    let id: string | null = row ? (row.dataset.entryId ?? null) : currentId;
+    let kind: "file" | "folder" | null = null;
+
+    if (row) kind = row.dataset.entryKind === "folder" ? "folder" : "file";
+    if (!id) return;
+    if (!kind) {
+      if (items.some((file) => file.id === id)) kind = "file";
+      else if (folders.some((folder) => folder.path === id)) kind = "folder";
+      else return;
+    }
+
+    const element = findRowElement(id);
+    if (!element) return;
+
+    event.preventDefault();
+    const rect = element.getBoundingClientRect();
+    openMenu(id, kind, rect.left, rect.bottom + 4);
+    setConfirmId(id);
+  }
+
+  useEffect(() => {
+    if (staticMode) return;
+
+    function onKey(event: KeyboardEvent) {
+      deleteKeyRef.current(event);
+    }
+
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [staticMode]);
+
   useEffect(() => {
     if (staticMode) return;
 
@@ -455,7 +545,7 @@ export default function FileExplorer({
   async function commitRename(file: NoteFile, rawValue: string) {
     setRenamingId(null);
 
-    const kind = file.kind === "image" ? "image" : "note";
+    const kind = file.kind === "image" || file.kind === "pdf" ? file.kind : "note";
     const target = renameTarget(file.id, rawValue, kind);
     if (target === file.id) return;
 
@@ -535,7 +625,7 @@ export default function FileExplorer({
     setActionError(null);
     setBusyId(file.id);
     try {
-      if (file.kind !== "image") await onBeforeFileAction?.(file.id);
+      if (file.kind !== "image" && file.kind !== "pdf") await onBeforeFileAction?.(file.id);
 
       const newPath = await invoke<string>("move_vault_file", {
         from: file.id,
@@ -565,7 +655,7 @@ export default function FileExplorer({
     setBusyId(folder.path);
     try {
       const activeInside = activeId && isInsidePath(activeId, folder.path) ? activeId : null;
-      if (activeInside && !isImageName(activeInside)) {
+      if (activeInside && !isImageName(activeInside) && !isPdfName(activeInside)) {
         await onBeforeFileAction?.(activeInside);
       }
 
@@ -579,7 +669,7 @@ export default function FileExplorer({
         onSelect?.({
           id: movedActivePath,
           name: baseName(movedActivePath),
-          kind: isImageName(movedActivePath) ? "image" : "note",
+          kind: isImageName(movedActivePath) ? "image" : isPdfName(movedActivePath) ? "pdf" : "note",
           updatedAt: "ahora",
         });
       }
@@ -604,7 +694,7 @@ export default function FileExplorer({
     setActionError(null);
     setBusyId(file.id);
     try {
-      if (file.kind !== "image") await onBeforeFileAction?.(file.id);
+      if (file.kind !== "image" && file.kind !== "pdf") await onBeforeFileAction?.(file.id);
 
       await invoke("move_to_trash", { path: file.id });
       closeMenu();
@@ -637,7 +727,7 @@ export default function FileExplorer({
   }
 
   const busy = busyId !== null;
-  const noteCount = items.filter((file) => file.kind !== "image").length;
+  const noteCount = items.filter((file) => file.kind !== "image" && file.kind !== "pdf").length;
   const imageCount = items.length - noteCount;
   const summary =
     status === "loading"
@@ -652,8 +742,6 @@ export default function FileExplorer({
             .filter(Boolean)
             .join(" · ");
 
-  const menuButtonClass =
-    "relative z-10 mr-1 shrink-0 rounded-md p-1 text-gus-muted opacity-0 transition hover:text-gus-text focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none group-hover:opacity-100";
   const menuItemClass =
     "flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-gus-accent/60 focus-visible:outline-none";
 
@@ -663,11 +751,8 @@ export default function FileExplorer({
 
   return (
     <aside
-      style={expanded ? undefined : { width }}
-      className={clsx(
-        "flex h-full shrink-0 flex-col gap-3 bg-gus-panel p-3",
-        expanded ? "w-full" : "w-60 border-r border-gus-border",
-      )}
+      style={{ width }}
+      className="flex h-full w-60 shrink-0 flex-col gap-3 border-r border-gus-border bg-gus-panel p-3"
     >
       <header className="flex items-start justify-between gap-2 pl-1">
         <div className="min-w-0">
@@ -770,10 +855,12 @@ export default function FileExplorer({
         />
       )}
 
-      <ul className="gus-scrollbar flex-1 space-y-1 overflow-y-auto pr-1">
+      <ul ref={listRef} className="gus-scrollbar flex-1 space-y-1 overflow-y-auto pr-1">
         {folders.map((folder) => (
           <li
             key={folder.path}
+            data-entry-id={folder.path}
+            data-entry-kind="folder"
             draggable={!staticMode && renamingId !== folder.path}
             onDragStart={(event) => startDrag(event, { kind: "folder", path: folder.path })}
             onDragEnd={clearDrag}
@@ -801,7 +888,7 @@ export default function FileExplorer({
                 <button
                   type="button"
                   onClick={() => enterFolder(folder)}
-                  title={`${folder.path}\nArrastra para mover`}
+                  title={`${folder.path}\nArrastra para mover\nClic derecho: opciones`}
                   className="flex min-w-0 flex-1 cursor-grab items-center gap-2 rounded-lg border border-transparent px-2 py-1.5 text-left text-gus-muted transition-colors hover:bg-gus-card hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none active:cursor-grabbing"
                 >
                   <Folder
@@ -820,23 +907,6 @@ export default function FileExplorer({
                   </span>
                 </button>
               )}
-
-              {!staticMode && (
-                <button
-                  type="button"
-                  onClick={(event) => menuFromButton(event, folder.path, "folder")}
-                  title="Opciones"
-                  aria-label={`Opciones de ${folder.name}`}
-                  aria-haspopup="menu"
-                  aria-expanded={menu?.id === folder.path}
-                  className={clsx(
-                    menuButtonClass,
-                    menu?.id === folder.path && "opacity-100",
-                  )}
-                >
-                  <MoreVertical className="h-3.5 w-3.5" aria-hidden="true" />
-                </button>
-              )}
             </div>
           </li>
         ))}
@@ -846,11 +916,12 @@ export default function FileExplorer({
             const isCurrent = file.id === currentId;
             const isActive = isCurrent;
             const isRenaming = renamingId === file.id;
-            const isMenuOpen = menu?.id === file.id;
 
             return (
               <motion.li
                 key={file.id}
+                data-entry-id={file.id}
+                data-entry-kind="file"
                 layout
                 initial={false}
                 exit={{ opacity: 0, x: -16, transition: { duration: 0.18 } }}
@@ -888,7 +959,7 @@ export default function FileExplorer({
                       <button
                         type="button"
                         onClick={() => select(file)}
-                        title={`${file.name}\nArrastra para mover`}
+                        title={`${file.name}\nArrastra para mover\nClic derecho: opciones`}
                         aria-current={isCurrent ? "true" : undefined}
                         className={clsx(
                           "relative flex min-w-0 flex-1 cursor-grab items-center gap-2 rounded-lg border px-2 py-1.5 text-left outline-none transition-colors active:cursor-grabbing",
@@ -914,6 +985,15 @@ export default function FileExplorer({
                             strokeWidth={1.75}
                             aria-hidden="true"
                           />
+                        ) : file.kind === "pdf" ? (
+                          <FileIcon
+                            className={clsx(
+                              "relative h-4 w-4 shrink-0",
+                              isActive ? "text-gus-accent" : "text-gus-muted",
+                            )}
+                            strokeWidth={1.75}
+                            aria-hidden="true"
+                          />
                         ) : (
                           <FileText
                             className={clsx(
@@ -927,23 +1007,13 @@ export default function FileExplorer({
                         <span className="relative min-w-0 flex-1">
                           <span className="block truncate font-mono text-xs">{file.name}</span>
                           <span className="block truncate text-[10px] text-gus-muted">
-                            {file.kind === "image" ? "imagen" : (file.updatedAt ?? "")}
+                            {file.kind === "image"
+                              ? "imagen"
+                              : file.kind === "pdf"
+                                ? "pdf"
+                                : (file.updatedAt ?? "")}
                           </span>
                         </span>
-                      </button>
-                    )}
-
-                    {!staticMode && (
-                      <button
-                        type="button"
-                        onClick={(event) => menuFromButton(event, file.id, "file")}
-                        title="Opciones"
-                        aria-label={`Opciones de ${file.name}`}
-                        aria-haspopup="menu"
-                        aria-expanded={isMenuOpen}
-                        className={clsx(menuButtonClass, isMenuOpen && "opacity-100")}
-                      >
-                        <MoreVertical className="h-3.5 w-3.5" aria-hidden="true" />
                       </button>
                     )}
                   </motion.div>
@@ -1116,6 +1186,23 @@ export default function FileExplorer({
             </div>
           ) : menuFile ? (
             <div className="py-1">
+              {!isImageName(menuFile.name) && !isPdfName(menuFile.name) && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    const target = menuFile;
+                    setMenu(null);
+                    onExportPdf?.(target);
+                  }}
+                  className={clsx(
+                    menuItemClass,
+                    "text-gus-muted hover:bg-gus-panel hover:text-gus-text",
+                  )}
+                >
+                  Exportar a PDF
+                </button>
+              )}
               <button
                 type="button"
                 role="menuitem"
@@ -1155,4 +1242,6 @@ export default function FileExplorer({
       )}
     </aside>
   );
-}
+});
+
+export default FileExplorer;

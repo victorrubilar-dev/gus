@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useEffect,
   useRef,
   useState,
@@ -23,7 +25,7 @@ import CalendarView from "./components/CalendarView";
 import CommandPalette from "./components/CommandPalette";
 import NewTaskDialog from "./components/NewTaskDialog";
 import DashboardView from "./components/DashboardView";
-import FileExplorer, { type NoteFile } from "./components/FileExplorer";
+import FileExplorer, { type FileExplorerHandle, type NoteFile } from "./components/FileExplorer";
 import MarkdownEditor, {
   type EditorDraft,
   type MarkdownEditorHandle,
@@ -32,6 +34,7 @@ import SettingsPanel from "./components/SettingsPanel";
 import TaskList from "./components/TaskList";
 import TrashView from "./components/TrashView";
 import VaultPicker, { type VaultAppConfig, type VaultInfo } from "./components/VaultPicker";
+import WelcomePanel from "./components/WelcomePanel";
 import { baseName, joinPath, safeFileName } from "./lib/fileName";
 import { findWikiNote, wikiTargetToPath, type WikiNote } from "./lib/wikiLink";
 import { accentHex, DEFAULT_SETTINGS, normalizeSettings, type AppSettings } from "./lib/settings";
@@ -50,6 +53,13 @@ interface OpenNote {
 }
 
 interface OpenImage {
+  path: string;
+  title: string;
+  src: string | null;
+  error?: string;
+}
+
+interface OpenPdf {
   path: string;
   title: string;
   src: string | null;
@@ -125,6 +135,9 @@ function titleFromFileName(name: string): string {
   return name.replace(/\.md$/i, "");
 }
 
+// Visor de PDF: carga pdf.js solo cuando se abre el primer documento.
+const PdfViewer = lazy(() => import("./components/PdfViewer"));
+
 function App() {
   const [activeTab, setActiveTab] = useState<TabId>("home");
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -132,8 +145,12 @@ function App() {
   const [note, setNote] = useState<OpenNote | null>(null);
   const [noteStatus, setNoteStatus] = useState<NoteStatus>("idle");
   const [noteError, setNoteError] = useState<string | null>(null);
+  /** Nota que debe abrir el diálogo de exportación a PDF en cuanto cargue. */
+  const [pendingExport, setPendingExport] = useState<string | null>(null);
   const [image, setImage] = useState<OpenImage | null>(null);
   const [imageStatus, setImageStatus] = useState<NoteStatus>("idle");
+  const [pdf, setPdf] = useState<OpenPdf | null>(null);
+  const [pdfStatus, setPdfStatus] = useState<NoteStatus>("idle");
   const [vaultRefresh, setVaultRefresh] = useState(0);
   const [linkError, setLinkError] = useState<string | null>(null);
   const linkErrorTimerRef = useRef<number | null>(null);
@@ -153,8 +170,12 @@ function App() {
 
   const notePathRef = useRef<string | null>(null);
   const editorRef = useRef<MarkdownEditorHandle>(null);
+  /** Para que el panel de bienvenida cree notas igual que el «+» del explorador. */
+  const explorerRef = useRef<FileExplorerHandle>(null);
   /** Solo la última petición de imagen puede escribir en el estado. */
   const imageRequestRef = useRef(0);
+  /** Solo la última petición de PDF puede escribir en el estado. */
+  const pdfRequestRef = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -233,10 +254,17 @@ function App() {
       handleSelectImage(file);
       return;
     }
+    if (file.kind === "pdf") {
+      handleSelectPdf(file);
+      return;
+    }
 
     imageRequestRef.current += 1;
     setImage(null);
     setImageStatus("idle");
+    pdfRequestRef.current += 1;
+    setPdf(null);
+    setPdfStatus("idle");
 
     setNoteStatus("loading");
     setNoteError(null);
@@ -252,7 +280,17 @@ function App() {
         setNote(null);
         setNoteError(String(error));
         setNoteStatus("error");
+        setPendingExport(null);
       });
+  }
+
+  /**
+   * «Exportar a PDF» desde el explorador: se abre la nota (si no lo estaba) y
+   * el editor muestra el diálogo con la vista previa ya montada.
+   */
+  function handleExportPdf(file: NoteFile) {
+    setPendingExport(file.id);
+    if (note?.path !== file.id || noteStatus !== "ready") handleSelectNote(file);
   }
 
   function handlePaletteSelectNote(file: { path: string; name: string }) {
@@ -263,6 +301,9 @@ function App() {
 
   function handleSelectImage(file: NoteFile) {
     const token = ++imageRequestRef.current;
+    pdfRequestRef.current += 1;
+    setPdf(null);
+    setPdfStatus("idle");
     notePathRef.current = null;
     setNote(null);
     setNoteStatus("idle");
@@ -284,6 +325,32 @@ function App() {
       });
   }
 
+  function handleSelectPdf(file: NoteFile) {
+    const token = ++pdfRequestRef.current;
+    imageRequestRef.current += 1;
+    setImage(null);
+    setImageStatus("idle");
+    notePathRef.current = null;
+    setNote(null);
+    setNoteStatus("idle");
+    setNoteError(null);
+
+    setPdf({ path: file.id, title: file.name, src: null });
+    setPdfStatus("loading");
+
+    invoke<string>("read_vault_pdf", { path: file.id })
+      .then((src) => {
+        if (token !== pdfRequestRef.current) return;
+        setPdf({ path: file.id, title: file.name, src });
+        setPdfStatus("ready");
+      })
+      .catch((error: unknown) => {
+        if (token !== pdfRequestRef.current) return;
+        setPdf({ path: file.id, title: file.name, src: null, error: String(error) });
+        setPdfStatus("error");
+      });
+  }
+
   function handleAutoSave(draft: EditorDraft) {
     if (notePathRef.current && notePathRef.current !== draft.path) {
       setVaultRefresh((key) => key + 1);
@@ -297,6 +364,13 @@ function App() {
       imageRequestRef.current += 1;
       setImage(null);
       setImageStatus("idle");
+      return;
+    }
+
+    if (pdf?.path === path) {
+      pdfRequestRef.current += 1;
+      setPdf(null);
+      setPdfStatus("idle");
       return;
     }
 
@@ -367,12 +441,15 @@ function App() {
 
   function closeOpenNote() {
     imageRequestRef.current += 1;
+    pdfRequestRef.current += 1;
     notePathRef.current = null;
     setNote(null);
     setNoteStatus("idle");
     setNoteError(null);
     setImage(null);
     setImageStatus("idle");
+    setPdf(null);
+    setPdfStatus("idle");
   }
 
   function openVault(path: string) {
@@ -659,37 +736,40 @@ function App() {
   }
 
   const showEntryPanel =
-    image !== null || note !== null || noteStatus === "loading" || noteStatus === "error";
+    image !== null ||
+    pdf !== null ||
+    note !== null ||
+    noteStatus === "loading" ||
+    noteStatus === "error";
 
   const notesView = currentVault === null ? null : (
     <div className="flex h-full w-full">
       <FileExplorer
+        ref={explorerRef}
         vaultPath={currentVault}
-        activeId={note?.path ?? image?.path ?? null}
+        activeId={note?.path ?? image?.path ?? pdf?.path ?? null}
         onSelect={handleSelectNote}
         refreshKey={vaultRefresh}
         onFileDeleted={handleFileDeleted}
         onBeforeFileAction={handleBeforeFileAction}
-        expanded={!showEntryPanel}
+        onExportPdf={handleExportPdf}
         width={explorerWidth}
       />
 
-      {showEntryPanel && (
-        <div
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Redimensionar el explorador de notas"
-          aria-valuenow={explorerWidth}
-          aria-valuemin={EXPLORER_MIN_WIDTH}
-          aria-valuemax={EXPLORER_MAX_WIDTH}
-          tabIndex={0}
-          title="Arrastra para redimensionar · doble clic: tamaño normal"
-          onPointerDown={handleExplorerResizeStart}
-          onDoubleClick={() => changeExplorerWidth(EXPLORER_DEFAULT_WIDTH)}
-          onKeyDown={handleExplorerResizeKeyDown}
-          className="w-1.5 shrink-0 cursor-col-resize touch-none transition-colors hover:bg-gus-accent/40 focus-visible:bg-gus-accent/60 focus-visible:outline-none"
-        />
-      )}
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Redimensionar el explorador de notas"
+        aria-valuenow={explorerWidth}
+        aria-valuemin={EXPLORER_MIN_WIDTH}
+        aria-valuemax={EXPLORER_MAX_WIDTH}
+        tabIndex={0}
+        title="Arrastra para redimensionar · doble clic: tamaño normal"
+        onPointerDown={handleExplorerResizeStart}
+        onDoubleClick={() => changeExplorerWidth(EXPLORER_DEFAULT_WIDTH)}
+        onKeyDown={handleExplorerResizeKeyDown}
+        className="w-1.5 shrink-0 cursor-col-resize touch-none transition-colors hover:bg-gus-accent/40 focus-visible:bg-gus-accent/60 focus-visible:outline-none"
+      />
 
       {showEntryPanel && (
         <div className="flex min-w-0 flex-1 flex-col">
@@ -722,6 +802,36 @@ function App() {
                     alt={image.title}
                     className="max-h-full max-w-full rounded-lg border border-white/10 object-contain shadow-2xl"
                   />
+                )}
+              </div>
+            </div>
+          ) : pdf ? (
+            <div className="flex h-full min-h-0 flex-col">
+              <div className="flex items-center justify-between gap-3 border-b border-gus-border bg-gus-panel px-4 py-2">
+                <span className="truncate font-mono text-xs text-gus-muted">{pdf.title}</span>
+                <span className="shrink-0 rounded-full border border-gus-accent/40 bg-gus-accent/15 px-2 py-0.5 text-[10px] uppercase tracking-wide text-gus-accent">
+                  PDF
+                </span>
+              </div>
+
+              <div className="flex min-h-0 flex-1 flex-col items-center justify-center bg-black/20">
+                {pdfStatus === "loading" && (
+                  <p className="text-sm text-white/60">Cargando PDF…</p>
+                )}
+
+                {pdfStatus === "error" && (
+                  <div className="flex max-w-md flex-col items-center gap-2 px-6 text-center">
+                    <p className="text-sm text-gus-muted">No se pudo abrir el PDF</p>
+                    {pdf.error && (
+                      <p className="break-words text-xs text-rose-300">{pdf.error}</p>
+                    )}
+                  </div>
+                )}
+
+                {pdfStatus === "ready" && pdf.src && (
+                  <Suspense fallback={<p className="text-sm text-white/60">Cargando visor…</p>}>
+                    <PdfViewer src={pdf.src} title={pdf.title} />
+                  </Suspense>
                 )}
               </div>
             </div>
@@ -758,11 +868,23 @@ function App() {
                   onSpellWordsChange={(words) =>
                     handleSettingsChange({ ...settings, spellWords: words })
                   }
+                  autoExportPath={pendingExport}
+                  onAutoExportShown={() => setPendingExport(null)}
                 />
               )}
             </>
           )}
         </div>
+      )}
+
+      {!showEntryPanel && (
+        <WelcomePanel
+          vaultPath={currentVault}
+          refreshKey={vaultRefresh}
+          onNewNote={() => explorerRef.current?.newNote()}
+          onOpenPalette={() => setPaletteOpen(true)}
+          onOpenNote={handleSelectNote}
+        />
       )}
     </div>
   );

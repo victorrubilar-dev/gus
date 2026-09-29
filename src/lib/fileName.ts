@@ -38,16 +38,21 @@ export function isImageName(name: string): boolean {
   return /\.(png|jpe?g|gif|webp|svg|bmp|avif)$/i.test(name);
 }
 
+export function isPdfName(name: string): boolean {
+  return /\.pdf$/i.test(name);
+}
+
 export function isInsidePath(path: string, dir: string): boolean {
   if (path === dir) return true;
   const separator = dir.includes("\\") && !dir.includes("/") ? "\\" : "/";
   return path.startsWith(dir.endsWith(separator) ? dir : `${dir}${separator}`);
 }
 
-export function renameTarget(path: string, rawValue: string, kind: "note" | "image"): string {
-  if (kind === "image") {
+export function renameTarget(path: string, rawValue: string, kind: "note" | "image" | "pdf"): string {
+  if (kind !== "note") {
     const extension = path.match(/\.[^./\\]+$/)?.[0] ?? "";
-    const stripped = isImageName(rawValue) ? rawValue.replace(/\.[^./\\]+$/, "") : rawValue;
+    const typedHasExtension = kind === "pdf" ? isPdfName(rawValue) : isImageName(rawValue);
+    const stripped = typedHasExtension ? rawValue.replace(/\.[^./\\]+$/, "") : rawValue;
     return joinPath(parentPath(path), `${safeFileName(stripped)}${extension}`);
   }
   return pathWithTitle(path, rawValue);

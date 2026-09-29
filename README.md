@@ -20,7 +20,7 @@ WebView del sistema en lugar de meter un Chromium entero).
 
 ## ✨ Qué puede hacer
 
-- 📝 **Notas Markdown** — explorador de carpetas (crear, renombrar, mover y borrar), editor con renderizado en línea del markdown (la línea del cursor se muestra en crudo), tablas en vivo al estilo Obsidian sin fuente a la vista (clic en una celda para escribir en ella como en Excel; Tab/Enter recorren las celdas y añaden filas), vista previa a pantalla completa con casillas clicables, deshacer/rehacer (Ctrl+Z / Ctrl+Shift+Z) y autoguardado con debounce de 500 ms.
+- 📝 **Notas Markdown** — explorador de carpetas (crear, renombrar, mover y borrar; con **Supr** se borra lo resaltado: la primera pulsación abre el confirm y la segunda lo mueve a la papelera), editor con renderizado en línea del markdown (la línea del cursor se muestra en crudo), tablas en vivo al estilo Obsidian sin fuente a la vista (clic en una celda para escribir en ella como en Excel; Tab/Enter recorren las celdas y añaden filas), listas numeradas con **renumeración automática** (al quitar o añadir una línea, las que siguen se actualizan y no quedan huecos ni números repetidos; el número inicial se conserva), vista previa a pantalla completa con casillas clicables, deshacer/rehacer (Ctrl+Z / Ctrl+Shift+Z) y autoguardado con debounce de 500 ms. Los `.pdf` del vault abren un **visor integrado** (pdf.js) con zoom y paginación, igual que las imágenes.
 - 🏷️ **Etiquetas** — chips en la cabecera del editor; viven en el frontmatter `tags: [a, b]` del `.md` y se autocompletan con las etiquetas ya usadas en el vault.
 - 🧰 **Menú `/`** — inserta títulos, listas, tareas, citas, tablas, código, imágenes, separadores, fórmulas y diagramas; ↑↓, Intro y Esc.
 - 🔤 **Corrector ortográfico** — subrayado ondulado en palabras mal escritas y 7 idiomas elegibles (o desactivado) en Ajustes.
@@ -28,6 +28,7 @@ WebView del sistema en lugar de meter un Chromium entero).
 - 📐 **Fórmulas y diagramas** — `$…$` / `$$…$$` con KaTeX y bloques ` ```mermaid ` con Mermaid, ambos con carga diferida.
 - 🖼️ **Visor de imágenes** — png, jpg, gif, webp y svg se abren en el panel derecho.
 - ↔️ **Panel ajustable** — divisor arrastrable entre explorador y panel (← →, Home/End; doble clic lo restablece); el ancho se recuerda entre sesiones.
+- 🏡 **Pantalla de bienvenida** — mientras no haya nada abierto, el explorador conserva su ancho y el panel derecho ofrece «Nueva nota», la paleta (Ctrl+K), los atajos y las notas editadas recientemente.
 - ✅ **Tareas** — almacén `.gus-tasks.json` por vault; creación con panel superpuesto (etiquetas, prioridad, plazo con calendario), prioridad con bandera de color, tablero Kanban arrastrable y vista lista, filtro por `#etiqueta`. También lee las tareas de las notas (`- [ ]` / `- [x]` con `!prioridad` y `📅`) y reescribe solo la checkbox en el `.md`.
 - 📅 **Calendario** — mes en cuadrícula con vencidas / hoy / este mes, detalle por día y filtro por etiquetas.
 - 🗂️ **Carpetas reales** — breadcrumb, creación de carpetas y arrastre de notas, imágenes y carpetas; renombrar y borrar desde el menú contextual.
@@ -153,6 +154,7 @@ gus/
 │  │  ├─ TrashView.tsx      # Papelera: lista, restaurar y vaciar .gus-trash
 │  │  ├─ NewTaskDialog.tsx  # Formulario superpuesto de nueva tarea
 │  │  ├─ EditorContextMenu.tsx # Menú del clic derecho: corrector, edición, insertar/texto/formato
+│  │  ├─ WelcomePanel.tsx   # Bienvenida: nueva nota, atajos y notas recientes
 │  │  └─ DatePicker.tsx     # Mini calendario integrado para elegir el plazo
 │  ├─ utils/
 │  │  └─ taskParser.ts      # Extrae - [ ] / - [x] de un .md: prioridad y #tags
@@ -163,6 +165,7 @@ gus/
 │     ├─ calendarDate.ts    # Fechas: AAAA-MM-DD, meses y rejillas (lunes 1.º)
 │     ├─ fileName.ts        # Utilidades de rutas y nombres
 │     ├─ listContinue.ts     # Intro en listas: continúa el marcador o lo retira
+│     ├─ listNumbering.ts    # Renumera la lista numerada que contiene al cursor
 │     ├─ markdownTasks.ts   # Lee y edita líneas - [ ] / - [x] (+ 📅)
 │     ├─ noteTags.ts        # Etiquetas: frontmatter oculto y menú desplegable
 │     ├─ taskPriority.ts    # Prioridades: tipos, colores, orden y ciclo
@@ -185,7 +188,7 @@ gus/
 ## 🧪 Verificación
 
 ```bash
-cd src-tauri && cargo test --lib   # tests de Rust (39)
+cd src-tauri && cargo test --lib   # tests de Rust (40)
 cd src-tauri && cargo clippy --all-targets
 npx tsc --noEmit                   # tipos de TypeScript
 pnpm build                         # build completo

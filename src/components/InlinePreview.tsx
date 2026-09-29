@@ -1,6 +1,13 @@
-import { memo, type CSSProperties, type ReactNode, type Ref } from "react";
+import { memo, useMemo, type CSSProperties, type ReactNode, type Ref } from "react";
 import clsx from "clsx";
 import type { SpellFn } from "../lib/spellCheck";
+import {
+  delimiterAlign,
+  sourceSegments,
+  splitTableCells,
+  type TableCellCaret,
+  type TableCellSpan,
+} from "../lib/tableLayout";
 
 export interface SourceLine {
   text: string;
@@ -283,6 +290,110 @@ function visibleFor(
   return { nodes: inlineNodes(text, spell), layerClass: "" };
 }
 
+interface TableBlockProps {
+  lines: SourceLine[];
+  start: number;
+  rowPitch: number;
+  offsets: number[];
+  spell: SpellFn | null;
+  tableCaret: TableCellCaret | null;
+}
+
+/** Contenido de una celda; si está activa, marca la selección o el caret. */
+function cellNodes(
+  span: TableCellSpan,
+  cellStart: number,
+  cellEnd: number,
+  active: TableCellCaret | null,
+  spell: SpellFn | null,
+): ReactNode {
+  if (!active) return inlineNodes(span.text, spell);
+  const selStart = Math.min(Math.max(active.selStart, cellStart), cellEnd);
+  const selEnd = Math.min(Math.max(active.selEnd, cellStart), cellEnd);
+  const relStart = selStart - cellStart;
+  const relEnd = selEnd - cellStart;
+  const pre = span.text.slice(0, relStart);
+  const mid = span.text.slice(relStart, relEnd);
+  const post = span.text.slice(relEnd);
+  return (
+    <>
+      {pre !== "" && inlineNodes(pre, spell)}
+      {selStart === selEnd ? (
+        <span className="gus-cell-caret" />
+      ) : (
+        <span className="rounded-[2px] bg-gus-accent/30">{inlineNodes(mid, spell)}</span>
+      )}
+      {post !== "" && inlineNodes(post, spell)}
+    </>
+  );
+}
+
+/**
+ * Tabla renderida al estilo Obsidian: nunca se ve la fuente Markdown. Una
+ * línea de origen = una fila de altura exacta (rowPitch), así el bloque ocupa
+ * exactamente las mismas filas que el textarea. La fila del separador (|---|)
+ * no se dibuja: la cabecera abarca su banda. El cursor se edita por celda con
+ * resaltado y un caret sintético en la posición real del texto.
+ */
+function TableBlock({ lines, start, rowPitch, offsets, spell, tableCaret }: TableBlockProps) {
+  const rows = lines.map((line) => splitTableCells(line.text));
+  const aligns = rows[1].map((cell) => delimiterAlign(cell.text));
+  const cols = rows.reduce((max, cells) => Math.max(max, cells.length), 1);
+  const outline = "1px solid var(--color-gus-border)";
+  const accentOutline = "1px solid var(--color-gus-accent)";
+
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: `repeat(${cols}, auto)`,
+        gridAutoRows: `${rowPitch}px`,
+      }}
+    >
+      {rows.map((cells, i) => {
+        if (i === 1) return null; // separador: la cabecera ocupa su banda
+
+        const line = start + i;
+        const lineStart = offsets[line];
+        const header = i === 0;
+        const padded: (TableCellSpan | null)[] = [...cells];
+        while (padded.length < cols) padded.push(null);
+
+        return padded.map((span, c) => {
+          const active =
+            tableCaret !== null && tableCaret.line === line && tableCaret.col === c;
+          const cellStart = lineStart + (span?.start ?? lines[i].text.length);
+          const cellEnd = lineStart + (span?.end ?? lines[i].text.length);
+
+          return (
+            <div
+              key={`${i}.${c}`}
+              data-cell=""
+              data-line={line}
+              data-col={c}
+              style={{
+                gridRow: header ? "1 / span 2" : i + 1,
+                gridColumn: c + 1,
+                outline: active ? accentOutline : outline,
+                textAlign: aligns[c] ?? "left",
+              }}
+              className={clsx(
+                "truncate px-2",
+                header ? "bg-gus-card font-semibold text-gus-text" : "text-gus-text",
+                active && !header && "bg-gus-accent/10",
+              )}
+            >
+              {span === null
+                ? null
+                : cellNodes(span, cellStart, cellEnd, active ? tableCaret : null, spell)}
+            </div>
+          );
+        });
+      })}
+    </div>
+  );
+}
+
 interface PreviewLineProps {
   text: string;
   code: boolean;
@@ -365,6 +476,10 @@ export interface InlinePreviewProps {
   spell?: SpellFn | null;
   raw?: boolean;
   slashHint?: boolean;
+  /** Ancho disponible medido en caracteres; null = aún sin medir. */
+  tableCols?: number | null;
+  /** Celda bajo el cursor para la edición estilo Excel (null = fuera de tabla). */
+  tableCaret?: TableCellCaret | null;
 }
 
 export default function InlinePreview({
@@ -378,6 +493,8 @@ export default function InlinePreview({
   spell = null,
   raw = false,
   slashHint = false,
+  tableCols = null,
+  tableCaret = null,
 }: InlinePreviewProps) {
   // La interlínea real la fija MarkdownEditor (medida sobre el textarea): al
   // escalar, el motor redondea las filas a píxeles enteros y el overlay debe
@@ -389,6 +506,22 @@ export default function InlinePreview({
   };
   (rootStyle as Record<string, string | number>)["--gus-row-h"] = `${rowHeight}px`;
 
+  const segments = useMemo(
+    () => sourceSegments(lines, raw, tableCols),
+    [lines, raw, tableCols],
+  );
+
+  // Offset absoluto de cada línea dentro del body (para rangos de celda).
+  const offsets = useMemo(() => {
+    const list: number[] = [];
+    let at = 0;
+    for (const line of lines) {
+      list.push(at);
+      at += line.text.length + 1;
+    }
+    return list;
+  }, [lines]);
+
   return (
     <div
       ref={overlayRef}
@@ -399,18 +532,30 @@ export default function InlinePreview({
         hidden && "invisible",
       )}
     >
-      {lines.map((line, index) => (
-        <PreviewLine
-          key={index}
-          text={line.text}
-          code={line.code}
-          fence={line.fence}
-          caret={!raw && index === caretLine}
-          raw={raw}
-          hint={slashHint}
-          spell={spell}
-        />
-      ))}
+      {segments.map((segment) =>
+        segment.kind === "table" ? (
+          <TableBlock
+            key={`table-${segment.start}`}
+            lines={lines.slice(segment.start, segment.end + 1)}
+            start={segment.start}
+            rowPitch={rowHeight}
+            offsets={offsets}
+            spell={spell}
+            tableCaret={tableCaret}
+          />
+        ) : (
+          <PreviewLine
+            key={segment.index}
+            text={lines[segment.index].text}
+            code={lines[segment.index].code}
+            fence={lines[segment.index].fence}
+            caret={!raw && segment.index === caretLine}
+            raw={raw}
+            hint={slashHint}
+            spell={spell}
+          />
+        ),
+      )}
     </div>
   );
 }

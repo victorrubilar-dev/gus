@@ -226,9 +226,9 @@ export default function EditorContextMenu({
         <button
           type="button"
           role="menuitem"
-          disabled={!hasSelection}
+          title={hasSelection ? "Cortar la selección" : "Cortar la línea entera"}
           onClick={onCut}
-          className={clsx(ITEM, "disabled:pointer-events-none disabled:opacity-40")}
+          className={ITEM}
         >
           <Scissors className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           Cortar
