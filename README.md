@@ -32,6 +32,7 @@ WebView del sistema en lugar de meter un Chromium entero).
 - ✅ **Tareas** — almacén `.gus-tasks.json` por vault; creación con panel superpuesto (etiquetas, prioridad, plazo con calendario), prioridad con bandera de color, tablero Kanban arrastrable y vista lista, filtro por `#etiqueta`. También lee las tareas de las notas (`- [ ]` / `- [x]` con `!prioridad` y `📅`) y reescribe solo la checkbox en el `.md`.
 - 📅 **Calendario** — mes en cuadrícula con vencidas / hoy / este mes, detalle por día y filtro por etiquetas.
 - 🗂️ **Carpetas reales** — barra de ruta con chevrons que se pliega sola cuando no cabe (lo oculto va tras «…», con desplegable para saltar a cualquier nivel), botones «atrás»/«adelante» con historial (**Alt+←** / **Alt+→**; **Alt+↑** sube al padre), creación de carpetas y arrastre de notas, imágenes y carpetas —también soltadas sobre la propia ruta—; renombrar y borrar desde el menú contextual.
+- 📥 **Añadir archivos** — botón «Añadir archivos» en el explorador **o arrastrando desde el gestor de archivos del sistema** (la ventana avisa con la carpeta exacta donde entrarán): copia `.md`, `.pdf` e imágenes a la carpeta que estés viendo sin tocar el original; lo que no sea de esos tipos se rechaza explicando el motivo.
 - 🗑️ **Papelera** — al eliminar, el elemento se mueve a `.gus-trash` (manifiesto de origen, retención de 30 días); admite **cualquier tipo de archivo** (`.md`, `.pdf`, `.png`, `.jpg`, `.txt`, `.zip`…, en cualquier formato de imagen) y carpetas, y permite restaurar, eliminar definitivamente o vaciar.
 - 🗃️ **Varios vaults** — panel de tarjetas con portadas y modo edición para la lista de vaults.
 - 📊 **Panel Resumen** — próximas tareas por prioridad, últimas notas modificadas, contadores y accesos rápidos.
@@ -164,6 +165,7 @@ gus/
 │     ├─ pasteText.ts       # Limpia marcas markdown al pegar sin formato
 │     ├─ calendarDate.ts    # Fechas: AAAA-MM-DD, meses y rejillas (lunes 1.º)
 │     ├─ fileName.ts        # Utilidades de rutas y nombres
+│     ├─ importFiles.ts     # Añadir archivos: filtros del diálogo y resumen
 │     ├─ listContinue.ts     # Intro en listas: continúa el marcador o lo retira
 │     ├─ listNumbering.ts    # Renumera la lista numerada que contiene al cursor
 │     ├─ markdownTasks.ts   # Lee y edita líneas - [ ] / - [x] (+ 📅)
@@ -177,7 +179,7 @@ gus/
 ├─ public/
 │  └─ dict/                 # Diccionarios hunspell (.aff/.dic por idioma, lazy)
 ├─ src-tauri/               # Backend (Rust)
-│  └─ src/lib.rs            # Comandos: leer, escribir, renombrar, borrar, papelera…
+│  └─ src/lib.rs            # Comandos: leer, escribir, renombrar, borrar, importar, papelera…
 ├─ index.html
 ├─ package.json
 └─ vite.config.ts
@@ -188,7 +190,7 @@ gus/
 ## 🧪 Verificación
 
 ```bash
-cd src-tauri && cargo test --lib   # tests de Rust (40)
+cd src-tauri && cargo test --lib   # tests de Rust (46)
 cd src-tauri && cargo clippy --all-targets
 npx tsc --noEmit                   # tipos de TypeScript
 pnpm build                         # build completo

@@ -17,9 +17,11 @@ import {
   Settings as SettingsIcon,
   StickyNote,
   Trash2,
+  Upload,
   type LucideIcon,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import clsx from "clsx";
 import CalendarView from "./components/CalendarView";
 import CommandPalette from "./components/CommandPalette";
@@ -35,7 +37,13 @@ import TaskList from "./components/TaskList";
 import TrashView from "./components/TrashView";
 import VaultPicker, { type VaultAppConfig, type VaultInfo } from "./components/VaultPicker";
 import WelcomePanel from "./components/WelcomePanel";
-import { baseName, joinPath, safeFileName } from "./lib/fileName";
+import { baseName, isInsidePath, joinPath, safeFileName } from "./lib/fileName";
+import {
+  importFilesIntoVault,
+  relativeFolderLabel,
+  summarizeImport,
+  type ImportSummary,
+} from "./lib/importFiles";
 import { findWikiNote, wikiTargetToPath, type WikiNote } from "./lib/wikiLink";
 import { accentHex, DEFAULT_SETTINGS, normalizeSettings, type AppSettings } from "./lib/settings";
 import { setPersonalWords } from "./lib/spellCheck";
@@ -154,6 +162,21 @@ function App() {
   const [vaultRefresh, setVaultRefresh] = useState(0);
   const [linkError, setLinkError] = useState<string | null>(null);
   const linkErrorTimerRef = useRef<number | null>(null);
+  /** Aviso del resultado de arrastrar archivos desde el explorador del sistema. */
+  const [importNotice, setImportNotice] = useState<ImportSummary | null>(null);
+  const importNoticeTimerRef = useRef<number | null>(null);
+  /** true mientras el usuario trae archivos del sistema sobre la ventana. */
+  const [droppingFiles, setDroppingFiles] = useState(false);
+  /** Carpeta bajo el cursor durante el arrastre: allí caerán los archivos. */
+  const [dropFolder, setDropFolder] = useState<string | null>(null);
+  /**
+   * Lo que hace el arrastre nativo, guardado en un ref para que el listener —
+   * enganchado una sola vez— siempre vea las últimas funciones y estados.
+   */
+  const dragDropRef = useRef<{
+    folder: (position: { x: number; y: number }) => string | null;
+    drop: (paths: string[], position: { x: number; y: number }) => Promise<void>;
+  }>({ folder: () => null, drop: async () => {} });
 
   const [sidebarWidth, setSidebarWidth] = useState(readStoredSidebarWidth);
   const sidebarWidthRef = useRef(sidebarWidth);
@@ -397,9 +420,117 @@ function App() {
     linkErrorTimerRef.current = window.setTimeout(() => setLinkError(null), 6000);
   }
 
+  function showImportNotice(summary: ImportSummary) {
+    setImportNotice(summary);
+    if (importNoticeTimerRef.current !== null) window.clearTimeout(importNoticeTimerRef.current);
+    importNoticeTimerRef.current = window.setTimeout(() => setImportNotice(null), 8000);
+  }
+
+  /**
+   * Carpeta que recibiría un arrastre: la fila bajo el cursor del explorador o,
+   * si no la hay, la carpeta que se está viendo (la raíz si no hay explorador).
+   *
+   * Tauri da la posición en píxeles físicos: se pasa a px de CSS y se comprueba
+   * con las dos cuentas posibles (con y sin el zoom de la interfaz). Si no
+   * coinciden no se arriesga: se usa la carpeta visible, que es la que anuncia
+   * el aviso antes de soltar.
+   */
+  function resolveDropFolder(position: { x: number; y: number }): string | null {
+    const vault = currentVault;
+    if (!vault) return null;
+
+    const dpr = window.devicePixelRatio || 1;
+    const x = position.x / dpr;
+    const y = position.y / dpr;
+
+    const bajo = (px: number, py: number): string | null => {
+      try {
+        const element = document.elementFromPoint(px, py);
+        const folder =
+          element instanceof Element ? element.closest<HTMLElement>("[data-drop-folder]") : null;
+        const path = folder?.dataset.dropFolder ?? null;
+        return path && isInsidePath(path, vault) ? path : null;
+      } catch {
+        return null;
+      }
+    };
+
+    const directo = bajo(x, y);
+    const conZoom = bajo(toLocalCoord(x), toLocalCoord(y));
+    const bajoCursor = directo !== null && directo === conZoom ? directo : null;
+
+    return bajoCursor ?? explorerRef.current?.currentDir() ?? vault;
+  }
+
+  /** Importa los archivos soltados y cuenta lo que ha dado de sí. */
+  async function handleDroppedFiles(paths: string[], position: { x: number; y: number }) {
+    const dest = resolveDropFolder(position);
+    if (!dest) {
+      showImportNotice({ ok: false, message: "Abre un vault para añadir archivos." });
+      return;
+    }
+    if (paths.length === 0) return;
+
+    try {
+      const items = await importFilesIntoVault(paths, dest);
+      showImportNotice(summarizeImport(items, relativeFolderLabel(dest, currentVault ?? dest)));
+      setVaultRefresh((key) => key + 1);
+    } catch (error: unknown) {
+      showImportNotice({ ok: false, message: String(error) });
+    }
+  }
+
+  // El ref siempre apunta a la versión más reciente de las funciones de arriba.
+  useEffect(() => {
+    dragDropRef.current = { folder: resolveDropFolder, drop: handleDroppedFiles };
+  });
+
+  /**
+   * Arrastre desde el explorador de archivos del sistema: Tauri intercepta ese
+   * drop nativo (el webview no recibe el `drop` de HTML5), así que se escucha
+   * aquí. Al entrar o al moverse se actualiza la carpeta que anuncia el aviso.
+   */
+  useEffect(() => {
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+
+    try {
+      getCurrentWebview()
+        .onDragDropEvent((event) => {
+          const payload = event.payload;
+          if (payload.type === "drop") {
+            setDroppingFiles(false);
+            setDropFolder(null);
+            void dragDropRef.current.drop(payload.paths, payload.position);
+          } else if (payload.type === "enter" || payload.type === "over") {
+            setDroppingFiles(true);
+            setDropFolder(dragDropRef.current.folder(payload.position));
+          } else {
+            setDroppingFiles(false);
+            setDropFolder(null);
+          }
+        })
+        .then((stop) => {
+          if (disposed) stop();
+          else unlisten = stop;
+        })
+        .catch(() => {});
+    } catch {
+      // Fuera de Tauri (navegador al desarrollar) no hay arrastre nativo.
+    }
+
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, []);
+
   useEffect(() => {
     return () => {
       if (linkErrorTimerRef.current !== null) window.clearTimeout(linkErrorTimerRef.current);
+      if (importNoticeTimerRef.current !== null) {
+        window.clearTimeout(importNoticeTimerRef.current);
+      }
     };
   }, []);
 
@@ -1130,9 +1261,45 @@ function App() {
           <div
             role="status"
             aria-live="polite"
-            className="fixed right-4 bottom-4 z-50 max-w-sm rounded-xl border border-rose-400/40 bg-gus-panel px-4 py-3 text-xs text-rose-300 shadow-2xl shadow-black/40"
+            className={clsx(
+              "fixed right-4 z-50 max-w-sm rounded-xl border border-rose-400/40 bg-gus-panel px-4 py-3 text-xs text-rose-300 shadow-2xl shadow-black/40",
+              importNotice ? "bottom-20" : "bottom-4",
+            )}
           >
             {linkError}
+          </div>
+        )}
+
+        {importNotice && (
+          <div
+            role="status"
+            aria-live="polite"
+            className={clsx(
+              "fixed right-4 bottom-4 z-50 max-w-sm rounded-xl border bg-gus-panel px-4 py-3 text-xs shadow-2xl shadow-black/40",
+              importNotice.ok
+                ? "border-gus-accent/40 text-gus-accent"
+                : "border-amber-400/40 text-amber-300",
+            )}
+          >
+            {importNotice.message}
+          </div>
+        )}
+
+        {droppingFiles && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="pointer-events-none fixed inset-3 z-40 flex flex-col items-center justify-center gap-2 rounded-3xl border-2 border-dashed border-gus-accent bg-gus-bg/80 text-center shadow-2xl shadow-black/40"
+          >
+            <Upload className="h-10 w-10 text-gus-accent" strokeWidth={1.5} aria-hidden="true" />
+            <p className="text-sm font-semibold text-gus-text">
+              {currentVault ? "Suelta para añadir al vault" : "Abre un vault para añadir archivos"}
+            </p>
+            {currentVault && (
+              <p className="max-w-md break-words text-xs text-gus-muted">
+                Entra en «{relativeFolderLabel(dropFolder ?? currentVault, currentVault)}»
+              </p>
+            )}
           </div>
         )}
       </div>

@@ -18,10 +18,12 @@ import {
   Folder,
   FolderPlus,
   Image as ImageIcon,
+  Import as ImportIcon,
   Plus,
   RefreshCw,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
 import clsx from "clsx";
 import { toLocalCoord } from "../lib/uiZoom";
 import {
@@ -34,6 +36,12 @@ import {
   renameTarget,
   safeFileName,
 } from "../lib/fileName";
+import {
+  IMPORT_FILTERS,
+  importFilesIntoVault,
+  relativeFolderLabel,
+  summarizeImport,
+} from "../lib/importFiles";
 
 export interface NoteFile {
   id: string;
@@ -60,6 +68,8 @@ export interface FileExplorerProps {
 export interface FileExplorerHandle {
   /** Crea una nota en la carpeta actual y la abre. */
   newNote: () => void;
+  /** Carpeta que se está viendo: destino por defecto al arrastrar archivos. */
+  currentDir: () => string;
 }
 
 interface VaultEntry {
@@ -268,7 +278,10 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
   const staticMode = files !== undefined;
 
   /** El botón «Nueva nota» de la pantalla de bienvenida hace lo mismo que «+». */
-  useImperativeHandle(ref, () => ({ newNote: () => void handleNewNote() }));
+  useImperativeHandle(ref, () => ({
+    newNote: () => void handleNewNote(),
+    currentDir: () => currentDir,
+  }));
 
   const [nav, setNav] = useState<TrailState>(() => ({
     trail: [{ name: rootLabel(vaultPath), path: vaultPath }],
@@ -288,6 +301,9 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
   );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  /** Aviso del resultado de «Añadir archivos»: se apaga solo a los pocos segundos. */
+  const [notice, setNotice] = useState<string | null>(null);
+  const [noticeOk, setNoticeOk] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(
     () => activeId ?? files?.[0]?.id ?? null,
   );
@@ -313,9 +329,25 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
   const listRef = useRef<HTMLUListElement | null>(null);
   /** Barra de ruta: mide su ancho para decidir cuántos tramos mostrar. */
   const trailRef = useRef<HTMLDivElement | null>(null);
+  /** Temporizador del aviso de importación. */
+  const noticeTimerRef = useRef<number | null>(null);
+
+  useEffect(
+    () => () => {
+      if (noticeTimerRef.current !== null) window.clearTimeout(noticeTimerRef.current);
+    },
+    [],
+  );
 
   function reload() {
     setReloadKey((key) => key + 1);
+  }
+
+  function showNotice(message: string, ok: boolean) {
+    setNotice(message);
+    setNoticeOk(ok);
+    if (noticeTimerRef.current !== null) window.clearTimeout(noticeTimerRef.current);
+    noticeTimerRef.current = window.setTimeout(() => setNotice(null), 8000);
   }
 
   function closeMenu() {
@@ -700,6 +732,47 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
     }));
   }
 
+  /**
+   * Copia archivos del equipo a la carpeta que se está viendo y refresca la lista.
+   * Es lo que hace el botón «Añadir archivos»; el arrastre desde el explorador
+   * del sistema lo gestiona la app, que ya sabe dónde quiere meterlos.
+   */
+  async function importFiles(paths: string[]) {
+    if (staticMode || paths.length === 0) return;
+
+    setActionError(null);
+    setBusyId("__import__");
+    try {
+      const items = await importFilesIntoVault(paths, currentDir);
+      const summary = summarizeImport(items, relativeFolderLabel(currentDir, vaultPath));
+      showNotice(summary.message, summary.ok);
+      reload();
+    } catch (error: unknown) {
+      setActionError(String(error));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  /** Botón «Añadir archivos»: diálogo del sistema y de ahí a la carpeta actual. */
+  async function handleImportFiles() {
+    if (staticMode || busy) return;
+
+    try {
+      const picked = await open({
+        directory: false,
+        multiple: true,
+        title: "Añadir archivos al vault",
+        filters: IMPORT_FILTERS,
+      });
+      if (!picked) return;
+
+      await importFiles(typeof picked === "string" ? [picked] : picked);
+    } catch (error: unknown) {
+      setActionError(String(error));
+    }
+  }
+
   async function handleNewNote() {
     if (staticMode) {
       const file: NoteFile = { id: createId(), name: nextName(items), kind: "note" };
@@ -1030,6 +1103,18 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
           {!staticMode && (
             <button
               type="button"
+              onClick={() => void handleImportFiles()}
+              disabled={busy}
+              title="Añadir archivos del equipo (imágenes, PDF o .md)"
+              aria-label="Añadir archivos del equipo"
+              className="shrink-0 rounded-lg border border-gus-border bg-gus-card p-1.5 text-gus-muted transition-colors hover:border-gus-accent/50 hover:text-gus-accent focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none disabled:opacity-50"
+            >
+              <ImportIcon className="h-4 w-4" aria-hidden="true" />
+            </button>
+          )}
+          {!staticMode && (
+            <button
+              type="button"
               onClick={() => void handleNewFolder()}
               disabled={busy}
               title="Nueva carpeta"
@@ -1091,6 +1176,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
                 {(position > 0 || abreConEllipsis) && <TrailSeparator />}
                 <button
                   type="button"
+                  data-drop-folder={part.folder.path}
                   onClick={() => navigateTo(trail.slice(0, part.index + 1))}
                   onDragOver={(event) => dragOverFolder(event, part.folder)}
                   onDragLeave={() => {
@@ -1160,6 +1246,34 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
         </nav>
       )}
 
+      {notice && (
+        <p
+          role="status"
+          aria-live="polite"
+          className={clsx(
+            "flex items-start justify-between gap-2 rounded-md border px-2 py-1.5 text-[11px]",
+            noticeOk
+              ? "border-gus-accent/40 bg-gus-accent/10 text-gus-accent"
+              : "border-amber-400/30 bg-amber-400/10 text-amber-300",
+          )}
+        >
+          <span className="min-w-0 break-words">{notice}</span>
+          <button
+            type="button"
+            onClick={() => setNotice(null)}
+            aria-label="Descartar aviso"
+            className={clsx(
+              "shrink-0 rounded px-1 transition-opacity hover:opacity-70 focus-visible:ring-2 focus-visible:outline-none",
+              noticeOk
+                ? "text-gus-accent/70 focus-visible:ring-gus-accent/60"
+                : "text-amber-300/70 focus-visible:ring-amber-300/60",
+            )}
+          >
+            ×
+          </button>
+        </p>
+      )}
+
       {actionError && (
         <p
           role="alert"
@@ -1192,6 +1306,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
             key={folder.path}
             data-entry-id={folder.path}
             data-entry-kind="folder"
+            data-drop-folder={folder.path}
             draggable={!staticMode && renamingId !== folder.path}
             onDragStart={(event) => startDrag(event, { kind: "folder", path: folder.path })}
             onDragEnd={clearDrag}
