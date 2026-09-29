@@ -486,6 +486,17 @@ function App() {
   });
 
   /**
+   * El menú por defecto del webview (cortar/pegar, inspeccionar…) no es de Gus:
+   * se cancela en toda la app y cada superficie abre el suyo —el editor, las
+   * filas del explorador y la lista— con `preventDefault` sobre `contextmenu`.
+   */
+  useEffect(() => {
+    const cancelDefaultMenu = (event: MouseEvent) => event.preventDefault();
+    document.addEventListener("contextmenu", cancelDefaultMenu, { capture: true });
+    return () => document.removeEventListener("contextmenu", cancelDefaultMenu, { capture: true });
+  }, []);
+
+  /**
    * Arrastre desde el explorador de archivos del sistema: Tauri intercepta ese
    * drop nativo (el webview no recibe el `drop` de HTML5), así que se escucha
    * aquí. Al entrar o al moverse se actualiza la carpeta que anuncia el aviso.

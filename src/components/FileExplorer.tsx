@@ -106,8 +106,9 @@ interface TrailPart {
 }
 
 interface MenuState {
+  /** `""` cuando el menú es el de la lista (no apunta a ninguna entrada). */
   id: string;
-  kind: "file" | "folder";
+  kind: "file" | "folder" | "panel";
   x: number;
   y: number;
 }
@@ -121,6 +122,8 @@ const DRAG_ENTRY_MIME = "application/x-gus-explorer-entry";
 
 const MENU_WIDTH = 208;
 const MENU_MAX_HEIGHT = 280;
+/** Altura real del menú de la lista: solo 4 filas, sin reservar como el de fila. */
+const PANEL_MENU_HEIGHT = 120;
 
 /** Pasos de historial que se conservan para «atrás»/«adelante». */
 const TRAIL_HISTORY_LIMIT = 50;
@@ -367,11 +370,26 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
     openMenu(id, kind, event.clientX, event.clientY);
   }
 
-  function openMenu(id: string, kind: "file" | "folder", x: number, y: number) {
+  /**
+   * Clic derecho en la lista pero fuera de las filas (huecos, mensaje de carpeta
+   * vacía): menú de la carpeta actual. Las filas tienen el suyo y se saltan este.
+   */
+  function panelFromContext(event: ReactMouseEvent<HTMLUListElement>) {
+    const target = event.target;
+    if (target instanceof Element && target.closest("[data-entry-id]")) return;
+
+    event.preventDefault();
+    if (staticMode) return;
+
+    openMenu("", "panel", event.clientX, event.clientY);
+  }
+
+  function openMenu(id: string, kind: MenuState["kind"], x: number, y: number) {
     const localX = toLocalCoord(x);
     const localY = toLocalCoord(y);
+    const maxHeight = kind === "panel" ? PANEL_MENU_HEIGHT : MENU_MAX_HEIGHT;
     const left = Math.min(Math.max(8, localX), toLocalCoord(window.innerWidth) - MENU_WIDTH - 8);
-    const top = Math.min(Math.max(8, localY), toLocalCoord(window.innerHeight) - MENU_MAX_HEIGHT - 8);
+    const top = Math.min(Math.max(8, localY), toLocalCoord(window.innerHeight) - maxHeight - 8);
 
     setMenu({ id, kind, x: left, y: top });
     setRenamingId(null);
@@ -1300,7 +1318,11 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
         />
       )}
 
-      <ul ref={listRef} className="gus-scrollbar flex-1 space-y-1 overflow-y-auto pr-1">
+      <ul
+        ref={listRef}
+        onContextMenu={panelFromContext}
+        className="gus-scrollbar flex-1 space-y-1 overflow-y-auto pr-1"
+      >
         {folders.map((folder) => (
           <li
             key={folder.path}
@@ -1495,20 +1517,25 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
         {status === "ready" && items.length === 0 && folders.length === 0 && (
           <li className="rounded-lg border border-dashed border-gus-border px-3 py-6 text-center text-xs text-gus-muted">
             Carpeta vacía. Crea una nota con{" "}
-            <strong className="font-medium text-gus-text">+</strong> o agrupa con{" "}
-            <strong className="font-medium text-gus-text">nueva carpeta</strong>.
+            <strong className="font-medium text-gus-text">+</strong>, agrupa con{" "}
+            <strong className="font-medium text-gus-text">nueva carpeta</strong> o haz clic
+            derecho en la lista para ver todas las opciones.
           </li>
         )}
       </ul>
 
-      {menu && menuTarget && (
+      {menu && (menuTarget || menu.kind === "panel") && (
         <div
           role="menu"
-          aria-label={`Opciones de ${menuTarget.name}`}
+          aria-label={
+            menu.kind === "panel"
+              ? "Opciones de la carpeta actual"
+              : `Opciones de ${menuTarget?.name ?? ""}`
+          }
           className="fixed z-30 w-52 overflow-hidden rounded-lg border border-gus-border bg-gus-card shadow-xl shadow-black/40"
           style={{ left: menu.x, top: menu.y }}
         >
-          {confirmId === menu.id ? (
+          {confirmId === menu.id && menuTarget ? (
             <div className="p-3 text-xs">
               <p className="text-gus-text">
                 {menu.kind === "folder" ? "¿Mover la carpeta " : "¿Mover "}
@@ -1681,6 +1708,65 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
                 )}
               >
                 Eliminar…
+              </button>
+            </div>
+          ) : menu.kind === "panel" ? (
+            <div className="py-1">
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMenu(null);
+                  void handleNewNote();
+                }}
+                className={clsx(
+                  menuItemClass,
+                  "text-gus-muted hover:bg-gus-panel hover:text-gus-text",
+                )}
+              >
+                Nueva nota
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMenu(null);
+                  void handleNewFolder();
+                }}
+                className={clsx(
+                  menuItemClass,
+                  "text-gus-muted hover:bg-gus-panel hover:text-gus-text",
+                )}
+              >
+                Nueva carpeta
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMenu(null);
+                  void handleImportFiles();
+                }}
+                className={clsx(
+                  menuItemClass,
+                  "text-gus-muted hover:bg-gus-panel hover:text-gus-text",
+                )}
+              >
+                Añadir archivos del PC…
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMenu(null);
+                  reload();
+                }}
+                className={clsx(
+                  menuItemClass,
+                  "border-t border-gus-border text-gus-muted hover:bg-gus-panel hover:text-gus-text",
+                )}
+              >
+                Refrescar
               </button>
             </div>
           ) : null}
