@@ -421,7 +421,7 @@ const PreviewLine = memo(function PreviewLine({
     const marked = spell && !code ? spellNodes(text, spell, "w") : text;
     return (
       <div className="min-h-[var(--gus-row-h)]">
-        <span className="block whitespace-pre-wrap break-words text-transparent">
+        <span className="block whitespace-break-spaces break-words text-transparent">
           {text === "" ? "\u200B" : marked}
         </span>
       </div>
@@ -436,7 +436,7 @@ const PreviewLine = memo(function PreviewLine({
     const ghost = hint && text.trim() === "";
     return (
       <div className="min-h-[var(--gus-row-h)]">
-        <span className="block whitespace-pre-wrap break-words">
+        <span className="block whitespace-break-spaces break-words">
           {text === "" ? "\u200B" : raw}
           {ghost && (
             <span className="ml-1 italic text-gus-muted/50">
@@ -452,12 +452,12 @@ const PreviewLine = memo(function PreviewLine({
 
   return (
     <div className={clsx("relative min-h-[var(--gus-row-h)]", code && "bg-gus-card")}>
-      <span className="block invisible whitespace-pre-wrap break-words">{text || "\u200B"}</span>
+      <span className="block invisible whitespace-break-spaces break-words">{text || "\u200B"}</span>
 
       {nodes !== null && (
         <span
           className={clsx(
-            "absolute inset-0 block overflow-hidden whitespace-pre-wrap break-words",
+            "absolute inset-0 block overflow-hidden whitespace-break-spaces break-words",
             code ? "text-gus-accent" : "text-gus-text",
             layerClass,
           )}

@@ -90,6 +90,22 @@ body {
   height: auto;
 }
 
+/* El overlay debe maquetrar exactamente como el textarea. Con `break-spaces`
+   los espacios finales envuelven en vez de «colgar» fuera del borde derecho:
+   sin eso, al teclear espacios el cursor se sale de la vista y el texto que
+   escribes después salta de línea de golpe. Si el motor no admite el valor,
+   la clase se descarta y manda este respaldo (`pre-wrap`, el comportamiento
+   por defecto del textarea), para que overlay y textarea no se despeguen. */
+.gus-source-overlay {
+  white-space: pre-wrap;
+}
+
+@supports (white-space: break-spaces) {
+  .gus-source-overlay {
+    white-space: break-spaces;
+  }
+}
+
 .gus-source-area {
   color: transparent;
   -webkit-text-fill-color: transparent;

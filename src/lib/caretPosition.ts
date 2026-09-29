@@ -35,7 +35,9 @@ export function caretAnchor(textarea: HTMLTextAreaElement, caret: number): Caret
   mirror.style.visibility = "hidden";
   mirror.style.pointerEvents = "none";
   mirror.style.width = `${textarea.offsetWidth}px`;
-  mirror.style.whiteSpace = "pre-wrap";
+  // Igual que el textarea: los espacios finales no «cuelgan» (break-spaces),
+  // así el cursor no se desborda por la derecha al teclear espacios.
+  mirror.style.whiteSpace = "break-spaces";
   mirror.style.overflowWrap = "break-word";
   for (const property of MIRRORED_STYLES) {
     mirror.style.setProperty(property, style.getPropertyValue(property));
