@@ -9,6 +9,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
+import { isImageName } from "../lib/fileName";
 
 export interface TrashItem {
   name: string;
@@ -274,7 +275,7 @@ export default function TrashView({ onRestore }: TrashViewProps) {
                   <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-gus-border bg-gus-panel text-gus-muted">
                     {item.isDir ? (
                       <Folder className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
-                    ) : /\.(png|jpe?g|gif|webp|svg|ico|bmp|avif)$/i.test(item.name) ? (
+                    ) : isImageName(item.name) ? (
                       <ImageIcon className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
                     ) : (
                       <FileText className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />

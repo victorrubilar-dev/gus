@@ -35,7 +35,9 @@ export function parentPath(path: string): string {
 }
 
 export function isImageName(name: string): boolean {
-  return /\.(png|jpe?g|gif|webp|svg|bmp|avif)$/i.test(name);
+  return /\.(png|apng|jpe?g|jpe|jfif|gif|webp|svg|bmp|avif|ico|cur|tiff?|heic|heif|jxl|pnm|ppm|pgm|pbm|qoi|xbm)$/i.test(
+    name,
+  );
 }
 
 export function isPdfName(name: string): boolean {

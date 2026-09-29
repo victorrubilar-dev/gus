@@ -29,13 +29,21 @@ fn image_mime(path: &std::path::Path) -> Option<&'static str> {
     let ext = path.extension()?.to_str()?.to_ascii_lowercase();
 
     Some(match ext.as_str() {
-        "png" => "image/png",
-        "jpg" | "jpeg" => "image/jpeg",
+        "png" | "apng" => "image/png",
+        "jpg" | "jpeg" | "jpe" | "jfif" => "image/jpeg",
         "gif" => "image/gif",
         "webp" => "image/webp",
         "svg" => "image/svg+xml",
         "bmp" => "image/bmp",
         "avif" => "image/avif",
+        "ico" | "cur" => "image/x-icon",
+        "tif" | "tiff" => "image/tiff",
+        "heic" => "image/heic",
+        "heif" => "image/heif",
+        "jxl" => "image/jxl",
+        "pnm" | "ppm" | "pgm" | "pbm" => "image/x-portable-anymap",
+        "qoi" => "image/qoi",
+        "xbm" => "image/x-xbitmap",
         _ => return None,
     })
 }
@@ -208,14 +216,17 @@ fn write_pdf_file(path: String, data: String) -> Result<(), String> {
     std::fs::write(&path, bytes).map_err(|err| format!("No se pudo escribir «{path}»: {err}"))
 }
 
+/// Filtro de `rename_vault_file`, `move_vault_file` y `delete_vault_file`: solo
+/// tipos que el explorador sabe mostrar. La papelera (`move_to_trash`) NO usa
+/// este filtro, porque tirar un archivo no depende de que lo sepan abrir.
 fn ensure_entry(path: &str) -> Result<(), String> {
     let path_ref = std::path::Path::new(path);
 
-    if is_md_file(path_ref) || is_image_file(path_ref) {
+    if is_md_file(path_ref) || is_pdf_file(path_ref) || is_image_file(path_ref) {
         Ok(())
     } else {
         Err(format!(
-            "Solo se permiten archivos .md o imágenes: «{path}»"
+            "Solo se permiten archivos .md, .pdf o imágenes: «{path}»"
         ))
     }
 }
@@ -573,17 +584,45 @@ fn purge_expired_trash(trash: &std::path::Path) -> usize {
 #[tauri::command]
 fn move_to_trash(path: String) -> Result<(), String> {
     let path = expand_home(&path);
-    let entry = std::path::Path::new(&path);
+    trash_entry_if_safe(std::path::Path::new(&path), &trash_dir())?;
+    Ok(())
+}
 
+/**
+ * Tira un archivo o una carpeta en la papelera.
+ *
+ * La papelera NO filtra por tipo de archivo: aquí solo se comprueba que el
+ * elemento exista y que no estemos tirando la papelera dentro de sí misma.
+ * Así caben `.md`, `.pdf`, `.png`, `.jpg`, y en general cualquier archivo.
+ */
+fn trash_entry_if_safe(
+    entry: &std::path::Path,
+    trash: &std::path::Path,
+) -> Result<std::path::PathBuf, String> {
     if entry.is_dir() {
-        ensure_trashable_dir(entry, &trash_dir())?;
+        ensure_trashable_dir(entry, trash)?;
     } else {
-        ensure_entry(&path)?;
+        ensure_trashable_file(entry, trash)?;
     }
 
-    let trash = trash_dir();
-    purge_expired_trash(&trash);
-    trash_entry(entry, &trash)?;
+    purge_expired_trash(trash);
+    trash_entry(entry, trash)
+}
+
+fn ensure_trashable_file(path: &std::path::Path, trash: &std::path::Path) -> Result<(), String> {
+    if path.is_dir() {
+        return Err(format!("«{}» es una carpeta", path.display()));
+    }
+    if !path.exists() {
+        return Err(format!("No existe el archivo «{}»", path.display()));
+    }
+    if path.starts_with(trash) {
+        return Err(format!(
+            "«{}» ya está dentro de la papelera",
+            path.display()
+        ));
+    }
+
     Ok(())
 }
 
@@ -2410,6 +2449,69 @@ mod tests {
         ensure_trashable_dir(&dir.join("vault").join("ok"), &trash).expect("carpeta normal");
 
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn papelera_admite_cualquier_tipo_de_archivo() {
+        let dir = temp_vault("trash-any");
+        let trash = dir.join(".gus-trash");
+        let vault = dir.join("vault");
+        std::fs::create_dir_all(&vault).expect("vault");
+
+        let nombres = [
+            "nota.md",
+            "manual.pdf",
+            "foto.jpg",
+            "captura.png",
+            "avatar.ico",
+            "escaneo.tiff",
+            "datos.txt",
+            "backup.zip",
+        ];
+
+        for name in nombres {
+            std::fs::write(vault.join(name), name).expect("write");
+        }
+
+        for name in nombres {
+            let source = vault.join(name);
+            let tirado = trash_entry_if_safe(&source, &trash)
+                .unwrap_or_else(|err| panic!("«{name}» debe caber en la papelera: {err}"));
+            assert!(!source.exists(), "«{name}» sale del vault");
+            assert!(tirado.exists(), "«{name}» acaba en la papelera");
+        }
+
+        let items = list_trash_items(&trash).expect("listar");
+        assert_eq!(items.len(), nombres.len());
+
+        // Restaurar también vale para archivos que no son .md ni imágenes.
+        let restaurada =
+            restore_trashed(&trash.join("manual.pdf"), &trash).expect("restaurar el pdf");
+        assert!(restaurada.ends_with("manual.pdf"), "ruta = {restaurada}");
+        assert!(std::path::Path::new(&restaurada).exists());
+
+        // Nada de tirar la papelera dentro de sí misma.
+        let dentro = trash.join("datos.txt");
+        let err = trash_entry_if_safe(&dentro, &trash).expect_err("ya está en la papelera");
+        assert!(err.contains("ya está dentro"), "mensaje = {err}");
+
+        let err = trash_entry_if_safe(&vault.join("fantasma.zip"), &trash)
+            .expect_err("no existe");
+        assert!(err.contains("No existe"), "mensaje = {err}");
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn ensure_entry_admite_md_pdf_e_imagenes() {
+        ensure_entry("/vault/nota.md").expect("md");
+        ensure_entry("/vault/manual.pdf").expect("pdf");
+        ensure_entry("/vault/foto.jpeg").expect("jpeg");
+        ensure_entry("/vault/escaneo.tiff").expect("tiff");
+        ensure_entry("/vault/logo.svg").expect("svg");
+
+        let err = ensure_entry("/vault/datos.zip").expect_err("zip");
+        assert!(err.contains(".md"), "mensaje = {err}");
     }
 
     #[test]

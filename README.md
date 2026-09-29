@@ -26,13 +26,13 @@ WebView del sistema en lugar de meter un Chromium entero).
 - 🔤 **Corrector ortográfico** — subrayado ondulado en palabras mal escritas y 7 idiomas elegibles (o desactivado) en Ajustes.
 - 🖱️ **Menú del editor** — clic derecho siempre visible con las sugerencias de corrección (y «Agregar al diccionario» / «Ignorar»), cortar/copiar/pegar/pegar sin formato/seleccionar todo, y submenús para insertar bloques (código, tablas, fórmulas, diagramas), texto (títulos, listas, citas) y formato (negrita, cursiva, tachado, código, enlace).
 - 📐 **Fórmulas y diagramas** — `$…$` / `$$…$$` con KaTeX y bloques ` ```mermaid ` con Mermaid, ambos con carga diferida.
-- 🖼️ **Visor de imágenes** — png, jpg, gif, webp y svg se abren en el panel derecho.
+- 🖼️ **Visor de imágenes** — png, jpg, gif, webp, svg, bmp, avif, ico, tiff, heic, heif, jxl, qoi y pnm se abren en el panel derecho (según lo que sepa decodificar el navegador).
 - ↔️ **Panel ajustable** — divisor arrastrable entre explorador y panel (← →, Home/End; doble clic lo restablece); el ancho se recuerda entre sesiones.
 - 🏡 **Pantalla de bienvenida** — mientras no haya nada abierto, el explorador conserva su ancho y el panel derecho ofrece «Nueva nota», la paleta (Ctrl+K), los atajos y las notas editadas recientemente.
 - ✅ **Tareas** — almacén `.gus-tasks.json` por vault; creación con panel superpuesto (etiquetas, prioridad, plazo con calendario), prioridad con bandera de color, tablero Kanban arrastrable y vista lista, filtro por `#etiqueta`. También lee las tareas de las notas (`- [ ]` / `- [x]` con `!prioridad` y `📅`) y reescribe solo la checkbox en el `.md`.
 - 📅 **Calendario** — mes en cuadrícula con vencidas / hoy / este mes, detalle por día y filtro por etiquetas.
 - 🗂️ **Carpetas reales** — barra de ruta con chevrons que se pliega sola cuando no cabe (lo oculto va tras «…», con desplegable para saltar a cualquier nivel), botones «atrás»/«adelante» con historial (**Alt+←** / **Alt+→**; **Alt+↑** sube al padre), creación de carpetas y arrastre de notas, imágenes y carpetas —también soltadas sobre la propia ruta—; renombrar y borrar desde el menú contextual.
-- 🗑️ **Papelera** — al eliminar, el elemento se mueve a `.gus-trash` (manifiesto de origen, retención de 30 días); permite restaurar, eliminar definitivamente o vaciar.
+- 🗑️ **Papelera** — al eliminar, el elemento se mueve a `.gus-trash` (manifiesto de origen, retención de 30 días); admite **cualquier tipo de archivo** (`.md`, `.pdf`, `.png`, `.jpg`, `.txt`, `.zip`…, en cualquier formato de imagen) y carpetas, y permite restaurar, eliminar definitivamente o vaciar.
 - 🗃️ **Varios vaults** — panel de tarjetas con portadas y modo edición para la lista de vaults.
 - 📊 **Panel Resumen** — próximas tareas por prioridad, últimas notas modificadas, contadores y accesos rápidos.
 - ⌨️ **Paleta de comandos** — `Ctrl+K` / `Ctrl+P` filtra todas las notas del vault.

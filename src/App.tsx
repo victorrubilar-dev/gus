@@ -800,6 +800,13 @@ function App() {
                   <img
                     src={image.src}
                     alt={image.title}
+                    onError={() => {
+                      setImage({
+                        ...image,
+                        error: `Este navegador no sabe decodificar «${image.title}»; el archivo está intacto en el vault.`,
+                      });
+                      setImageStatus("error");
+                    }}
                     className="max-h-full max-w-full rounded-lg border border-white/10 object-contain shadow-2xl"
                   />
                 )}

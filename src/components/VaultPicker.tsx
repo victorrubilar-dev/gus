@@ -207,7 +207,23 @@ export default function VaultPicker({
         filters: [
           {
             name: "Imágenes",
-            extensions: ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "avif"],
+            extensions: [
+              "png",
+              "jpg",
+              "jpeg",
+              "gif",
+              "webp",
+              "svg",
+              "bmp",
+              "avif",
+              "ico",
+              "tif",
+              "tiff",
+              "heic",
+              "heif",
+              "jxl",
+              "qoi",
+            ],
           },
         ],
       });
