@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import clsx from "clsx";
 import { toLocalCoord } from "../lib/uiZoom";
 import { motion } from "framer-motion";
@@ -215,6 +215,91 @@ function MenuHints() {
     <p className="mt-1 border-t border-gus-border px-3 pt-1.5 pb-1 text-[10px] text-gus-muted/70">
       ↑↓ mover · Intro elegir · Esc cerrar
     </p>
+  );
+}
+
+export interface SpellSuggestMenuProps {
+  anchor: CaretAnchor;
+  suggestions: string[];
+  /** Índice recorrido con ↑/↓; -1 mientras nadie ha tocado la lista. */
+  index: number;
+  onPick: (suggestion: string) => void;
+}
+
+/**
+ * Cuadro de correcciones que se despliega justo encima de la palabra mal
+ * escrita (estilo Google Docs): solo sugerencias, sin acciones. Se mide al
+ * montar para anclarse encima de la palabra; si no cabe arriba, cae debajo.
+ */
+export function SpellSuggestMenu({
+  anchor,
+  suggestions,
+  index,
+  onPick,
+}: SpellSuggestMenuProps) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+
+  useLayoutEffect(() => {
+    const box = boxRef.current;
+    if (!box) return;
+    const viewWidth = toLocalCoord(window.innerWidth);
+    const viewHeight = toLocalCoord(window.innerHeight);
+    const left = Math.min(
+      Math.max(8, anchor.left),
+      Math.max(8, viewWidth - box.offsetWidth - 8),
+    );
+    const above = anchor.top - box.offsetHeight - 6;
+    const top =
+      above >= 8
+        ? above
+        : Math.min(anchor.top + anchor.height + 6, Math.max(8, viewHeight - box.offsetHeight - 8));
+    setPos((current) =>
+      current && current.top === top && current.left === left ? current : { top, left },
+    );
+  }, [anchor, suggestions, index]);
+
+  return (
+    <motion.div
+      ref={boxRef}
+      role="listbox"
+      aria-label="Correcciones sugeridas"
+      initial={{ opacity: 0, y: -4 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -4 }}
+      transition={{ duration: 0.12, ease: "easeOut" }}
+      style={{
+        position: "fixed",
+        top: pos?.top ?? anchor.top,
+        left: pos?.left ?? anchor.left,
+        visibility: pos ? "visible" : "hidden",
+      }}
+      // Sin el mousedown el textarea pierde el foco al usar el ratón.
+      onMouseDown={(event) => event.preventDefault()}
+      className="z-50 w-max max-w-72 rounded-xl border border-gus-border bg-gus-panel/95 py-1 shadow-2xl shadow-black/50 backdrop-blur"
+    >
+      {suggestions.map((item, position) => (
+        <button
+          key={item}
+          type="button"
+          role="option"
+          aria-selected={position === index}
+          onClick={() => onPick(item)}
+          className={clsx(
+            "flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm outline-none transition-colors hover:bg-gus-accent/15 hover:text-gus-accent",
+            position === index && "bg-gus-accent/15 font-medium text-gus-accent",
+          )}
+        >
+          {item}
+        </button>
+      ))}
+
+      <p className="mt-1 border-t border-gus-border px-3 pt-1.5 pb-1 text-[10px] text-gus-muted/70">
+        {index >= 0
+          ? "↑↓ elegir · Intro o 1-9 aplicar · Esc cerrar"
+          : "Alt+Intro aplicar · ↑↓ para elegir · Esc cerrar"}
+      </p>
+    </motion.div>
   );
 }
 
