@@ -232,9 +232,11 @@ function visibleFor(
   const heading = /^(#{1,6})\s+(.*)$/.exec(text);
   if (heading) {
     const level = heading[1].length;
+    // Ningún título lleva raya: las únicas líneas horizontales del editor son
+    // las que escribe el usuario con «---» (o con una tabla).
     const size = [
-      "text-[1.5em] font-bold border-b border-gus-border",
-      "text-[1.35em] font-bold border-b border-gus-border",
+      "text-[1.5em] font-bold",
+      "text-[1.35em] font-bold",
       "text-[1.22em] font-semibold",
       "text-[1.14em] font-semibold",
       "text-[1.07em] font-semibold text-gus-muted",
@@ -245,7 +247,9 @@ function visibleFor(
   }
 
   if (/^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/.test(text)) {
-    return { nodes: <span className="absolute inset-x-0 top-1/2 h-px bg-gus-border" />, layerClass: "" };
+    // Borde (igual que el <hr> del preview) y no fondo: con el zoom fraccional
+    // de la app, WebKitGTK descarta un fondo de 1px y la regla desaparecía.
+    return { nodes: <span className="absolute inset-x-0 top-1/2 h-0 border-t border-gus-border" />, layerClass: "" };
   }
 
   const quote = /^(\s*)((?:>\s*)+)(.*)$/.exec(text);

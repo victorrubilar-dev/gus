@@ -1446,12 +1446,12 @@ export default function MarkdownEditor({
 
   const previewComponents: Components = {
     h1: ({ children }) => (
-      <h1 className="mt-7 mb-3 border-b border-gus-border pb-2 text-3xl font-bold tracking-tight text-gus-text first:mt-0">
+      <h1 className="mt-7 mb-3 text-3xl font-bold tracking-tight text-gus-text first:mt-0">
         {children}
       </h1>
     ),
     h2: ({ children }) => (
-      <h2 className="mt-6 mb-3 border-b border-gus-border pb-2 text-2xl font-bold tracking-tight text-gus-text first:mt-0">
+      <h2 className="mt-6 mb-3 text-2xl font-bold tracking-tight text-gus-text first:mt-0">
         {children}
       </h2>
     ),
