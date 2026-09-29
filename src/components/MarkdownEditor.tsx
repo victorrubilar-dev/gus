@@ -391,6 +391,18 @@ export default function MarkdownEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewMode, vaultPath, path]);
 
+  /**
+   * WebKit (el motor de la app) no desplaza la vista cuando el cursor se coloca
+   * de forma programática: si una línea se mueve fuera del área visible, la vista
+   * se quedaría quieta y cursor y línea desaparecerían sin acompañar el
+   * movimiento. Soltar y recuperar el foco obliga al motor a revelar el cursor
+   * con el menor desplazamiento posible; si ya se ve, no se mueve nada.
+   */
+  function revealCaret(area: HTMLTextAreaElement) {
+    area.blur();
+    area.focus();
+  }
+
   useEffect(() => {
     if (pendingCaretRef.current === null) return;
     const [from, to] = pendingCaretRef.current;
@@ -400,6 +412,7 @@ export default function MarkdownEditor({
     if (!area) return;
     area.focus();
     area.setSelectionRange(from, to);
+    revealCaret(area);
     refreshCaretLine();
   }, [content]);
 
@@ -681,6 +694,7 @@ export default function MarkdownEditor({
     if (!area) return;
     const max = area.value.length;
     area.setSelectionRange(Math.min(target.start, max), Math.min(target.end, max));
+    revealCaret(area);
     refreshCaretLine();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [content]);
