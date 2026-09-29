@@ -285,8 +285,14 @@ export default function PdfExportDialog({ title, children, onClose }: PdfExportD
               height: PDF_PAGE_HEIGHT_PX * scale,
             }}
           >
+            {/* El marco (anillo + sombra) solo viste la previsualización: la
+                captura toma únicamente la hoja. En tema oscuro el anillo pasa a
+                claro, que sobre el fondo negro del escenario el negro no se ve. */}
             <div
-              className="absolute top-0 left-0 overflow-hidden rounded-sm shadow-[0_18px_45px_rgba(0,0,0,0.5)] ring-1 ring-black/20"
+              className={clsx(
+                "absolute top-0 left-0 overflow-hidden rounded-sm shadow-[0_18px_45px_rgba(0,0,0,0.5)] ring-1",
+                theme === "dark" ? "ring-white/15" : "ring-black/20",
+              )}
               style={{
                 width: PDF_PAGE_WIDTH_PX,
                 height: PDF_PAGE_HEIGHT_PX,
