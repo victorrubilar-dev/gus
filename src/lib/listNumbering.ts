@@ -28,6 +28,18 @@ export interface PasteRange {
   to: number;
 }
 
+/**
+ * Arranque y tamaño de una lista numerada, capturados antes de un cambio que
+ * solo reordena las líneas (Alt+↑/↓). Al devolvérselos a
+ * `renumberOrderedLists`, la lista renumerada conserva su número inicial.
+ */
+export interface OrderedBlockRef {
+  /** Número con el que arrancaba la lista. */
+  anchor: number;
+  /** Elementos que tenía la lista. */
+  items: number;
+}
+
 interface Marker {
   indent: number;
   ordered: boolean;
@@ -256,7 +268,37 @@ function renumberBlock(
   return { body: out, caret: caret + delta };
 }
 
-export function renumberOrderedLists(body: string, caret: number): ListRenumberResult {
+/**
+ * Arranque y tamaño de la lista numerada que contiene a `caret`, o `null` si
+ * no hay (o si es una lista de viñetas, sin número). Se toma sobre el texto
+ * *antes* de mover líneas para poder pasarlo después a
+ * `renumberOrderedLists` y que el bloque conserve su número inicial aunque
+ * cambie de orden.
+ */
+export function orderedBlockAt(body: string, caret: number): OrderedBlockRef | null {
+  const safeCaret = clampCaret(body, caret);
+  const scanned = scan(body);
+  if (!scanned) return null;
+
+  const block = blockContaining(scanned.blocks, lineAtOffset(body, safeCaret));
+  if (!block) return null;
+
+  const anchor = blockAnchor(scanned, block);
+  return Number.isNaN(anchor) ? null : { anchor, items: block.items.length };
+}
+
+/**
+ * Con `previous` (movimiento de líneas) se renumera aunque el cursor quede
+ * dentro del número —no se está escribiendo nada a mano— y se recupera el
+ * arranque que tenía el bloque antes de moverse, siempre y cuando siga siendo
+ * el mismo bloque (mismo número de elementos). Si el movimiento lo ha partido
+ * o lo ha fusionado con otro, manda el arranque del bloque nuevo.
+ */
+export function renumberOrderedLists(
+  body: string,
+  caret: number,
+  previous?: OrderedBlockRef | null,
+): ListRenumberResult {
   const safeCaret = clampCaret(body, caret);
   const scanned = scan(body);
   if (!scanned) return { body, caret: safeCaret };
@@ -266,7 +308,7 @@ export function renumberOrderedLists(body: string, caret: number): ListRenumberR
   if (!block) return { body, caret: safeCaret };
 
   // Cursor dentro del número: se está escribiendo a mano, no se toca nada.
-  if (block.items.includes(caretLine)) {
+  if (!previous && block.items.includes(caretLine)) {
     const marker = markerAt(scanned.lines[caretLine]);
     const local = safeCaret - scanned.offsets[caretLine];
     if (marker && local > 0 && local <= marker.markerEnd) {
@@ -274,7 +316,10 @@ export function renumberOrderedLists(body: string, caret: number): ListRenumberR
     }
   }
 
-  return renumberBlock(body, scanned, block, blockAnchor(scanned, block), safeCaret);
+  const kept = previous && previous.items === block.items.length ? previous.anchor : NaN;
+  const anchor = Number.isNaN(kept) ? blockAnchor(scanned, block) : kept;
+
+  return renumberBlock(body, scanned, block, anchor, safeCaret);
 }
 
 /**

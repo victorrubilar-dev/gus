@@ -20,10 +20,13 @@ import { Check, ChevronDown, Eye, FileDown, Pencil, X } from "lucide-react";
 import { pathWithTitle, safeFileName } from "../lib/fileName";
 import { listEnterEdit } from "../lib/listContinue";
 import {
+  orderedBlockAt,
   renumberAfterPaste,
   renumberOrderedLists,
+  type OrderedBlockRef,
   type PasteRange,
 } from "../lib/listNumbering";
+import { moveLines } from "../lib/moveLines";
 import {
   addPersonalWord,
   getPersonalWords,
@@ -531,7 +534,11 @@ export default function MarkdownEditor({
    * Si el cambio viene de un pegado (`paste`), una lista abierta por lo pegado
    * arranca en 1. Devuelve el cuerpo final y la posición corregida del cursor.
    */
-  function editBody(nextBody: string, paste?: PasteRange): { body: string; caret: number } {
+  function editBody(
+    nextBody: string,
+    paste?: PasteRange,
+    previous?: OrderedBlockRef | null,
+  ): { body: string; caret: number } {
     const area = textareaRef.current;
     const pending = pendingCaretRef.current;
     // Mientras el usuario escribe, el DOM ya refleja el cambio y su cursor es
@@ -547,7 +554,7 @@ export default function MarkdownEditor({
     if (!composing) {
       result = paste
         ? renumberAfterPaste(nextBody, caret, paste)
-        : renumberOrderedLists(nextBody, caret);
+        : renumberOrderedLists(nextBody, caret, previous);
     }
 
     const finalContent = replaceBody(content, result.body);
@@ -1069,13 +1076,16 @@ export default function MarkdownEditor({
       .then(() => true)
       .catch(() => false);
     if (!copied) return;
-    area.setSelectionRange(start, end);
-    replaceRange(start, "", 0);
+    // Igual que Ctrl+X: sin mover antes la selección, el deshacer conserva el
+    // cursor y no la línea ya recortada.
+    pendingCaretRef.current = [start, start];
+    editBody(`${area.value.slice(0, start)}${area.value.slice(end)}`);
   }
 
   /**
    * Corta la línea entera del cursor (Ctrl+X sin selección, como en VS Code).
-   * Se selecciona antes para que `replaceRange` borre la línea completa.
+   * No se selecciona la línea antes de borrar: así el paso de deshacer guarda
+   * la posición real del cursor y Ctrl+Z lo devuelve a donde estaba.
    */
   function cutCurrentLine(clip?: DataTransfer | null): boolean {
     const area = textareaRef.current;
@@ -1085,14 +1095,15 @@ export default function MarkdownEditor({
     if (end <= start) return false;
 
     setContextMenu(null);
+    setMenu(null);
     const text = area.value.slice(start, end);
     // El texto va al portapapeles: si el evento lo trae, ahí mismo; en todo
     // caso, por el plugin (el mismo que lee «Pegar» del menú).
     clip?.setData("text/plain", text);
     void writeText(text).catch(() => undefined);
 
-    area.setSelectionRange(start, end);
-    replaceRange(start, "", 0);
+    pendingCaretRef.current = [start, start];
+    editBody(`${area.value.slice(0, start)}${area.value.slice(end)}`);
     return true;
   }
 
@@ -1111,6 +1122,40 @@ export default function MarkdownEditor({
     event.preventDefault();
     forceHistoryRef.current = true;
     cutCurrentLine(event.clipboardData);
+  }
+
+  /**
+   * Alt+↑ / Alt+↓: mueve la línea del cursor (o las líneas seleccionadas) una
+   * posición arriba o abajo, como en VS Code. Devuelve `true` si se movió.
+   */
+  function moveLine(direction: -1 | 1): boolean {
+    const area = textareaRef.current;
+    if (!area || viewMode === "preview") return false;
+
+    const before = area.value;
+    // El arranque de la lista que toca el cursor se toma antes de mover: así,
+    // al renumerar, la lista conserva su primer número aunque cambie de orden.
+    const previous = orderedBlockAt(before, area.selectionStart);
+    const edit = moveLines(before, area.selectionStart, area.selectionEnd, direction);
+    if (!edit) return false;
+
+    // El movimiento es un paso de deshacer propio, igual que pegar o cortar.
+    forceHistoryRef.current = true;
+    pendingCaretRef.current = [edit.start, edit.end];
+    setContextMenu(null);
+
+    const result = editBody(edit.text, undefined, previous);
+    if (result.body === before) {
+      pendingCaretRef.current = null;
+      return false;
+    }
+
+    // Si el cursor cae dentro de una lista numerada, `editBody` la renumera y
+    // el texto puede cambiar de longitud: la selección se corrige con ese
+    // mismo desplazamiento para no perder la columna.
+    const shift = result.caret - edit.start;
+    pendingCaretRef.current = [result.caret, Math.max(result.caret, edit.end + shift)];
+    return true;
   }
 
   async function copySelection() {
@@ -1230,6 +1275,20 @@ export default function MarkdownEditor({
         event.preventDefault();
         return;
       }
+    }
+
+    // Alt+↑ / Alt+↓ mueve la línea del cursor (o las seleccionadas) una
+    // posición, como en VS Code. Con un menú desplegado manda el menú.
+    if (
+      event.altKey &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      (event.key === "ArrowUp" || event.key === "ArrowDown") &&
+      !menu &&
+      moveLine(event.key === "ArrowUp" ? -1 : 1)
+    ) {
+      event.preventDefault();
+      return;
     }
 
     if (menu) {
