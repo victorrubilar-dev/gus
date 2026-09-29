@@ -3,6 +3,7 @@ import {
   forwardRef,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useRef,
   useState,
   type DragEvent as ReactDragEvent,
@@ -10,6 +11,8 @@ import {
 } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
+  ArrowLeft,
+  ArrowRight,
   File as FileIcon,
   FileText,
   Folder,
@@ -76,6 +79,22 @@ interface FolderEntry {
   path: string;
 }
 
+/** Ruta actual más el historial que alimenta los botones «atrás»/«adelante». */
+interface TrailState {
+  /** Carpetas desde la raíz hasta la que estás viendo. */
+  trail: FolderEntry[];
+  /** Pasos anteriores (pila de «atrás»), el último es el inmediatamente previo. */
+  past: FolderEntry[][];
+  /** Pasos deshechos al retroceder (pila de «adelante»). */
+  future: FolderEntry[][];
+}
+
+/** Un tramo de la ruta con su posición real, para cortarla ahí donde se pulsa. */
+interface TrailPart {
+  folder: FolderEntry;
+  index: number;
+}
+
 interface MenuState {
   id: string;
   kind: "file" | "folder";
@@ -92,6 +111,16 @@ const DRAG_ENTRY_MIME = "application/x-gus-explorer-entry";
 
 const MENU_WIDTH = 208;
 const MENU_MAX_HEIGHT = 280;
+
+/** Pasos de historial que se conservan para «atrás»/«adelante». */
+const TRAIL_HISTORY_LIMIT = 50;
+
+const TRAIL_BUTTON_CLASS =
+  "flex h-5 w-5 shrink-0 items-center justify-center rounded text-gus-muted transition-colors hover:bg-gus-card hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-30";
+
+/** `shrink-0` es clave: si algo no cabe, la barra prefiere ocultar tramos antes que encogerlos. */
+const TRAIL_SEGMENT_CLASS =
+  "min-w-0 max-w-full shrink-0 truncate rounded px-1 py-0.5 text-left transition-colors focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none";
 
 const RENAME_INPUT_CLASS =
   "min-w-0 flex-1 rounded-lg border border-gus-accent/50 bg-gus-card px-2 py-1.5 font-mono text-xs text-gus-text outline-none focus:ring-2 focus:ring-gus-accent/60";
@@ -118,6 +147,49 @@ function toNoteFile(entry: VaultEntry): NoteFile {
 
 function rootLabel(vaultPath: string): string {
   return baseName(vaultPath.replace(/[\\/]+$/, "")) || vaultPath || "vault";
+}
+
+function TrailSeparator() {
+  return (
+    <span aria-hidden="true" className="shrink-0 text-gus-muted/60">
+      ›
+    </span>
+  );
+}
+
+/**
+ * Reparte la ruta en tramos visibles y ocultos (el «…»), de más a menos detalle:
+ * todo → raíz, penúltimo y actual → raíz y actual → penúltimo y actual → solo la
+ * actual. `level` decide cuánto se colapsa y lo sube la medición del ancho real de
+ * la barra, así la ruta siempre cabe en una línea pase lo que pase con el ancho.
+ */
+function splitTrail(trail: FolderEntry[], level: number): {
+  visible: TrailPart[];
+  hidden: TrailPart[];
+  maxLevel: number;
+} {
+  const parts = trail.map((folder, index) => ({ folder, index }));
+  const last = parts.length - 1;
+
+  if (parts.length < 2) return { visible: parts, hidden: [], maxLevel: 0 };
+
+  const combos: number[][] = [
+    parts.map((part) => part.index),
+    ...(parts.length >= 3 ? [[0, last - 1, last]] : []),
+    [0, last],
+    ...(parts.length >= 3 ? [[last - 1, last]] : []),
+    [last],
+  ];
+  // Sin repetidos: con pocas carpetas varias opciones coinciden y solo harían parpadear la barra.
+  const distinct = combos.filter(
+    (combo, index, all) => all.findIndex((other) => other.join(",") === combo.join(",")) === index,
+  );
+
+  const chosen = distinct[Math.min(level, distinct.length - 1)];
+  const visible = chosen.map((index) => parts[index]);
+  const hidden = parts.filter((part) => !chosen.includes(part.index));
+
+  return { visible, hidden, maxLevel: distinct.length - 1 };
 }
 
 function createId(): string {
@@ -198,9 +270,14 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
   /** El botón «Nueva nota» de la pantalla de bienvenida hace lo mismo que «+». */
   useImperativeHandle(ref, () => ({ newNote: () => void handleNewNote() }));
 
-  const [trail, setTrail] = useState<FolderEntry[]>(() => [
-    { name: rootLabel(vaultPath), path: vaultPath },
-  ]);
+  const [nav, setNav] = useState<TrailState>(() => ({
+    trail: [{ name: rootLabel(vaultPath), path: vaultPath }],
+    past: [],
+    future: [],
+  }));
+  const trail = nav.trail;
+  /** Clave de la ruta: al cambiarla la barra vuelve a intentar mostrarla entera. */
+  const trailKey = trail.map((step) => step.path).join("\n");
   const currentDir = trail[trail.length - 1].path;
   const rootDir = trail[0];
 
@@ -217,6 +294,11 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
   const [reloadKey, setReloadKey] = useState(0);
 
   const [menu, setMenu] = useState<MenuState | null>(null);
+  const [trailMenuOpen, setTrailMenuOpen] = useState(false);
+  /** Nivel de colapso de la ruta, dictado por la medición del ancho (ver efecto). */
+  const [collapse, setCollapse] = useState({ key: "", level: 0 });
+  /** Ancho medido de la barra: cambia al redimensionar el explorador. */
+  const [boxWidth, setBoxWidth] = useState(0);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [movingId, setMovingId] = useState<string | null>(null);
@@ -229,6 +311,8 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
   const deleteKeyRef = useRef<(event: KeyboardEvent) => void>(() => {});
   /** Raíz de la lista de filas: para anclar el menú a la fila bajo el teclado. */
   const listRef = useRef<HTMLUListElement | null>(null);
+  /** Barra de ruta: mide su ancho para decidir cuántos tramos mostrar. */
+  const trailRef = useRef<HTMLDivElement | null>(null);
 
   function reload() {
     setReloadKey((key) => key + 1);
@@ -346,23 +430,75 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
   }
 
   useEffect(() => {
-    setTrail([{ name: rootLabel(vaultPath), path: vaultPath }]);
+    setNav({
+      trail: [{ name: rootLabel(vaultPath), path: vaultPath }],
+      past: [],
+      future: [],
+    });
+    setTrailMenuOpen(false);
     setMenu(null);
     setActionError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vaultPath]);
 
   useEffect(() => {
-    if (!menu) return;
+    if (!menu && !trailMenuOpen) return;
 
     function onKey(event: KeyboardEvent) {
       if (event.key !== "Escape") return;
       setMenu(null);
+      setTrailMenuOpen(false);
     }
 
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [menu]);
+  }, [menu, trailMenuOpen]);
+
+  // El desplegable «…» de la ruta se cierra al pulsar fuera de él.
+  useEffect(() => {
+    if (!trailMenuOpen) return;
+
+    function onPointerDown(event: PointerEvent) {
+      const target = event.target;
+      if (target instanceof Element && target.closest("[data-trail-menu]")) return;
+      setTrailMenuOpen(false);
+    }
+
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [trailMenuOpen]);
+
+  /**
+   * Alt+← / Alt+→ recorren el historial y Alt+↑ sube al padre. Se saltan los campos
+   * de texto porque el editor ya usa Alt+↑/↓ para mover líneas.
+   */
+  useEffect(() => {
+    if (staticMode) return;
+
+    function onKey(event: KeyboardEvent) {
+      if (!event.altKey || event.ctrlKey || event.metaKey) return;
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight" && event.key !== "ArrowUp") {
+        return;
+      }
+
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        target.closest("input, textarea, select, [contenteditable], [role='separator']")
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      if (event.key === "ArrowLeft") goBack();
+      else if (event.key === "ArrowRight") goForward();
+      else goUp();
+    }
+
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [staticMode]);
 
   // El manejador siempre refleja el último render (menú, confirmación y props vivos).
   useEffect(() => {
@@ -488,7 +624,80 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
   function enterFolder(folder: FolderEntry) {
     closeMenu();
     clearDrag();
-    setTrail((prev) => [...prev, folder]);
+    navigateTo([...trail, folder]);
+  }
+
+  /** Cambia de carpeta guardando el paso anterior: habilita «atrás» y limpia «adelante». */
+  function navigateTo(next: FolderEntry[]) {
+    setTrailMenuOpen(false);
+    setNav((prev) => {
+      const unchanged =
+        prev.trail.length === next.length &&
+        prev.trail.every((step, index) => step.path === next[index].path);
+      if (unchanged) return prev;
+
+      return {
+        trail: next,
+        past: [...prev.past, prev.trail].slice(-TRAIL_HISTORY_LIMIT),
+        future: [],
+      };
+    });
+  }
+
+  /** Un paso atrás en el historial (Alt+←). */
+  function goBack() {
+    setTrailMenuOpen(false);
+    setNav((prev) => {
+      const previous = prev.past[prev.past.length - 1];
+      if (!previous) return prev;
+
+      return {
+        trail: previous,
+        past: prev.past.slice(0, -1),
+        future: [...prev.future, prev.trail].slice(-TRAIL_HISTORY_LIMIT),
+      };
+    });
+  }
+
+  /** Un paso adelante, lo que se deshizo al retroceder (Alt+→). */
+  function goForward() {
+    setTrailMenuOpen(false);
+    setNav((prev) => {
+      const next = prev.future[prev.future.length - 1];
+      if (!next) return prev;
+
+      return {
+        trail: next,
+        past: [...prev.past, prev.trail].slice(-TRAIL_HISTORY_LIMIT),
+        future: prev.future.slice(0, -1),
+      };
+    });
+  }
+
+  /** Sube a la carpeta padre (Alt+↑). */
+  function goUp() {
+    setTrailMenuOpen(false);
+    setNav((prev) => {
+      if (prev.trail.length < 2) return prev;
+
+      return {
+        trail: prev.trail.slice(0, -1),
+        past: [...prev.past, prev.trail].slice(-TRAIL_HISTORY_LIMIT),
+        future: [],
+      };
+    });
+  }
+
+  /**
+   * Reescribe la ruta tras renombrar o mover carpetas. No crea un paso de historial,
+   * pero sí corrige los guardados, para que «atrás» no apunte a rutas ya inexistentes.
+   */
+  function rewriteTrail(mapTrail: (trail: FolderEntry[]) => FolderEntry[]) {
+    setNav((prev) => ({
+      trail: mapTrail(prev.trail),
+      past: prev.past.map(mapTrail),
+      future: prev.future.map(mapTrail),
+    }));
   }
 
   async function handleNewNote() {
@@ -586,7 +795,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
         to: joinPath(parentPath(folder.path), name),
       });
       closeMenu();
-      setTrail((prev) =>
+      rewriteTrail((prev) =>
         prev.map((step) =>
           step.path === folder.path ? { name: baseName(newPath), path: newPath } : step,
         ),
@@ -673,7 +882,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
           updatedAt: "ahora",
         });
       }
-      setTrail((prev) =>
+      rewriteTrail((prev) =>
         prev.map((step) =>
           isInsidePath(step.path, folder.path)
             ? { ...step, path: rebasePath(step.path, folder.path, newPath) }
@@ -745,6 +954,57 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
   const menuItemClass =
     "flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-gus-accent/60 focus-visible:outline-none";
 
+  const collapseLevel = collapse.key === trailKey ? collapse.level : 0;
+  const { visible: trailParts, hidden: hiddenParts, maxLevel } = splitTrail(trail, collapseLevel);
+
+  /** Si la raíz quedó fuera, el «…» abre la fila («… › carpeta actual»); si no, va tras la raíz. */
+  const abreConEllipsis = hiddenParts.length > 0 && !trailParts.some((part) => part.index === 0);
+
+  const ellipsisButton = (
+    <button
+      type="button"
+      onClick={() => setTrailMenuOpen((open) => !open)}
+      aria-haspopup="menu"
+      aria-expanded={trailMenuOpen}
+      aria-label={`Mostrar las ${hiddenParts.length} carpetas ocultas de la ruta`}
+      title="Carpetas anteriores de la ruta"
+      className={clsx(
+        "shrink-0 rounded px-0.5 py-0.5 transition-colors focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none",
+        trailMenuOpen ? "text-gus-accent" : "text-gus-muted hover:text-gus-text",
+      )}
+    >
+      …
+    </button>
+  );
+
+  /**
+   * La barra mide su ancho real: si los tramos visibles no caben, se oculta alguno
+   * —nunca se encogen todos juntos, que era lo que se veía tosco—. Al cambiar de
+   * carpeta o de ancho de explorador se vuelve a intentar con la ruta entera.
+   */
+  useLayoutEffect(() => {
+    const box = trailRef.current;
+    if (!box) return;
+
+    // Solo falta sitio: se oculta un tramo más (nunca se encogen todos juntos).
+    if (box.scrollWidth > box.clientWidth + 1 && collapseLevel < maxLevel) {
+      setCollapse({ key: trailKey, level: collapseLevel + 1 });
+    }
+
+    let ancho = box.clientWidth;
+    const observer = new ResizeObserver(() => {
+      // El primer disparo no es un cambio real; después, con otro ancho se
+      // vuelve a intentar con la ruta entera y la medición de arriba repliega.
+      if (box.clientWidth === ancho) return;
+      ancho = box.clientWidth;
+      setBoxWidth(box.clientWidth);
+      setCollapse({ key: trailKey, level: 0 });
+    });
+    observer.observe(box);
+
+    return () => observer.disconnect();
+  }, [trailKey, collapseLevel, maxLevel, boxWidth]);
+
   const menuFolder = menu?.kind === "folder" ? folders.find((f) => f.path === menu.id) : undefined;
   const menuFile = menu?.kind === "file" ? items.find((f) => f.id === menu.id) : undefined;
   const menuTarget = menuFolder ?? menuFile;
@@ -795,37 +1055,108 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
       {!staticMode && trail.length > 0 && (
         <nav
           aria-label="Carpeta actual"
-          className="-mt-1 flex flex-wrap items-center gap-x-0.5 gap-y-1 text-[11px]"
+          data-trail-menu="true"
+          className="relative -mt-1 flex items-center gap-1 text-[11px]"
         >
-          {trail.map((folder, index) => (
-            <Fragment key={folder.path}>
-              {index > 0 && (
-                <span aria-hidden="true" className="shrink-0 text-gus-muted/50">
-                  /
-                </span>
-              )}
-              <button
-                type="button"
-                onClick={() => setTrail(trail.slice(0, index + 1))}
-                onDragOver={(event) => dragOverFolder(event, folder)}
-                onDragLeave={() => {
-                  if (dragOverPath === folder.path) setDragOverPath(null);
-                }}
-                onDrop={(event) => dropOnFolder(event, folder)}
-                title={`${folder.path}\nTambién puedes soltar aquí para mover`}
-                aria-current={index === trail.length - 1 ? "true" : undefined}
-                className={clsx(
-                  "min-w-0 max-w-full truncate rounded px-1 py-0.5 text-left transition-colors focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none",
-                  dragOverPath === folder.path && "bg-gus-accent/20 text-gus-accent ring-1 ring-gus-accent/50",
-                  index === trail.length - 1
-                    ? "text-gus-text"
-                    : "text-gus-muted hover:text-gus-text",
+          <div className="flex shrink-0 items-center gap-0.5">
+            <button
+              type="button"
+              onClick={goBack}
+              disabled={nav.past.length === 0}
+              title="Atrás en el historial (Alt+←)"
+              aria-label="Volver a la carpeta anterior"
+              className={TRAIL_BUTTON_CLASS}
+            >
+              <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              onClick={goForward}
+              disabled={nav.future.length === 0}
+              title="Adelante en el historial (Alt+→)"
+              aria-label="Avanzar a la carpeta siguiente"
+              className={TRAIL_BUTTON_CLASS}
+            >
+              <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+            </button>
+          </div>
+
+          <div
+            ref={trailRef}
+            className="flex min-w-0 flex-1 items-center gap-x-0.5 overflow-hidden"
+          >
+            {abreConEllipsis && ellipsisButton}
+            {trailParts.map((part, position) => (
+              <Fragment key={part.folder.path}>
+                {(position > 0 || abreConEllipsis) && <TrailSeparator />}
+                <button
+                  type="button"
+                  onClick={() => navigateTo(trail.slice(0, part.index + 1))}
+                  onDragOver={(event) => dragOverFolder(event, part.folder)}
+                  onDragLeave={() => {
+                    if (dragOverPath === part.folder.path) setDragOverPath(null);
+                  }}
+                  onDrop={(event) => dropOnFolder(event, part.folder)}
+                  title={`${part.folder.path}\nTambién puedes soltar aquí para mover`}
+                  aria-current={part.index === trail.length - 1 ? "true" : undefined}
+                  className={clsx(
+                    TRAIL_SEGMENT_CLASS,
+                    dragOverPath === part.folder.path &&
+                      "bg-gus-accent/20 text-gus-accent ring-1 ring-gus-accent/50",
+                    part.index === trail.length - 1
+                      ? "font-medium text-gus-text"
+                      : "text-gus-muted hover:text-gus-text",
+                  )}
+                >
+                  {part.folder.name}
+                </button>
+
+                {position === 0 && hiddenParts.length > 0 && !abreConEllipsis && (
+                  <>
+                    <TrailSeparator />
+                    {ellipsisButton}
+                  </>
                 )}
-              >
-                {folder.name}
-              </button>
-            </Fragment>
-          ))}
+              </Fragment>
+            ))}
+          </div>
+
+          {trailMenuOpen && hiddenParts.length > 0 && (
+            <div
+              role="menu"
+              aria-label="Carpetas ocultas de la ruta"
+              className="absolute top-full right-0 left-11 z-30 mt-1 overflow-hidden rounded-lg border border-gus-border bg-gus-card shadow-xl shadow-black/40"
+            >
+              <ul className="gus-scrollbar max-h-52 overflow-y-auto py-1">
+                {hiddenParts.map((part) => (
+                  <li key={part.folder.path}>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => navigateTo(trail.slice(0, part.index + 1))}
+                      onDragOver={(event) => dragOverFolder(event, part.folder)}
+                      onDragLeave={() => {
+                        if (dragOverPath === part.folder.path) setDragOverPath(null);
+                      }}
+                      onDrop={(event) => dropOnFolder(event, part.folder)}
+                      title={`${part.folder.path}\nTambién puedes soltar aquí para mover`}
+                      className={clsx(
+                        menuItemClass,
+                        "text-gus-muted hover:bg-gus-panel hover:text-gus-text",
+                      )}
+                    >
+                      <Folder
+                        className="h-3.5 w-3.5 shrink-0"
+                        strokeWidth={1.75}
+                        aria-hidden="true"
+                      />
+                      <span className="min-w-0 flex-1 truncate">{part.folder.name}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </nav>
       )}
 

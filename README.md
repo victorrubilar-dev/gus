@@ -31,7 +31,7 @@ WebView del sistema en lugar de meter un Chromium entero).
 - 🏡 **Pantalla de bienvenida** — mientras no haya nada abierto, el explorador conserva su ancho y el panel derecho ofrece «Nueva nota», la paleta (Ctrl+K), los atajos y las notas editadas recientemente.
 - ✅ **Tareas** — almacén `.gus-tasks.json` por vault; creación con panel superpuesto (etiquetas, prioridad, plazo con calendario), prioridad con bandera de color, tablero Kanban arrastrable y vista lista, filtro por `#etiqueta`. También lee las tareas de las notas (`- [ ]` / `- [x]` con `!prioridad` y `📅`) y reescribe solo la checkbox en el `.md`.
 - 📅 **Calendario** — mes en cuadrícula con vencidas / hoy / este mes, detalle por día y filtro por etiquetas.
-- 🗂️ **Carpetas reales** — breadcrumb, creación de carpetas y arrastre de notas, imágenes y carpetas; renombrar y borrar desde el menú contextual.
+- 🗂️ **Carpetas reales** — barra de ruta con chevrons que se pliega sola cuando no cabe (lo oculto va tras «…», con desplegable para saltar a cualquier nivel), botones «atrás»/«adelante» con historial (**Alt+←** / **Alt+→**; **Alt+↑** sube al padre), creación de carpetas y arrastre de notas, imágenes y carpetas —también soltadas sobre la propia ruta—; renombrar y borrar desde el menú contextual.
 - 🗑️ **Papelera** — al eliminar, el elemento se mueve a `.gus-trash` (manifiesto de origen, retención de 30 días); permite restaurar, eliminar definitivamente o vaciar.
 - 🗃️ **Varios vaults** — panel de tarjetas con portadas y modo edición para la lista de vaults.
 - 📊 **Panel Resumen** — próximas tareas por prioridad, últimas notas modificadas, contadores y accesos rápidos.
@@ -144,7 +144,7 @@ gus/
 │  │  ├─ CommandPalette.tsx # Paleta de comandos (Ctrl+K / Ctrl+P): buscar notas
 │  │  ├─ EditorMenus.tsx    # Menús del cursor: autocompletado [[ y bloques /
 │  │  ├─ MermaidDiagram.tsx # Dibuja los bloques ```mermaid (carga diferida)
-│  │  ├─ FileExplorer.tsx   # Explorador: carpetas, notas, imágenes, menús
+│  │  ├─ FileExplorer.tsx   # Explorador: carpetas, notas, imágenes, barra de ruta y menús
 │  │  ├─ MarkdownEditor.tsx # Editor: render en línea, vista previa, menús [[ y /
 │  │  ├─ InlinePreview.tsx  # Capa en vivo: markdown tras el texto transparente
 │  │  ├─ TaskList.tsx       # Tareas: lista + tablero Kanban (prioridad, #tags, filtro)
