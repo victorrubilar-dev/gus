@@ -19,12 +19,16 @@ import {
   DEFAULT_SETTINGS,
   SETTINGS_CATEGORIES,
   SETTINGS_DEFINITIONS,
+  accentHex,
+  type AccentChoice,
   type AccentKey,
   type AppSettings,
   type SettingDefinition,
   type SettingsCategoryId,
 } from "../lib/settings";
+import { THEME_LIST } from "../lib/themes";
 import type { SpellLang } from "../lib/spellCheck";
+import ThemeCard from "./ThemeCard";
 
 const CATEGORY_ICONS: Record<SettingsCategoryId, LucideIcon> = {
   general: SlidersHorizontal,
@@ -216,26 +220,49 @@ export default function SettingsPanel({ settings, onChange }: SettingsPanelProps
       );
     }
 
+    if (definition.kind === "theme") {
+      return (
+        <div className="grid w-full grid-cols-[repeat(auto-fit,minmax(7.5rem,1fr))] gap-2">
+          {THEME_LIST.map((entry) => (
+            <ThemeCard
+              key={entry.key}
+              theme={entry.key}
+              selected={settings.theme === entry.key}
+              onSelect={() => update("theme", entry.key)}
+            />
+          ))}
+        </div>
+      );
+    }
+
+    const options: { key: AccentChoice; label: string; hex: string }[] = [
+      { key: "tema", label: "Del tema", hex: accentHex("tema", settings.theme) },
+      ...(Object.keys(ACCENTS) as AccentKey[]).map((key) => ({
+        key: key as AccentChoice,
+        label: ACCENTS[key].label,
+        hex: ACCENTS[key].hex,
+      })),
+    ];
+
     const selected = settings[definition.key];
     return (
-      <div className="flex items-center gap-2">
-        {(Object.keys(ACCENTS) as AccentKey[]).map((key) => {
-          const accent = ACCENTS[key];
-          const isSelected = selected === key;
+      <div className="flex flex-wrap items-center gap-2">
+        {options.map((option) => {
+          const isSelected = selected === option.key;
           return (
             <button
-              key={key}
+              key={option.key}
               type="button"
               aria-pressed={isSelected}
-              aria-label={`Color ${accent.label}`}
-              title={accent.label}
-              onClick={() => update(definition.key, key)}
-              style={{ backgroundColor: accent.hex }}
+              aria-label={`Color ${option.label}`}
+              title={option.label}
+              onClick={() => update("accent", option.key)}
+              style={{ backgroundColor: option.hex }}
               className={clsx(
                 "flex h-8 w-8 items-center justify-center rounded-full outline-none transition focus-visible:ring-2 focus-visible:ring-gus-accent/70",
                 isSelected
                   ? "ring-2 ring-gus-accent ring-offset-2 ring-offset-gus-card"
-                  : "ring-1 ring-white/25 hover:ring-white/60",
+                  : "ring-1 ring-gus-border hover:ring-gus-muted",
               )}
             >
               {isSelected && (
@@ -401,7 +428,9 @@ export default function SettingsPanel({ settings, onChange }: SettingsPanelProps
                           </p>
                         </div>
 
-                        <div className="shrink-0">{renderControl(definition)}</div>
+                        <div className={definition.kind === "theme" ? "w-full" : "shrink-0"}>
+                          {renderControl(definition)}
+                        </div>
                       </div>
                     ))}
                   </div>

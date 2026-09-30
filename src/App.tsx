@@ -46,6 +46,7 @@ import {
 } from "./lib/importFiles";
 import { findWikiNote, wikiTargetToPath, type WikiNote } from "./lib/wikiLink";
 import { accentHex, DEFAULT_SETTINGS, normalizeSettings, type AppSettings } from "./lib/settings";
+import { applyTheme } from "./lib/themes";
 import { setPersonalWords } from "./lib/spellCheck";
 import { toLocalCoord, uiZoomFactor } from "./lib/uiZoom";
 import gusIcon from "./assets/gus-icon-512.png";
@@ -242,6 +243,13 @@ function App() {
     document.documentElement.style.setProperty("zoom", String(settings.uiZoom / 100));
     window.dispatchEvent(new Event("gus:zoom"));
   }, [settings.uiZoom]);
+
+  /** Paleta activa: variables de color, esquema y acento de todo el documento. */
+  useEffect(() => {
+    // Sin configuración leída aún se respeta el tema de main.tsx (sesión anterior).
+    if (!vaultConfig) return;
+    applyTheme(settings.theme);
+  }, [settings.theme, vaultConfig]);
 
   useEffect(() => {
     function handleZoomKey(event: KeyboardEvent) {
@@ -874,7 +882,10 @@ function App() {
 
   function handleSettingsChange(next: AppSettings) {
     if (!vaultConfig) return;
-    saveVaultConfig({ ...vaultConfig, settings: next });
+    // Cambiar de tema estrena el acento propio del tema; después se puede cambiar a mano.
+    const normalized: AppSettings =
+      next.theme !== settings.theme ? { ...next, accent: "tema" } : next;
+    saveVaultConfig({ ...vaultConfig, settings: normalized });
   }
 
   const showEntryPanel =
@@ -1047,7 +1058,9 @@ function App() {
           "flex h-screen w-screen overflow-hidden bg-gus-bg text-gus-text",
           !settings.animations && "gus-no-motion",
         )}
-        style={{ "--color-gus-accent": accentHex(settings.accent) } as CSSProperties}
+        style={
+          { "--color-gus-accent": accentHex(settings.accent, settings.theme) } as CSSProperties
+        }
       >
         {showSidebar && (
           <aside

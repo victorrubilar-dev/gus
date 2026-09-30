@@ -38,6 +38,7 @@ WebView del sistema en lugar de meter un Chromium entero).
 - 🗃️ **Varios vaults** — panel de tarjetas con portadas y modo edición para la lista de vaults.
 - 📊 **Panel Resumen** — próximas tareas por prioridad, últimas notas modificadas, contadores y accesos rápidos.
 - ⌨️ **Paleta de comandos** — `Ctrl+K` / `Ctrl+P` filtra todas las notas del vault.
+- 🎨 **Temas** — siete paletas: **Gus Oscuro** (el de siempre), **Gus Claro**, **OLED** (negro puro), **Dracula**, **Nord** y **Solarized** en oscuro y claro, con vista previa en Ajustes → Apariencia. Cada tema trae su propio color de acento, que puedes cambiar luego con «Del tema» o con un color fijo.
 - 🔍 **Escala de la interfaz** — Ctrl + «+» / Ctrl + «−» agrandan o achican toda la interfaz (Ctrl + 0 restablece); también desde Ajustes → Apariencia.
 - 🏠 **Local-first** — carpetas con archivos `.md` estándar, sincronizables con git o rsync; sin nube ni cuentas.
 

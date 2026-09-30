@@ -1,12 +1,17 @@
 import { SPELL_LANGUAGES, type SpellLang } from "./spellCheck";
+import { DEFAULT_THEME, isThemeKey, themeDefinition, type ThemeKey } from "./themes";
 
 export type AccentKey = "terracota" | "menta" | "marfil" | "cielo";
+
+/** Color de acento: uno fijo o el que traiga el tema activo. */
+export type AccentChoice = AccentKey | "tema";
 
 export interface AppSettings {
   openLastVault: boolean;
   alwaysNotesTab: boolean;
   animations: boolean;
-  accent: AccentKey;
+  accent: AccentChoice;
+  theme: ThemeKey;
   editorFontSize: number;
   uiZoom: number;
   autoSave: boolean;
@@ -29,7 +34,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   openLastVault: true,
   alwaysNotesTab: false,
   animations: true,
-  accent: "terracota",
+  accent: "tema",
+  theme: DEFAULT_THEME,
   editorFontSize: 14,
   uiZoom: 100,
   autoSave: true,
@@ -56,9 +62,10 @@ export function normalizeSettings(raw: unknown): AppSettings {
     alwaysNotesTab: asBool(data.alwaysNotesTab, DEFAULT_SETTINGS.alwaysNotesTab),
     animations: asBool(data.animations, DEFAULT_SETTINGS.animations),
     accent:
-      typeof accent === "string" && accent in ACCENTS
-        ? (accent as AccentKey)
+      accent === "tema" || (typeof accent === "string" && accent in ACCENTS)
+        ? (accent as AccentChoice)
         : DEFAULT_SETTINGS.accent,
+    theme: isThemeKey(data.theme) ? data.theme : DEFAULT_SETTINGS.theme,
     editorFontSize:
       typeof fontSize === "number" && Number.isFinite(fontSize)
         ? Math.min(22, Math.max(12, Math.round(fontSize)))
@@ -95,7 +102,8 @@ function normalizeSpellWords(raw: unknown): string[] {
   return words;
 }
 
-export function accentHex(accent: AccentKey): string {
+export function accentHex(accent: AccentChoice, theme: ThemeKey): string {
+  if (accent === "tema") return themeDefinition(theme).accent;
   return ACCENTS[accent]?.hex ?? ACCENTS.terracota.hex;
 }
 
@@ -185,6 +193,14 @@ export type SettingDefinition =
       label: string;
       description: string;
       keywords: string;
+    }
+  | {
+      kind: "theme";
+      category: SettingsCategoryId;
+      key: "theme";
+      label: string;
+      description: string;
+      keywords: string;
     };
 
 export const SETTINGS_DEFINITIONS: SettingDefinition[] = [
@@ -206,6 +222,15 @@ export const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     keywords: "pestaña notas reset cambiar vault inicio resumen",
   },
   {
+    kind: "theme",
+    category: "appearance",
+    key: "theme",
+    label: "Tema",
+    description: "Paleta de colores de toda la interfaz, con su color de acento propio.",
+    keywords:
+      "tema estilo apariencia oscuro claro oled dracula nord solarized modo paleta colores",
+  },
+  {
     kind: "toggle",
     category: "appearance",
     key: "animations",
@@ -218,8 +243,9 @@ export const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     category: "appearance",
     key: "accent",
     label: "Color de acento",
-    description: "Color de botones, resaltados y acentos de toda la aplicación.",
-    keywords: "color tema paleta terracota menta marfil cielo",
+    description:
+      "Color de botones, resaltados y acentos de toda la aplicación. «Del tema» usa el color propio de cada tema.",
+    keywords: "color tema paleta terracota menta marfil cielo acento",
   },
   {
     kind: "zoom",

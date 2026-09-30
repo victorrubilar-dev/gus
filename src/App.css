@@ -15,6 +15,21 @@
   color-scheme: dark;
 }
 
+/* En esquema claro los tonos vivos de Tailwind se oscurecen: son colores de
+   texto (vencidas, avisos, errores) que sobre blanco quedarían ilegibles.
+   Tailwind los compila como var(--color-rose-300), así que basta redefinirlos. */
+html[data-scheme="light"] {
+  --color-rose-200: #be123c;
+  --color-rose-300: #e11d48;
+  --color-rose-400: #f43f5e;
+  --color-amber-300: #b45309;
+  --color-amber-400: #d97706;
+  --color-emerald-300: #047857;
+  --color-emerald-400: #059669;
+  --color-sky-300: #0369a1;
+  --color-sky-400: #0284c7;
+}
+
 body {
   background-color: var(--color-gus-bg);
   color: var(--color-gus-text);
