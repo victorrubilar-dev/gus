@@ -344,7 +344,12 @@ export default function MarkdownEditor({
   const copyChipsRef = useRef<HTMLElement[]>([]);
   const [headerMenu, setHeaderMenu] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
-  const [caretLine, setCaretLine] = useState(0);
+  // Línea donde está el cursor. La overlay la pinta en crudo solo mientras el
+  // textarea tiene foco: al abrir, WebKit dispara «select» con el cursor en la
+  // línea 0 y el primer título se quedaría con su «#» sin que nadie haya
+  // tocado nada (el textarea aún no tiene foco).
+  const [caretLine, setCaretLine] = useState(-1);
+  const [areaFocused, setAreaFocused] = useState(false);
   const [tableCaret, setTableCaret] = useState<TableCellCaret | null>(null);
   const prevTableLineRef = useRef(-1);
   const [rowPitch, setRowPitch] = useState(23);
@@ -2228,7 +2233,7 @@ export default function MarkdownEditor({
           {(inlineActive || spellOverlay) && (
             <InlinePreview
               lines={sourceInfo}
-              caretLine={caretLine}
+              caretLine={areaFocused ? caretLine : -1}
               scrollbarWidth={scrollbarWidth}
               fontSize={fontSize}
               rowHeight={rowPitch}
@@ -2271,9 +2276,11 @@ export default function MarkdownEditor({
             // que WebKit escribe en el valor del propio textarea.
             onCompositionStart={() => setComposing(true)}
             onCompositionEnd={() => setComposing(false)}
+            onFocus={() => setAreaFocused(true)}
             onBlur={() => {
               // Al salir del campo no puede quedar ninguna composición viva.
               setComposing(false);
+              setAreaFocused(false);
               setMenu(null);
               setContextMenu(null);
               spellDismissedRef.current = null;
