@@ -1,4 +1,5 @@
 import {
+  isValidElement,
   lazy,
   Suspense,
   useEffect,
@@ -9,6 +10,7 @@ import {
   type ClipboardEvent,
   type KeyboardEvent,
   type MouseEvent,
+  type ReactNode,
   type Ref,
 } from "react";
 import { AnimatePresence } from "framer-motion";
@@ -27,6 +29,9 @@ import {
   type PasteRange,
 } from "../lib/listNumbering";
 import { moveLines } from "../lib/moveLines";
+import { copyText } from "../lib/clipboard";
+import { codeBlocks, type CodeBlockInfo } from "../lib/codeBlocks";
+import { highlightCode } from "../lib/highlight";
 import {
   addPersonalWord,
   getPersonalWords,
@@ -88,6 +93,7 @@ import {
   WikiLinkMenu,
   type SlashItem,
 } from "./EditorMenus";
+import CopyCodeButton from "./CopyCodeButton";
 import InlinePreview, { classifySource } from "./InlinePreview";
 import MermaidDiagram from "./MermaidDiagram";
 import EditorContextMenu, { type ContextSpell, type FormatKind } from "./EditorContextMenu";
@@ -173,6 +179,47 @@ const FORMAT_MARKERS: Record<Exclude<FormatKind, "link">, [string, string]> = {
   strike: ["~~", "~~"],
   code: ["`", "`"],
 };
+
+/** Los bloques de la vista previa, al estilo Obsidian: fondo de bloque,
+ *  esquinas a 4px (--code-radius) y sin borde (--code-border-width: 0px). */
+const PRE_CLASS =
+  "gus-scrollbar overflow-x-auto whitespace-pre-wrap rounded bg-gus-card px-4 py-3 text-[13px] leading-relaxed text-gus-text [&_code]:rounded-none [&_code]:bg-transparent [&_code]:px-0 [&_code]:text-inherit";
+
+/**
+ * Lee el contenido del bloque que envuelve un <pre> de react-markdown y
+ * detecta si es mermaid: ese bloque se sustituye por el diagrama y no debe
+ * llevar botón de copiar (en Obsidian pasa lo mismo: el procesador de
+ * mermaid quita el `<pre>` original antes de añadir su botón).
+ */
+function readCodeBlock(children: ReactNode): { text: string; mermaid: boolean } {
+  const parts: string[] = [];
+  let mermaid = false;
+
+  const walk = (node: ReactNode): void => {
+    if (node === null || node === undefined || typeof node === "boolean") return;
+    if (typeof node === "string" || typeof node === "number") {
+      parts.push(String(node));
+      return;
+    }
+    if (Array.isArray(node)) {
+      node.forEach(walk);
+      return;
+    }
+    if (isValidElement(node)) {
+      const props = node.props as { className?: unknown; children?: ReactNode };
+      if (
+        typeof props.className === "string" &&
+        /(?:^|\s)language-mermaid(?:\s|$)/.test(props.className)
+      ) {
+        mermaid = true;
+      }
+      walk(props.children);
+    }
+  };
+
+  walk(children);
+  return { text: parts.join("").replace(/\n+$/, ""), mermaid };
+}
 
 const MarkdownBody = lazy(async () => {
   const [
@@ -289,6 +336,12 @@ export default function MarkdownEditor({
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("edit");
+  // Botones «copiar» de los bloques de código en modo edición: qué bloque
+  // tiene el cursor encima (resaltado) y cuál se acaba de copiar (✔ 1 s).
+  const [copyHover, setCopyHover] = useState<number | null>(null);
+  const [copyDone, setCopyDone] = useState<number | null>(null);
+  const copyTimerRef = useRef<number | null>(null);
+  const copyChipsRef = useRef<HTMLElement[]>([]);
   const [headerMenu, setHeaderMenu] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [caretLine, setCaretLine] = useState(0);
@@ -976,11 +1029,51 @@ export default function MarkdownEditor({
     syncOverlayGeometry();
   }
 
-  /** Clic sobre una celda de la tabla: selecciona su contenido (estilo Excel). */
-  function handleCellMouseDown(event: MouseEvent<HTMLTextAreaElement>) {
+  /** Botón «copiar» bajo el punto (x, y): devuelve la línea de su bloque. */
+  function copyChipAt(clientX: number, clientY: number): number | null {
+    for (const chip of copyChipsRef.current) {
+      const rect = chip.getBoundingClientRect();
+      if (
+        clientX >= rect.left &&
+        clientX <= rect.right &&
+        clientY >= rect.top &&
+        clientY <= rect.bottom
+      ) {
+        return Number(chip.dataset.copyLine);
+      }
+    }
+    return null;
+  }
+
+  /** Copia el contenido de un bloque de código y enseña el ✔ un segundo. */
+  function copyCodeBlock(start: number) {
+    const block = codeBlockMap.get(start);
+    if (!block) return;
+    void copyText(block.text).then((ok) => {
+      if (!ok) return;
+      setCopyDone(block.start);
+      if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = window.setTimeout(() => setCopyDone(null), 1000);
+    });
+  }
+
+  /**
+   * Clic sobre lo que el overlay dibuja encima del fondo (celdas de tabla y
+   * botones «copiar»): el overlay va por debajo del textarea, así que esos
+   * elementos se detectan por coordenadas en este evento.
+   */
+  function handleOverlayMouseDown(event: MouseEvent<HTMLTextAreaElement>) {
     if (event.button !== 0 || !inlineActive) return;
     const overlay = overlayRef.current;
     if (!overlay) return;
+
+    const chipLine = copyChipAt(event.clientX, event.clientY);
+    if (chipLine !== null && codeBlockMap.has(chipLine)) {
+      // Copiar no mueve el cursor ni deshace la selección.
+      event.preventDefault();
+      copyCodeBlock(chipLine);
+      return;
+    }
 
     const cell = Array.from(overlay.querySelectorAll<HTMLElement>("[data-cell]")).find(
       (element) => {
@@ -1721,6 +1814,32 @@ export default function MarkdownEditor({
   const inlineActive = viewMode === "edit" && sourceInfo.length <= MAX_DECORATED_LINES;
   const spellOverlay =
     spell !== null && viewMode === "edit" && sourceInfo.length <= MAX_DECORATED_LINES;
+
+  // Primera línea de cada bloque de código: es la clave del botón «copiar»
+  // que pinta el overlay, y por ella se sabe qué contenido llevarse.
+  const codeBlockMap = useMemo(() => {
+    const map = new Map<number, CodeBlockInfo>();
+    for (const block of codeBlocks(sourceInfo)) map.set(block.start, block);
+    return map;
+  }, [sourceInfo]);
+
+  // Los botones «copiar» se cachean: viven dentro del overlay (que va debajo
+  // del textarea) y se detectan por coordenadas en cada movimiento del ratón,
+  // así que no se quiere recorrer el árbol del documento en cada evento.
+  useEffect(() => {
+    const overlay = overlayRef.current;
+    copyChipsRef.current = overlay
+      ? Array.from(overlay.querySelectorAll<HTMLElement>("[data-copy-line]"))
+      : [];
+  }, [sourceInfo, inlineActive, viewMode]);
+
+  // El ✔ de «copiado» se apaga solo: al desmontar hay que soltar su reloj.
+  useEffect(
+    () => () => {
+      if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current);
+    },
+    [],
+  );
   const noteTags = parseNoteTags(content);
   const tagOptionList = tagOptions(vaultTags, tagInput, noteTags);
 
@@ -1843,21 +1962,48 @@ export default function MarkdownEditor({
     hr: () => <hr className="my-6 border-gus-border" />,
     strong: ({ children }) => <strong className="font-semibold text-gus-text">{children}</strong>,
     del: ({ children }) => <del className="text-gus-muted line-through">{children}</del>,
-    pre: ({ children }) => (
-      <pre className="gus-scrollbar my-4 overflow-x-auto rounded-xl border border-gus-border bg-gus-card px-4 py-3 text-[13px] leading-relaxed text-gus-text [&_code]:rounded-none [&_code]:bg-transparent [&_code]:px-0 [&_code]:text-inherit">
-        {children}
-      </pre>
-    ),
+    pre: ({ children }) => {
+      const block = readCodeBlock(children);
+
+      // Mermaid: el diagrama ocupa el bloque y no tiene código que copiar.
+      if (block.mermaid) {
+        return <pre className={clsx(PRE_CLASS, "my-4")}>{children}</pre>;
+      }
+
+      // Envoltorio «group» para que el botón de copiar aparezca al pasar el
+      // ratón, igual que en Obsidian (que lo oculta con :not(:hover)).
+      return (
+        <div className="group relative my-4">
+          <pre className={PRE_CLASS}>{children}</pre>
+          <CopyCodeButton text={block.text} />
+        </div>
+      );
+    },
     code: ({ className, children }) => {
       const language = /language-([\w-]+)/.exec(className ?? "")?.[1];
       if (language === "mermaid") {
         return <MermaidDiagram code={String(children).replace(/\n+$/, "")} />;
       }
 
-      return language ? (
-        <code className={clsx("font-mono", className)}>{children}</code>
-      ) : (
-        <code className="rounded bg-gus-card px-1.5 py-0.5 font-mono text-[0.9em] text-gus-accent">
+      if (language) {
+        // Resaltado con Prism, el motor que usa Obsidian en la vista de
+        // lectura; si el lenguaje no tiene gramática, texto plano.
+        const html = highlightCode(String(children), language);
+        if (html !== null) {
+          return (
+            <code
+              className={clsx("gus-code font-mono", className)}
+              dangerouslySetInnerHTML={{ __html: html }}
+            />
+          );
+        }
+        return <code className={clsx("font-mono", className)}>{children}</code>;
+      }
+
+      // Código en línea al estilo Obsidian: color de texto normal (el acento
+      // queda para los enlaces), con el fondo del bloque.
+      return (
+        <code className="rounded bg-gus-card px-1 py-0.5 font-mono text-[0.9em] text-gus-text">
           {children}
         </code>
       );
@@ -2092,6 +2238,8 @@ export default function MarkdownEditor({
               slashHint={lineHint && !menu && !slashHintUsed}
               tableCols={tableCols}
               tableCaret={tableCaret}
+              copiedLine={copyDone}
+              hoverLine={copyHover}
             />
           )}
 
@@ -2108,9 +2256,15 @@ export default function MarkdownEditor({
             onKeyDown={handleKeyDown}
             onCut={handleCut}
             onPaste={handlePaste}
-            onMouseDown={handleCellMouseDown}
+            onMouseDown={handleOverlayMouseDown}
             onSelect={handleCaretMove}
             onScroll={handleScroll}
+            onMouseMove={(event) => {
+              // Resalta el botón «copiar» del bloque bajo el cursor.
+              const line = copyChipAt(event.clientX, event.clientY);
+              setCopyHover((prev) => (prev === line ? prev : line));
+            }}
+            onMouseLeave={() => setCopyHover(null)}
             // Mientras WebKit compone una tilde (tecla muerta) el textarea se
             // queda transparente y manda el overlay: allí se ve lo renderizado
             // (títulos, divisores, subrayados) y también la tilde pendiente,
@@ -2142,9 +2296,10 @@ export default function MarkdownEditor({
               // break-spaces: los espacios finales envuelven en vez de «colgar»
               // fuera del borde derecho; el cursor baja al pulsar espacio y el
               // overlay maqueta igual (mismo white-space en InlinePreview).
-              "gus-scrollbar relative h-full w-full resize-none whitespace-break-spaces px-6 py-4 font-mono text-sm leading-[23px] text-gus-text outline-none placeholder:text-gus-muted focus:outline-none",
+              "gus-scrollbar relative h-full w-full resize-none whitespace-break-spaces px-10 py-4 font-mono text-sm leading-[23px] text-gus-text outline-none placeholder:text-gus-muted focus:outline-none",
               inlineActive && "gus-source-area",
               tableCaret && !composing && "gus-cell-edit",
+              copyHover !== null && "cursor-pointer",
             )}
           />
 

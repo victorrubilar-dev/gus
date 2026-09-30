@@ -1,6 +1,8 @@
 import { memo, useMemo, type CSSProperties, type ReactNode, type Ref } from "react";
 import clsx from "clsx";
+import { Check, Copy } from "lucide-react";
 import type { SpellFn } from "../lib/spellCheck";
+import { codeBlocks } from "../lib/codeBlocks";
 import {
   delimiterAlign,
   sourceSegments,
@@ -131,8 +133,13 @@ function inlineNodes(text: string, spell: SpellFn | null, depth = 0): ReactNode 
       case "code": {
         const end = tail.indexOf("`", 1);
         consumed = end + 1;
+        // Código en línea al estilo Obsidian: fondo de bloque, esquinas
+        // redondeadas y color de texto normal (no el color de acento).
         node = (
-          <code key={key} className="rounded bg-gus-card px-1 font-mono text-[0.9em] text-gus-accent">
+          <code
+            key={key}
+            className="rounded bg-gus-card px-1 py-0.5 font-mono text-[0.9em] text-gus-text"
+          >
             {tail.slice(1, end)}
           </code>
         );
@@ -398,6 +405,16 @@ function TableBlock({ lines, start, rowPitch, offsets, spell, tableCaret }: Tabl
   );
 }
 
+/** Situación de una línea dentro de un bloque de código (para pintarlo). */
+interface CodeBlockLineInfo {
+  /** Primera línea del bloque: la valla de apertura. */
+  start: number;
+  first: boolean;
+  last: boolean;
+  language: string | null;
+  text: string;
+}
+
 interface PreviewLineProps {
   text: string;
   code: boolean;
@@ -406,6 +423,11 @@ interface PreviewLineProps {
   raw: boolean;
   hint?: boolean;
   spell: SpellFn | null;
+  block?: CodeBlockLineInfo;
+  /** El botón «copiar» de este bloque acaba de pulsarse (muestra ✔). */
+  copied?: boolean;
+  /** El cursor del textarea está sobre el botón «copiar» del bloque. */
+  hovered?: boolean;
 }
 
 const PreviewLine = memo(function PreviewLine({
@@ -416,6 +438,9 @@ const PreviewLine = memo(function PreviewLine({
   raw,
   hint = false,
   spell,
+  block,
+  copied = false,
+  hovered = false,
 }: PreviewLineProps) {
   if (raw) {
     const marked = spell && !code ? spellNodes(text, spell, "w") : text;
@@ -428,6 +453,45 @@ const PreviewLine = memo(function PreviewLine({
     );
   }
 
+  // Fondo continuo del bloque con las esquinas redondeadas arriba y abajo,
+  // pero separado de los bordes del editor como la tarjeta de la vista
+  // previa: los -mx-3 compensan 12 px del px-10 del overlay, así el fondo deja
+  // 28 px de hueco a cada lado y el texto sigue exactamente donde el textarea
+  // lo escribe (ni un píxel de desplazamiento).
+  const blockWrap = block
+    ? clsx(
+        "relative -mx-3 bg-gus-card px-3",
+        block.first && "rounded-t",
+        block.last && "rounded-b",
+      )
+    : undefined;
+
+  // Botón «copiar» al estilo Obsidian (su «code-block-flair»): el nombre del
+  // lenguaje, o el icono si la valla no trae ninguno. Va en el overlay, que
+  // queda debajo del textarea, así que los clics los intercepta MarkdownEditor
+  // por coordenadas (lo mismo que hace con las celdas de las tablas).
+  const chip =
+    block?.first === true ? (
+      <span
+        data-copy-line={block.start}
+        title="Copiar código"
+        className={clsx(
+          "absolute top-1.5 right-1.5 z-10 flex items-center rounded px-2 py-1 font-sans text-xs",
+          copied
+            ? "text-emerald-400"
+            : clsx("text-gus-muted", hovered && "bg-gus-border/70 text-gus-text"),
+        )}
+      >
+        {copied ? (
+          <Check size={14} />
+        ) : block.language ? (
+          block.language
+        ) : (
+          <Copy size={14} />
+        )}
+      </span>
+    ) : null;
+
   // Línea del cursor: código fuente visible para editar los marcadores.
   if (caret) {
     const raw = spell && !code ? spellNodes(text, spell, "c") : text;
@@ -435,7 +499,7 @@ const PreviewLine = memo(function PreviewLine({
     // nunca flota sobre el texto y hace scroll con el contenido.
     const ghost = hint && text.trim() === "";
     return (
-      <div className="min-h-[var(--gus-row-h)]">
+      <div className={clsx("min-h-[var(--gus-row-h)]", blockWrap)}>
         <span className="block whitespace-break-spaces break-words">
           {text === "" ? "\u200B" : raw}
           {ghost && (
@@ -444,6 +508,7 @@ const PreviewLine = memo(function PreviewLine({
             </span>
           )}
         </span>
+        {chip}
       </div>
     );
   }
@@ -451,20 +516,26 @@ const PreviewLine = memo(function PreviewLine({
   const { nodes, layerClass } = visibleFor({ text, fence, code }, spell);
 
   return (
-    <div className={clsx("relative min-h-[var(--gus-row-h)]", code && "bg-gus-card")}>
+    <div className={clsx("relative min-h-[var(--gus-row-h)]", blockWrap)}>
       <span className="block invisible whitespace-break-spaces break-words">{text || "\u200B"}</span>
 
       {nodes !== null && (
         <span
           className={clsx(
             "absolute inset-0 block overflow-hidden whitespace-break-spaces break-words",
-            code ? "text-gus-accent" : "text-gus-text",
+            // Una capa absoluta se coloca contra el relleno del div, no contra
+            // su contenido: en los bloques hay que repetir el px-3 para que el
+            // texto visible caiga en la misma columna que el textarea (x=40)
+            // y envuelva en el mismo ancho (si cambia uno, cambia el otro).
+            block && "px-3",
+            "text-gus-text",
             layerClass,
           )}
         >
           {nodes}
         </span>
       )}
+      {chip}
     </div>
   );
 });
@@ -483,6 +554,10 @@ export interface InlinePreviewProps {
   tableCols?: number | null;
   /** Celda bajo el cursor para la edición estilo Excel (null = fuera de tabla). */
   tableCaret?: TableCellCaret | null;
+  /** Primera línea del bloque cuyo botón «copiar» se acaba de pulsar (✔ 1 s). */
+  copiedLine?: number | null;
+  /** Primera línea del bloque que tiene el cursor encima (resalta su botón). */
+  hoverLine?: number | null;
 }
 
 export default function InlinePreview({
@@ -497,6 +572,8 @@ export default function InlinePreview({
   slashHint = false,
   tableCols = null,
   tableCaret = null,
+  copiedLine = null,
+  hoverLine = null,
 }: InlinePreviewProps) {
   // La interlínea real la fija MarkdownEditor (medida sobre el textarea): al
   // escalar, el motor redondea las filas a píxeles enteros y el overlay debe
@@ -512,6 +589,26 @@ export default function InlinePreview({
     () => sourceSegments(lines, raw, tableCols),
     [lines, raw, tableCols],
   );
+
+  // Cada línea sabe a qué bloque de código pertenece: así el fondo sale
+  // continuo (primera/última línea redondeadas) y el botón «copiar» solo se
+  // dibuja en la valla de apertura. En modo fuente no se decora nada.
+  const blockLines = useMemo(() => {
+    const map = new Map<number, CodeBlockLineInfo>();
+    if (raw) return map;
+    for (const block of codeBlocks(lines)) {
+      for (let index = block.start; index <= block.end; index++) {
+        map.set(index, {
+          start: block.start,
+          first: index === block.start,
+          last: index === block.end,
+          language: block.language,
+          text: block.text,
+        });
+      }
+    }
+    return map;
+  }, [lines, raw]);
 
   // Offset absoluto de cada línea dentro del body (para rangos de celda).
   const offsets = useMemo(() => {
@@ -529,20 +626,25 @@ export default function InlinePreview({
       ref={overlayRef}
       aria-hidden="true"
       style={rootStyle}
-      className="gus-source-overlay pointer-events-none absolute inset-y-0 left-0 overflow-hidden bg-gus-bg px-6 py-4 font-mono text-sm"
+      className="gus-source-overlay pointer-events-none absolute inset-y-0 left-0 overflow-hidden bg-gus-bg px-10 py-4 font-mono text-sm"
     >
-      {segments.map((segment) =>
-        segment.kind === "table" ? (
-          <TableBlock
-            key={`table-${segment.start}`}
-            lines={lines.slice(segment.start, segment.end + 1)}
-            start={segment.start}
-            rowPitch={rowHeight}
-            offsets={offsets}
-            spell={spell}
-            tableCaret={tableCaret}
-          />
-        ) : (
+      {segments.map((segment) => {
+        if (segment.kind === "table") {
+          return (
+            <TableBlock
+              key={`table-${segment.start}`}
+              lines={lines.slice(segment.start, segment.end + 1)}
+              start={segment.start}
+              rowPitch={rowHeight}
+              offsets={offsets}
+              spell={spell}
+              tableCaret={tableCaret}
+            />
+          );
+        }
+
+        const block = blockLines.get(segment.index);
+        return (
           <PreviewLine
             key={segment.index}
             text={lines[segment.index].text}
@@ -552,9 +654,12 @@ export default function InlinePreview({
             raw={raw}
             hint={slashHint}
             spell={spell}
+            block={block}
+            copied={block !== undefined && block.start === copiedLine}
+            hovered={block !== undefined && block.start === hoverLine}
           />
-        ),
-      )}
+        );
+      })}
     </div>
   );
 }

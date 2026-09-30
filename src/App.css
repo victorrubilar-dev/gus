@@ -13,6 +13,19 @@
 
 :root {
   color-scheme: dark;
+
+  /* Paleta de resaltado de código, con los mismos tonos que usa Obsidian en
+     su tema oscuro: los tokens de Prism se pintan con estas variables. */
+  --gus-code-comment: var(--color-gus-muted);
+  --gus-code-punctuation: var(--color-gus-muted);
+  --gus-code-tag: #fb464c;
+  --gus-code-value: #a882ff;
+  --gus-code-string: #44cf6e;
+  --gus-code-operator: #fb464c;
+  --gus-code-property: #53dfdd;
+  --gus-code-function: #e0de71;
+  --gus-code-keyword: #fa99cd;
+  --gus-code-important: #e9973f;
 }
 
 /* En esquema claro los tonos vivos de Tailwind se oscurecen: son colores de
@@ -28,6 +41,17 @@ html[data-scheme="light"] {
   --color-emerald-400: #059669;
   --color-sky-300: #0369a1;
   --color-sky-400: #0284c7;
+
+  /* El mismo ajuste para la paleta de resaltado: los tonos vivos de Obsidian
+     en su tema claro. */
+  --gus-code-tag: #e93147;
+  --gus-code-value: #7852ee;
+  --gus-code-string: #08b94e;
+  --gus-code-operator: #e93147;
+  --gus-code-property: #00bfbc;
+  --gus-code-function: #e0ac00;
+  --gus-code-keyword: #d53984;
+  --gus-code-important: #ec7500;
 }
 
 body {
@@ -163,6 +187,86 @@ body {
   50% {
     opacity: 0;
   }
+}
+
+/* ——— Resaltado de sintaxis ——————————————————————————————
+   Obsidian resalta los bloques con Prism en la vista de lectura (no en el
+   modo edición, donde el texto es plano porque maqueta con el textarea) y
+   colorea cada token con su familia --code-*; aquí se replica esa misma
+   correspondencia con los tonos de su tema oscuro y claro. */
+.gus-code .token.comment,
+.gus-code .token.prolog,
+.gus-code .token.doctype,
+.gus-code .token.cdata {
+  color: var(--gus-code-comment);
+}
+
+.gus-code .token.namespace {
+  opacity: 0.7;
+}
+
+.gus-code .token.tag,
+.gus-code .token.constant,
+.gus-code .token.symbol,
+.gus-code .token.deleted {
+  color: var(--gus-code-tag);
+}
+
+.gus-code .token.punctuation {
+  color: var(--gus-code-punctuation);
+}
+
+.gus-code .token.boolean,
+.gus-code .token.number {
+  color: var(--gus-code-value);
+}
+
+.gus-code .token.selector,
+.gus-code .token.attr-name,
+.gus-code .token.string,
+.gus-code .token.char,
+.gus-code .token.inserted {
+  color: var(--gus-code-string);
+}
+
+.gus-code .token.operator {
+  color: var(--gus-code-operator);
+}
+
+.gus-code .token.entity,
+.gus-code .token.parameter,
+.gus-code .token.property,
+.gus-code .token.url,
+.gus-code .language-css .token.string,
+.gus-code .style .token.string,
+.gus-code .token.variable {
+  color: var(--gus-code-property);
+}
+
+.gus-code .token.atrule,
+.gus-code .token.attr-value,
+.gus-code .token.builtin,
+.gus-code .token.function,
+.gus-code .token.class-name,
+.gus-code .token.property-access {
+  color: var(--gus-code-function);
+}
+
+.gus-code .token.keyword {
+  color: var(--gus-code-keyword);
+}
+
+.gus-code .token.regex,
+.gus-code .token.important {
+  color: var(--gus-code-important);
+}
+
+.gus-code .token.bold {
+  font-weight: bold;
+}
+
+.gus-code .token.italic {
+  font-style: italic;
 }
 
 /* ——— Exportación a PDF ——————————————————————————————————————
