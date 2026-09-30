@@ -990,7 +990,7 @@ function App() {
 
                 {pdfStatus === "ready" && pdf.src && (
                   <Suspense fallback={<p className="text-sm text-white/60">Cargando visor…</p>}>
-                    <PdfViewer src={pdf.src} title={pdf.title} />
+                    <PdfViewer src={pdf.src} title={pdf.title} path={pdf.path} />
                   </Suspense>
                 )}
               </div>

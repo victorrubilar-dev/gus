@@ -371,3 +371,14 @@ body {
   max-width: 100%;
   height: auto;
 }
+
+/* Visor de PDF en pantalla completa: el contenedor ocupa toda la ventana
+   (la Fullscreen API no garantiza el tamaño en todos los motores). */
+.gus-pdf-root:fullscreen {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  z-index: 100;
+  background: var(--color-gus-bg);
+}
