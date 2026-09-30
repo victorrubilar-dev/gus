@@ -136,11 +136,6 @@ body {
   background: color-mix(in oklab, var(--color-gus-accent) 30%, transparent);
 }
 
-.gus-source-text {
-  color: var(--color-gus-text);
-  -webkit-text-fill-color: var(--color-gus-text);
-}
-
 .gus-misspelled {
   text-decoration: underline wavy var(--color-rose-400);
   text-decoration-skip-ink: none;

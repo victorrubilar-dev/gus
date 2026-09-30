@@ -475,7 +475,6 @@ export interface InlinePreviewProps {
   scrollbarWidth?: number;
   fontSize?: number;
   rowHeight?: number;
-  hidden?: boolean;
   overlayRef?: Ref<HTMLDivElement>;
   spell?: SpellFn | null;
   raw?: boolean;
@@ -492,7 +491,6 @@ export default function InlinePreview({
   scrollbarWidth = 0,
   fontSize,
   rowHeight = 23,
-  hidden,
   overlayRef,
   spell = null,
   raw = false,
@@ -531,10 +529,7 @@ export default function InlinePreview({
       ref={overlayRef}
       aria-hidden="true"
       style={rootStyle}
-      className={clsx(
-        "gus-source-overlay pointer-events-none absolute inset-y-0 left-0 overflow-hidden bg-gus-bg px-6 py-4 font-mono text-sm",
-        hidden && "invisible",
-      )}
+      className="gus-source-overlay pointer-events-none absolute inset-y-0 left-0 overflow-hidden bg-gus-bg px-6 py-4 font-mono text-sm"
     >
       {segments.map((segment) =>
         segment.kind === "table" ? (

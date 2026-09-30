@@ -1429,6 +1429,12 @@ export default function MarkdownEditor({
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
+    // Una composición que no recibió `compositionend` (tecla muerta de tilde
+    // abandonada) dejaría la renumeración de listas y la edición de tablas
+    // paradas: una tecla que no forme parte de la composición la da por
+    // terminada.
+    if (composing && !event.nativeEvent.isComposing) setComposing(false);
+
     if (event.key === "Escape" && (contextMenu || headerMenu)) {
       event.preventDefault();
       setContextMenu(null);
@@ -2080,7 +2086,6 @@ export default function MarkdownEditor({
               scrollbarWidth={scrollbarWidth}
               fontSize={fontSize}
               rowHeight={rowPitch}
-              hidden={composing}
               overlayRef={overlayRef}
               spell={spell}
               raw={!inlineActive}
@@ -2093,16 +2098,28 @@ export default function MarkdownEditor({
           <textarea
             ref={textareaRef}
             value={body}
-            onChange={(event) => handleContentChange(event.target.value)}
+            onChange={(event) => {
+              // Un texto que llega sin composición da por terminada cualquier
+              // composición huérfana: si no, la renumeración de listas y la
+              // edición de tablas por celda se quedan paradas.
+              if (!(event.nativeEvent as InputEvent).isComposing) setComposing(false);
+              handleContentChange(event.target.value);
+            }}
             onKeyDown={handleKeyDown}
             onCut={handleCut}
             onPaste={handlePaste}
             onMouseDown={handleCellMouseDown}
             onSelect={handleCaretMove}
             onScroll={handleScroll}
+            // Mientras WebKit compone una tilde (tecla muerta) el textarea se
+            // queda transparente y manda el overlay: allí se ve lo renderizado
+            // (títulos, divisores, subrayados) y también la tilde pendiente,
+            // que WebKit escribe en el valor del propio textarea.
             onCompositionStart={() => setComposing(true)}
             onCompositionEnd={() => setComposing(false)}
             onBlur={() => {
+              // Al salir del campo no puede quedar ninguna composición viva.
+              setComposing(false);
               setMenu(null);
               setContextMenu(null);
               spellDismissedRef.current = null;
@@ -2127,7 +2144,6 @@ export default function MarkdownEditor({
               // overlay maqueta igual (mismo white-space en InlinePreview).
               "gus-scrollbar relative h-full w-full resize-none whitespace-break-spaces px-6 py-4 font-mono text-sm leading-[23px] text-gus-text outline-none placeholder:text-gus-muted focus:outline-none",
               inlineActive && "gus-source-area",
-              composing && "gus-source-text",
               tableCaret && !composing && "gus-cell-edit",
             )}
           />
