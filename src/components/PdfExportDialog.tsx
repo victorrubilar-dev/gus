@@ -1,6 +1,6 @@
 import { Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 import clsx from "clsx";
-import { motion } from "framer-motion";
+import { m } from "framer-motion";
 import { ChevronLeft, ChevronRight, FileDown, Moon, Sun, X } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
@@ -217,7 +217,7 @@ export default function PdfExportDialog({ title, children, onClose }: PdfExportD
       aria-label={t("pdf.export.title")}
       className="fixed inset-0 z-50 flex items-center justify-center p-6"
     >
-      <motion.button
+      <m.button
         type="button"
         aria-label={t("common.close")}
         initial={{ opacity: 0 }}
@@ -226,7 +226,7 @@ export default function PdfExportDialog({ title, children, onClose }: PdfExportD
         className="absolute inset-0 cursor-default bg-black/65"
       />
 
-      <motion.div
+      <m.div
         ref={panelRef}
         tabIndex={-1}
         initial={{ opacity: 0, y: 12, scale: 0.985 }}
@@ -379,7 +379,7 @@ export default function PdfExportDialog({ title, children, onClose }: PdfExportD
             {t(busy ? "pdf.export.exporting" : "pdf.export.export")}
           </button>
         </footer>
-      </motion.div>
+      </m.div>
     </div>
   );
 }

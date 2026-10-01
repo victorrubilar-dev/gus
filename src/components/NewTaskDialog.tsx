@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, m } from "framer-motion";
 import { Check, Plus, X } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import clsx from "clsx";
@@ -35,18 +35,9 @@ export default function NewTaskDialog({ open, onOpenChange }: NewTaskDialogProps
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    setTitle("");
-    setDescription("");
-    setTags([]);
-    setTagInput("");
-    setDue("");
-    setDueEnabled(false);
-    setPriority(null);
-    setError(null);
-    setSending(false);
-  }, [open]);
+  // Los campos no se vacían en un efecto al abrirse: App remonta el diálogo
+  // con una key nueva en cada apertura, así el formulario nace limpio antes
+  // del paint y no se ve ni un frame con los datos de la tarea anterior.
 
   useEffect(() => {
     if (!open) return;
@@ -124,7 +115,7 @@ export default function NewTaskDialog({ open, onOpenChange }: NewTaskDialogProps
   return (
     <AnimatePresence>
       {open && (
-        <motion.div
+        <m.div
           key="new-task-overlay"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -135,7 +126,7 @@ export default function NewTaskDialog({ open, onOpenChange }: NewTaskDialogProps
             if (event.target === event.currentTarget && !sending) onOpenChange(false);
           }}
         >
-          <motion.div
+          <m.div
             role="dialog"
             aria-modal="true"
             aria-label={t("tasks.new")}
@@ -308,22 +299,19 @@ export default function NewTaskDialog({ open, onOpenChange }: NewTaskDialogProps
                     </span>
                   </label>
 
-                  <AnimatePresence initial={false}>
-                    {dueEnabled && (
-                      <motion.div
-                        key="campo-fecha"
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: "auto" }}
-                        exit={{ opacity: 0, height: 0 }}
-                        transition={{ duration: 0.16, ease: "easeOut" }}
-                        className="overflow-hidden"
-                      >
-                        <div className="pt-2">
-                          <DatePicker value={due || null} onChange={(iso) => setDue(iso ?? "")} />
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
+                  {/* Despliegue del campo de fecha. El acordeón se anima con
+                      grid-template-rows en CSS: expandir una fila de la rejilla
+                      no obliga al navegador a recalcular el layout de todo el
+                      diálogo en cada frame, como sí haría animar height. El
+                      panel sigue montado y visibility:hidden lo saca del árbol
+                      de accesibilidad y del foco mientras está plegado. */}
+                  <div data-open={dueEnabled} className="gus-accordion">
+                    <div className="gus-accordion-panel">
+                      <div className="pt-2">
+                        <DatePicker value={due || null} onChange={(iso) => setDue(iso ?? "")} />
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -357,8 +345,8 @@ export default function NewTaskDialog({ open, onOpenChange }: NewTaskDialogProps
                 </div>
               </div>
             </form>
-          </motion.div>
-        </motion.div>
+          </m.div>
+        </m.div>
       )}
     </AnimatePresence>
   );

@@ -4,8 +4,11 @@ import {
   isValidElement,
   lazy,
   Suspense,
+  useCallback,
   useEffect,
+  useEffectEvent,
   useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -159,6 +162,7 @@ export interface EditorDraft {
 
 export interface MarkdownEditorHandle {
   flush: () => Promise<boolean>;
+  requestExport: () => void;
 }
 
 export interface MarkdownEditorProps {
@@ -543,7 +547,9 @@ export default function MarkdownEditor({
   const copyTimerRef = useRef<number | null>(null);
   const copyChipsRef = useRef<HTMLElement[]>([]);
   const [headerMenu, setHeaderMenu] = useState(false);
-  const [exportOpen, setExportOpen] = useState(false);
+  // Si el explorador pidió exportar esta nota antes de que el editor montara,
+  // el diálogo ya arranca abierto (la prop se consume aquí, no en un efecto).
+  const [exportOpen, setExportOpen] = useState(() => autoExportPath === path);
   // Línea donde está el cursor. La overlay la pinta en crudo solo mientras el
   // textarea tiene foco: al abrir, WebKit dispara «select» con el cursor en la
   // línea 0 y el primer título se quedaría con su «#» sin que nadie haya
@@ -580,9 +586,12 @@ export default function MarkdownEditor({
    */
   const tableCellsRef = useRef<HTMLElement[]>([]);
   // Espejos para los escuchadores: un ref se lee en cualquier momento y no
-  // depende del cierre del render.
-  colWidthsRef.current = tableWidths ?? new Map();
-  tableDriftRef.current = tableDrift;
+  // depende del cierre del render. Se sincronizan tras el commit y antes del
+  // paint, para no escribir en un ref mientras se renderiza.
+  useLayoutEffect(() => {
+    colWidthsRef.current = tableWidths ?? new Map();
+    tableDriftRef.current = tableDrift;
+  });
   /** Arrastre de columna en curso: bloque, columna, x inicial y anchuras. */
   const resizeDragRef = useRef<{
     block: number;
@@ -621,7 +630,9 @@ export default function MarkdownEditor({
    * (que se enganchan una vez) vean siempre el último valor sin re-suscribirse.
    */
   const shortcutsRef = useRef<ShortcutMap | null>(shortcuts ?? null);
-  shortcutsRef.current = shortcuts ?? null;
+  useLayoutEffect(() => {
+    shortcutsRef.current = shortcuts ?? null;
+  });
   const [spellRevision, setSpellRevision] = useState(0);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   /**
@@ -640,7 +651,9 @@ export default function MarkdownEditor({
   const lastSpellSelRef = useRef<string | null>(null);
   // El temporizador vive fuera del render: siempre ejecuta la última versión.
   const spellPopupSyncRef = useRef<() => void>(() => {});
-  spellPopupSyncRef.current = syncSpellPopup;
+  useLayoutEffect(() => {
+    spellPopupSyncRef.current = syncSpellPopup;
+  });
 
   useEffect(() => {
     const langs = spellLangs ?? [];
@@ -656,8 +669,10 @@ export default function MarkdownEditor({
     return () => {
       alive = false;
     };
-    // La lista se compara por contenido: cada cambio real trae un array nuevo.
-  }, [spellLangs?.join(",")]);
+    // `spellLangs` viene del estado de ajustes y mantiene su identidad entre
+    // renders, así que comparar por referencia equivale a comparar por
+    // contenido y la dependencia se queda simple.
+  }, [spellLangs]);
 
   const headerMenuRef = useRef<HTMLDivElement>(null);
 
@@ -674,17 +689,25 @@ export default function MarkdownEditor({
   }, [headerMenu]);
 
   /** El explorador pide exportar esta nota en cuanto esté abierta. */
+  // La prop cambia de identidad en cada render (llega como flecha inline):
+  // envuelta en useEffectEvent el efecto no necesita declararla en las deps.
+  const notifyAutoExportEvent = useEffectEvent(() => onAutoExportShown?.());
+
+  // Si la nota ya estaba abierta, App dispara `requestExport()` desde su propio
+  // evento; esta vía solo cubre el montaje con la petición ya en vuelo y se
+  // limita a consumirla (el estado se ajusta arriba, en el initializer).
   useEffect(() => {
     if (!autoExportPath || autoExportPath !== path) return;
-    setHeaderMenu(false);
-    setExportOpen(true);
-    onAutoExportShown?.();
+    notifyAutoExportEvent();
   }, [autoExportPath, path]);
 
-  const spell = useMemo<SpellFn | null>(
-    () => (engine ? (text: string) => spellSegments(text, engine.correct) : null),
-    [engine, spellWords, spellRevision],
-  );
+  const spell = useMemo<SpellFn | null>(() => {
+    // `spellWords` se referencia a propósito: no cambia el resultado, pero
+    // sí la identidad de `spell`, y con ella las líneas memorizadas que
+    // vuelven a marcar el texto cuando cambia el diccionario.
+    void spellWords;
+    return engine ? (text: string) => spellSegments(text, engine.correct) : null;
+  }, [engine, spellWords, spellRevision]);
 
   /** El motor cambia (idioma): se olvida lo sugerido antes. */
   useEffect(() => {
@@ -745,30 +768,13 @@ export default function MarkdownEditor({
   const sequenceRef = useRef(0);
   const dirtyRef = useRef(false);
   const autoSaveRef = useRef(autoSave);
-  autoSaveRef.current = autoSave;
-  dirtyRef.current = saveState === "dirty";
-
-  useEffect(() => {
-    if (path === ownPathRef.current) return;
-
-    sequenceRef.current += 1;
-    ownPathRef.current = path;
-    setTitle(initialTitle);
-    setContent(initialContent);
-    setSaveState("idle");
-    setSaveError(null);
-    setMenu(null);
-    historyRef.current = createHistory();
-    pendingRestoreRef.current = null;
-    forceHistoryRef.current = false;
-    skipHistoryRef.current = false;
-    clearHintTimer();
-    hintLineRef.current = -1;
-    setLineHint(false);
-    setTableCaret(null);
-    prevTableLineRef.current = -1;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [path]);
+  // Espejos sincronizados tras el commit y antes del paint: no se escribe en
+  // un ref durante el render y, como persist/autoSave se llaman también desde
+  // handlers, la ref es la vía válida (useEffectEvent solo sirve en efectos).
+  useLayoutEffect(() => {
+    autoSaveRef.current = autoSave;
+    dirtyRef.current = saveState === "dirty";
+  });
 
   useEffect(() => {
     if (viewMode === "preview") loadWikiNotes();
@@ -799,6 +805,10 @@ export default function MarkdownEditor({
     revealCaret(area);
     refreshCaretLine();
     scheduleSpellPopup();
+    // Sin `refreshCaretLine` en las deps: se recrea en cada render y el
+    // efecto:focus + restaurar caret se dispararía sin motivo (mismo criterio
+    // que en el efecto de `viewMode` y en el de restauración de abajo).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [content]);
 
   useEffect(() => {
@@ -874,18 +884,33 @@ export default function MarkdownEditor({
   }
 
   const persistRef = useRef(persist);
-  persistRef.current = persist;
+  useLayoutEffect(() => {
+    persistRef.current = persist;
+  });
 
-  async function flush(): Promise<boolean> {
+  // `flush` solo lee refs: con useCallback su identidad deja de cambiar en
+  // cada render y useImperativeHandle no se vuelve a ejecutar sin motivo.
+  const flush = useCallback(async (): Promise<boolean> => {
     if (!dirtyRef.current) return true;
 
     dirtyRef.current = false;
     const saved = await persistRef.current();
     if (!saved) dirtyRef.current = true;
     return saved;
-  }
+  }, []);
 
-  useImperativeHandle(ref, () => ({ flush }), [flush]);
+  useImperativeHandle(
+    ref,
+    () => ({
+      flush,
+      /** Abre el diálogo de exportación (lo llama App desde su evento). */
+      requestExport: () => {
+        setHeaderMenu(false);
+        setExportOpen(true);
+      },
+    }),
+    [flush],
+  );
 
   useEffect(() => {
     if (saveState !== "dirty" || !autoSaveEnabled) return;
@@ -3728,22 +3753,6 @@ export default function MarkdownEditor({
     return map;
   }, [sourceInfo]);
 
-  // Las anchuras fijadas de una tabla que ya no existe no sirven: se quitan.
-  useEffect(() => {
-    setTableWidths((prev) => {
-      if (!prev) return prev;
-      const next = new Map(prev);
-      let changed = false;
-      for (const key of next.keys()) {
-        if (!tableBlockAt(sourceInfo, key)) {
-          next.delete(key);
-          changed = true;
-        }
-      }
-      return changed ? next : prev;
-    });
-  }, [sourceInfo]);
-
   /** ¿Son las dos listas de anchuras la misma? */
   function sameWidths(a: number[] | undefined, b: number[]): boolean {
     if (!a || a.length !== b.length) return false;
@@ -3803,7 +3812,10 @@ export default function MarkdownEditor({
     if (!overlay || !area || !inlineActive || tableCols === null) return;
 
     const available = tableMaxWidthPx(area);
-    const limit = available === null ? Number.POSITIVE_INFINITY : available - scrollbarWidth;
+    // Se mide la barra de scroll en este mismo momento: el estado `scrollbarWidth`
+    // puede ir con un render de retraso y el recorte debe usar el ancho real.
+    const scrollbar = area.offsetWidth - area.clientWidth;
+    const limit = available === null ? Number.POSITIVE_INFINITY : available - scrollbar;
     const before = colWidthsRef.current;
     const next = new Map(before);
     let changed = false;
@@ -3824,12 +3836,30 @@ export default function MarkdownEditor({
       changed = true;
     }
 
+    // Las anchuras fijadas de una tabla que ya no existe no sirven: se quitan
+    // aquí, con lo que este efecto queda como único escritor de `tableWidths`.
+    for (const key of [...next.keys()]) {
+      if (!tableBlockAt(sourceInfo, key)) {
+        next.delete(key);
+        changed = true;
+      }
+    }
+
     if (changed) setTableWidths(next);
-  }, [sourceInfo, inlineActive, tableCols, rowPitch]);
+    // `zoomTick`/`fontSize` entran en las deps: al escalar cambia la medida del
+    // texto y hay que volver a congelar las columnas. `tableCols` y la barra de
+    // scroll ya cubren sus propios cambios por otras vías (ResizeObserver y la
+    // medición local de arriba).
+  }, [sourceInfo, inlineActive, tableCols, zoomTick, fontSize]);
 
   // Alto que gana cada tabla al envolver sus celdas: a partir de su última fila
   // el overlay queda más abajo que el textarea, así que se mide para poder
   // compensarlo (scroll, clic y cursor).
+  //
+  // Esta medición depende de que el efecto anterior ya haya pintado los anchos
+  // y de que R haya fijado la altura de fila: la cadena de efectos es el
+  // propósito (medir el resultado de lo anterior), no un accidente de renders.
+  // eslint-disable-next-line react-doctor/no-effect-chain
   useEffect(() => {
     const overlay = overlayRef.current;
     if (!overlay || !inlineActive || tableCols === null) {

@@ -100,6 +100,50 @@ body {
   animation-iteration-count: 1 !important;
 }
 
+/* Acordeón (p.ej. el campo de fecha de Nueva tarea): animar grid-template-rows
+   de 0fr a 1fr produce el mismo efecto que animar height, pero sin recalcular
+   el layout en cada frame. El panel interior recorta el desbordamiento y se
+   oculta con retardo para que no quede enfocable mientras está plegado. */
+.gus-accordion {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows 0.16s ease-out,
+    opacity 0.16s ease-out;
+}
+
+.gus-accordion[data-open="true"] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.gus-accordion > .gus-accordion-panel {
+  min-height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  transition: visibility 0s linear 0.16s;
+}
+
+.gus-accordion[data-open="true"] > .gus-accordion-panel {
+  visibility: visible;
+  transition-delay: 0s;
+}
+
+/* Ajuste del sistema operativo: respeta «reducir movimiento» aunque la
+   animación siga activada en los ajustes de Gus. MotionConfig se encarga
+   de Framer Motion; esto cubre las animaciones y transiciones puras CSS. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* Fórmulas (KaTeX): heredan el color de la nota y se desplazan en
    horizontal en lugar de romper el ancho de la columna. */
 .katex {

@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { useEffect, useLayoutEffect, useEffectEvent, useRef, useState, type KeyboardEvent } from "react";
+import { AnimatePresence, m } from "framer-motion";
 import { Calendar, Check, Flag, ListTodo, Plus, RefreshCw, SquareKanban, Trash2, X } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -97,13 +97,13 @@ function dueState(
 function CheckboxVisual({ checked }: { checked: boolean }) {
   return (
     <span className="relative grid h-5 w-5 shrink-0 place-items-center rounded-md border border-gus-border bg-gus-panel transition-colors peer-checked:border-gus-accent peer-checked:bg-gus-accent peer-focus-visible:ring-2 peer-focus-visible:ring-gus-accent/60">
-      <motion.span
+      <m.span
         initial={false}
         animate={{ scale: checked ? 1 : 0, opacity: checked ? 1 : 0 }}
         transition={{ type: "spring", stiffness: 500, damping: 30 }}
       >
         <Check className="h-3.5 w-3.5 text-gus-bg" strokeWidth={3} aria-hidden="true" />
-      </motion.span>
+      </m.span>
     </span>
   );
 }
@@ -138,8 +138,12 @@ export default function TaskList({
   const [view, setView] = useState<"list" | "board">("board");
 
   const writeQueueRef = useRef<Promise<unknown>>(Promise.resolve());
+  // Último callback del padre. Al llamarse también desde handlers (no solo
+  // desde efectos) hace falta el espejo de ref, sincronizado tras el commit.
   const onTasksChangeRef = useRef(onTasksChange);
-  onTasksChangeRef.current = onTasksChange;
+  useLayoutEffect(() => {
+    onTasksChangeRef.current = onTasksChange;
+  });
 
   useEffect(() => {
     if (!fileMode || !vaultPath) return;
@@ -216,15 +220,14 @@ export default function TaskList({
     }
   }
 
-  const addTaskRef = useRef(addTaskFromWindow);
-  addTaskRef.current = addTaskFromWindow;
+  const onNewTaskEvent = useEffectEvent(addTaskFromWindow);
 
   useEffect(() => {
     let disposed = false;
     let unlisten: (() => void) | undefined;
 
     listen<NewTask>(NEW_TASK_EVENT, (event) => {
-      addTaskRef.current(event.payload);
+      onNewTaskEvent(event.payload);
     })
       .then((fn) => {
         if (disposed) fn();
@@ -538,12 +541,12 @@ export default function TaskList({
               const plazo = dueState(task, t);
 
               return (
-                <motion.li
+                <m.li
                   key={task.id}
                   layout
-                  initial={{ opacity: 0, height: 0, y: -8 }}
-                  animate={{ opacity: 1, height: "auto", y: 0 }}
-                  exit={{ opacity: 0, height: 0, x: -24 }}
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, x: -24 }}
                   transition={{
                     duration: 0.2,
                     ease: "easeOut",
@@ -707,7 +710,7 @@ export default function TaskList({
                   >
                     <Trash2 className="h-4 w-4" aria-hidden="true" />
                   </button>
-                </motion.li>
+                </m.li>
               );
             })}
           </AnimatePresence>

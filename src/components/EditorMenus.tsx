@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import clsx from "clsx";
 import { toLocalCoord } from "../lib/uiZoom";
-import { motion } from "framer-motion";
+import { m } from "framer-motion";
 import {
   Code,
   FileText,
@@ -296,7 +296,7 @@ function MenuShell({
   );
 
   return (
-    <motion.div
+    <m.div
       ref={scrollRef}
       role="listbox"
       aria-label={label}
@@ -308,7 +308,7 @@ function MenuShell({
       className="gus-scrollbar z-50 max-h-64 overflow-y-auto rounded-xl border border-gus-border bg-gus-panel/95 py-1 shadow-2xl shadow-black/50 backdrop-blur"
     >
       {children}
-    </motion.div>
+    </m.div>
   );
 }
 
@@ -376,7 +376,7 @@ export function SpellSuggestMenu({
   }, [anchor, suggestions, index]);
 
   return (
-    <motion.div
+    <m.div
       ref={boxRef}
       role="listbox"
       aria-label={t("menu.spellLabel")}
@@ -413,7 +413,7 @@ export function SpellSuggestMenu({
       <p className="mt-1 border-t border-gus-border px-3 pt-1.5 pb-1 text-[10px] text-gus-muted/70">
         {t(index >= 0 ? "menu.spellHintPicking" : "menu.spellHintIdle", { combo: applyCombo })}
       </p>
-    </motion.div>
+    </m.div>
   );
 }
 

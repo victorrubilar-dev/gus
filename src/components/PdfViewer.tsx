@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 import {
   Bookmark,
@@ -225,16 +225,12 @@ export default function PdfViewer({
   const progressRef = useRef<{ path: string; progress: PdfProgress } | null>(null);
   const restoreDoneRef = useRef(false);
 
-  pathRef.current = path;
-  zoomRef.current = zoom;
-
-  // Cambio de documento: se recargan sus anotaciones y su progreso.
-  useEffect(() => {
-    setDoc(loadPdfDoc(path));
-    restoreDoneRef.current = false;
-    progressRef.current = null;
-    setCurrentPage(1);
-  }, [path]);
+  // Espejos de las props para los escuchadores del visor: se sincronizan tras
+  // el commit (antes del paint) en lugar de escribir en el ref al renderizar.
+  useLayoutEffect(() => {
+    pathRef.current = path;
+    zoomRef.current = zoom;
+  });
 
   // Carga del documento y medición de páginas (una vez por src).
   useEffect(() => {
@@ -299,6 +295,9 @@ export default function PdfViewer({
     let cancelled = false;
 
     void (async () => {
+      let failed = false;
+      let failure: unknown = null;
+
       for (let i = 0; i < pages.length; i += 1) {
         if (cancelled || seq !== renderSeqRef.current) return;
         const canvas = canvasesRef.current[i];
@@ -321,11 +320,21 @@ export default function PdfViewer({
           await renderTask.promise;
           if (renderTaskRef.current === renderTask) renderTaskRef.current = null;
         } catch (err) {
-          if (cancelled || seq !== renderSeqRef.current) return;
-          setError(String(err));
-          setStatus("error");
-          return;
+          // El fallo se anota aquí y se notifica fuera del bucle: un setter
+          // dentro de un `for` no puede quedar dominado por una guarda (el
+          // análisis trata el bucle como un solo nodo) y quedaría marcado
+          // como actualización de estado tras `await` sin protección.
+          failed = true;
+          failure = err;
+          break;
         }
+      }
+
+      if (failed) {
+        if (cancelled) return;
+        if (seq !== renderSeqRef.current) return;
+        setError(String(failure));
+        setStatus("error");
       }
     })();
 

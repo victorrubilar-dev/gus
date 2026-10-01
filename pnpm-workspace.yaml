@@ -1,0 +1,8 @@
+minimumReleaseAge: 10080
+minimumReleaseAgeExclude:
+  - '@tauri-apps/api'
+  - '@vitest/mocker'
+  - '@vitest/spy'
+  - std-env
+  - vitest
+trustPolicy: no-downgrade

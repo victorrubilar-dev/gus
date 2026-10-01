@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { motion } from "framer-motion";
+import { m } from "framer-motion";
 import { ArrowUpCircle, X } from "lucide-react";
 import clsx from "clsx";
 import { useT } from "../lib/i18n";
@@ -36,7 +36,7 @@ export default function UpdateNotice({ info, current, offsetLeft, onDismiss }: U
   }
 
   return (
-    <motion.div
+    <m.div
       role="status"
       aria-live="polite"
       initial={{ opacity: 0, y: 12 }}
@@ -92,6 +92,6 @@ export default function UpdateNotice({ info, current, offsetLeft, onDismiss }: U
           <X className="h-4 w-4" aria-hidden="true" />
         </button>
       </div>
-    </motion.div>
+    </m.div>
   );
 }

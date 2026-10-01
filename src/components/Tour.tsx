@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
-import { motion } from "framer-motion";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { m } from "framer-motion";
 import { ArrowLeft, ArrowRight, Check } from "lucide-react";
 import clsx from "clsx";
 import { useT } from "../lib/i18n";
@@ -160,10 +160,13 @@ export default function Tour({ open, onFinish, onStepChange }: TourProps) {
   const [rect, setRect] = useState<DOMRect | null>(null);
   const nextButtonRef = useRef<HTMLButtonElement>(null);
 
-  // El padre puede recrear este callback en cada render: se usa una referencia
-  // para que cambiar su identidad no reinicie el recorrido por accidente.
+  // El padre puede recrear este callback en cada render: la referencia da la
+  // última versión sin reiniciar el recorrido, y se sincroniza tras el commit
+  // para no escribir en el ref mientras se renderiza.
   const onStepChangeRef = useRef(onStepChange);
-  onStepChangeRef.current = onStepChange;
+  useLayoutEffect(() => {
+    onStepChangeRef.current = onStepChange;
+  });
 
   const step = STEPS[stepIndex];
   const isLast = stepIndex === STEPS.length - 1;
@@ -194,6 +197,9 @@ export default function Tour({ open, onFinish, onStepChange }: TourProps) {
     return () => window.clearInterval(interval);
   }, [open, stepIndex]);
 
+  // Teclado: se vuelve a enganchar al cambiar de paso para leer stepIndex del
+  // propio cierre. Así el efecto lateral (avisar al padre) sale del
+  // actualizador de estado, que React ejecuta en fase de render.
   useEffect(() => {
     if (!open) return;
 
@@ -206,26 +212,22 @@ export default function Tour({ open, onFinish, onStepChange }: TourProps) {
       if (event.key === "ArrowRight" || event.key === "Enter") {
         event.preventDefault();
         if (event.key === "Enter" && document.activeElement?.tagName === "BUTTON") return;
-        setStepIndex((current) => {
-          const next = Math.min(STEPS.length - 1, current + 1);
-          onStepChangeRef.current(STEPS[next].tab);
-          return next;
-        });
+        const next = Math.min(STEPS.length - 1, stepIndex + 1);
+        setStepIndex(next);
+        onStepChangeRef.current(STEPS[next].tab);
         return;
       }
       if (event.key === "ArrowLeft") {
         event.preventDefault();
-        setStepIndex((current) => {
-          const previous = Math.max(0, current - 1);
-          onStepChangeRef.current(STEPS[previous].tab);
-          return previous;
-        });
+        const previous = Math.max(0, stepIndex - 1);
+        setStepIndex(previous);
+        onStepChangeRef.current(STEPS[previous].tab);
       }
     }
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open, onFinish]);
+  }, [open, stepIndex, onFinish]);
 
   if (!open) return null;
 
@@ -281,7 +283,7 @@ export default function Tour({ open, onFinish, onStepChange }: TourProps) {
           />
           <div
             aria-hidden="true"
-            className="pointer-events-none fixed rounded-xl ring-2 ring-gus-accent transition-all duration-200"
+            className="pointer-events-none fixed rounded-xl ring-2 ring-gus-accent transition-[top,left,width,height] duration-200"
             style={{ top: local.top - 3, left: local.left - 3, width: local.width + 6, height: local.height + 6 }}
           />
         </>
@@ -289,7 +291,7 @@ export default function Tour({ open, onFinish, onStepChange }: TourProps) {
         <div aria-hidden="true" className="fixed inset-0 bg-black/65" />
       )}
 
-      <motion.div
+      <m.div
         key={stepIndex}
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
@@ -356,7 +358,7 @@ export default function Tour({ open, onFinish, onStepChange }: TourProps) {
             </button>
           </div>
         </div>
-      </motion.div>
+      </m.div>
     </div>
   );
 }

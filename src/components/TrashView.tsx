@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, m } from "framer-motion";
 import {
   FileText,
   Folder,
@@ -261,12 +261,12 @@ export default function TrashView({ onRestore }: TrashViewProps) {
             const restan = diasRestantes(item.trashedAtMs);
 
             return (
-              <motion.li
+              <m.li
                 key={item.path}
                 layout
-                initial={{ opacity: 0, height: 0, y: -8 }}
-                animate={{ opacity: 1, height: "auto", y: 0 }}
-                exit={{ opacity: 0, height: 0, x: -24 }}
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, x: -24 }}
                 transition={{
                   duration: 0.2,
                   ease: "easeOut",
@@ -363,7 +363,7 @@ export default function TrashView({ onRestore }: TrashViewProps) {
                     </span>
                   </div>
                 )}
-              </motion.li>
+              </m.li>
             );
           })}
         </AnimatePresence>

@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { AnimatePresence, m } from "framer-motion";
 import {
   CalendarDays,
   Check,
@@ -85,6 +85,10 @@ export default function CalendarView({
       .catch((error: unknown) => setSyncError(String(error)));
   }
 
+  // Espejo de `commit` para el efecto de carga: useEffectEvent mantiene la
+  // última versión sin declararlo en las deps (se recrea en cada render).
+  const commitEvent = useEffectEvent(commit);
+
   useEffect(() => {
     let cancelled = false;
     loadedRef.current = false;
@@ -102,7 +106,7 @@ export default function CalendarView({
 
         const pending = pendingNewTasksRef.current.splice(0);
         if (pending.length > 0) {
-          commit([...pending, ...itemsRef.current]);
+          commitEvent([...pending, ...itemsRef.current]);
         }
       })
       .catch((error: unknown) => {
@@ -115,7 +119,8 @@ export default function CalendarView({
     return () => {
       cancelled = true;
     };
-    // `commit` cierra sobre este `vaultPath`, no hace falta añadirlo a las deps.
+    // `commit` va envuelto en `commitEvent`: así cierra sobre este `vaultPath`
+    // sin tener que entrar en las deps (y sin quedarse con una versión vieja).
   }, [vaultPath, reloadKey]);
 
   function addTaskFromWindow(payload: NewTask) {
@@ -141,14 +146,15 @@ export default function CalendarView({
     commit([task, ...itemsRef.current]);
   }
 
-  const addTaskRef = useRef(addTaskFromWindow);
-  addTaskRef.current = addTaskFromWindow;
+  // Espejo del callback para el listener de Tauri: useEffectEvent mantiene la
+  // última versión sin escribir en un ref durante el render (render puro).
+  const onNewTaskEvent = useEffectEvent(addTaskFromWindow);
 
   useEffect(() => {
     let disposed = false;
     let unlisten: (() => void) | undefined;
 
-    listen<NewTask>(NEW_TASK_EVENT, (event) => addTaskRef.current(event.payload))
+    listen<NewTask>(NEW_TASK_EVENT, (event) => onNewTaskEvent(event.payload))
       .then((fn) => {
         if (disposed) fn();
         else unlisten = fn;
@@ -515,7 +521,7 @@ export default function CalendarView({
 
               <AnimatePresence initial={false}>
                 {selectedTasks.length === 0 ? (
-                  <motion.div
+                  <m.div
                     key="empty"
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
@@ -534,9 +540,9 @@ export default function CalendarView({
                     >
                       {t("calendar.allTasks")}
                     </button>
-                  </motion.div>
+                  </m.div>
                 ) : (
-                  <motion.ul
+                  <m.ul
                     key={selectedIso}
                     initial={{ opacity: 0, y: 6 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -626,7 +632,7 @@ export default function CalendarView({
                         </div>
                       </li>
                     ))}
-                  </motion.ul>
+                  </m.ul>
                 )}
               </AnimatePresence>
 

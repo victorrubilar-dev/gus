@@ -1,5 +1,5 @@
 import { useState, type DragEvent } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, m } from "framer-motion";
 import { Calendar, Flag } from "lucide-react";
 import clsx from "clsx";
 import type { Task } from "../lib/taskStore";
@@ -109,7 +109,7 @@ export default function KanbanBoard({
                     !task.completes && !!task.due && task.due < now;
 
                   return (
-                    <motion.li
+                    <m.li
                       key={task.id}
                       layout
                       initial={{ opacity: 0, y: -6 }}
@@ -207,7 +207,7 @@ export default function KanbanBoard({
                           </div>
                         )}
                       </div>
-                    </motion.li>
+                    </m.li>
                   );
                 })}
               </AnimatePresence>

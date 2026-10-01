@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { motion } from "framer-motion";
+import { m } from "framer-motion";
 import {
   CalendarDays,
   Check,
@@ -276,7 +276,7 @@ export default function DashboardView({
 
         <div className="grid grid-cols-2 gap-2 min-[900px]:grid-cols-4">
           {stats.map(({ label, value, className, tab }, index) => (
-            <motion.button
+            <m.button
               key={label}
               type="button"
               onClick={() => onNavigate(tab)}
@@ -298,7 +298,7 @@ export default function DashboardView({
                 className="h-4 w-4 shrink-0 text-gus-muted transition-transform group-hover:translate-x-0.5 group-hover:text-gus-accent"
                 aria-hidden="true"
               />
-            </motion.button>
+            </m.button>
           ))}
         </div>
 
@@ -513,7 +513,7 @@ export default function DashboardView({
 
               <div className="mt-3 h-2 overflow-hidden rounded-full bg-gus-panel">
                 <div
-                  className="h-full rounded-full bg-gus-accent transition-all"
+                  className="h-full rounded-full bg-gus-accent transition-[width]"
                   style={{ width: `${progress}%` }}
                 />
               </div>

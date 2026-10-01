@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, m } from "framer-motion";
 import { Command } from "cmdk";
 import { useT } from "../lib/i18n";
 import { comboFor, comboLabel, type ShortcutMap } from "../lib/shortcuts";
@@ -85,7 +85,7 @@ export default function CommandPalette({
   return (
     <AnimatePresence>
       {open && vaultPath !== null && (
-        <motion.div
+        <m.div
           key="command-palette-overlay"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -96,7 +96,7 @@ export default function CommandPalette({
             if (event.target === event.currentTarget) onOpenChange(false);
           }}
         >
-          <motion.div
+          <m.div
             role="dialog"
             aria-modal="true"
             aria-label={t("palette.label")}
@@ -181,8 +181,8 @@ export default function CommandPalette({
                 <span className="text-gus-muted/70">{comboLabel(paletteCombo) || "Ctrl+K"}</span>
               </div>
             </Command>
-          </motion.div>
-        </motion.div>
+          </m.div>
+        </m.div>
       )}
     </AnimatePresence>
   );

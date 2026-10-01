@@ -3,13 +3,14 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useEffectEvent,
   useRef,
   useState,
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { AnimatePresence, motion, MotionConfig } from "framer-motion";
+import { AnimatePresence, domMax, LazyMotion, m, MotionConfig } from "framer-motion";
 import {
   CalendarDays,
   LayoutDashboard,
@@ -218,6 +219,17 @@ function App({
   const [rightHidden, setRightHidden] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [newTaskOpen, setNewTaskOpen] = useState(false);
+  /**
+   * Key del diálogo de nueva tarea: solo cambia al abrir. Así cada apertura
+   * remonta el componente (estado limpio, sin frame con datos viejos) y
+   * cerrar sigue pasando por el mismo montaje, que es lo que permite la
+   * animación de salida.
+   */
+  const [newTaskSeq, setNewTaskSeq] = useState(0);
+  const openNewTask = () => {
+    setNewTaskSeq((value) => value + 1);
+    setNewTaskOpen(true);
+  };
   const [note, setNote] = useState<OpenNote | null>(null);
   const [noteStatus, setNoteStatus] = useState<NoteStatus>("idle");
   const [noteError, setNoteError] = useState<string | null>(null);
@@ -370,6 +382,11 @@ function App({
    * en Ajustes → Atajos los cambia aquí también. El editor tiene los suyos
    * (Ctrl+S, deshacer…), que se atienden antes porque viven en el textarea.
    */
+  // `handleSettingsChange` se recrea en cada render: llamarlo desde este
+  // efecto con useEffectEvent evita meterlo en las deps (re-registraría el
+  // listener en cada render) y siempre ejecuta la última versión.
+  const onSettingsChangeEvent = useEffectEvent(handleSettingsChange);
+
   useEffect(() => {
     function handleGlobalKey(event: KeyboardEvent) {
       const id = globalShortcutFor(event, settings.shortcuts);
@@ -386,13 +403,13 @@ function App({
               ? 100
               : Math.min(200, Math.max(50, settings.uiZoom + factor));
           event.preventDefault();
-          if (zoom !== settings.uiZoom) handleSettingsChange({ ...settings, uiZoom: zoom });
+          if (zoom !== settings.uiZoom) onSettingsChangeEvent({ ...settings, uiZoom: zoom });
           return;
         }
         case "newTask":
           if (!currentVault) return;
           event.preventDefault();
-          setNewTaskOpen(true);
+          openNewTask();
           return;
         case "focusSearch":
           // «Buscar nota» de la pantalla de bienvenida, con atajo propio.
@@ -458,8 +475,14 @@ function App({
    * el editor muestra el diálogo con la vista previa ya montada.
    */
   function handleExportPdf(file: NoteFile) {
+    // Nota ya abierta: el evento va directo al editor montado. En otro caso la
+    // petición viaja como prop y el editor la consume al montarse.
+    if (note?.path === file.id && noteStatus === "ready") {
+      editorRef.current?.requestExport();
+      return;
+    }
     setPendingExport(file.id);
-    if (note?.path !== file.id || noteStatus !== "ready") handleSelectNote(file);
+    handleSelectNote(file);
   }
 
   function handlePaletteSelectNote(file: { path: string; name: string }) {
@@ -1067,6 +1090,7 @@ function App({
   const notesView = currentVault === null ? null : (
     <div className="flex h-full w-full">
       <FileExplorer
+        key={currentVault}
         ref={explorerRef}
         vaultPath={currentVault}
         activeId={note?.path ?? image?.path ?? pdf?.path ?? null}
@@ -1225,320 +1249,328 @@ function App({
   const showSidebar = bootStatus === "ready" && currentVault !== null;
 
   return (
-    <MotionConfig reducedMotion={settings.animations ? "user" : "always"}>
-      <div
-        className={clsx(
-          "flex h-screen w-screen overflow-hidden bg-gus-bg text-gus-text",
-          !settings.animations && "gus-no-motion",
-        )}
-        style={
-          { "--color-gus-accent": accentHex(settings.accent, settings.theme) } as CSSProperties
-        }
-      >
-        {showSidebar && (
-          <aside
-            data-tour="sidebar"
-            style={{ width: sidebarWidth }}
-            className="relative flex h-full shrink-0 flex-col items-center gap-2 border-r border-gus-border bg-gus-panel py-4"
-          >
-            <img
-              src={gusIcon}
-              alt="Gus"
-              title="Gus"
-              draggable={false}
-              className="h-9 w-9 select-none"
-            />
-
-            <div aria-hidden="true" className="my-1 h-px w-8 bg-gus-border" />
-
-            {TABS.map(({ id, labelKey, Icon }) => {
-              const label = t(labelKey);
-              const isActive = activeTab === id;
-
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  title={label}
-                  aria-label={label}
-                  aria-pressed={isActive}
-                  onClick={() => setActiveTab(id)}
-                  className={clsx(
-                    "relative flex h-11 w-11 items-center justify-center rounded-xl outline-none transition-colors",
-                    "focus-visible:ring-2 focus-visible:ring-gus-accent/60",
-                    isActive
-                      ? "text-gus-accent"
-                      : "text-gus-muted hover:bg-gus-card hover:text-gus-text",
-                  )}
-                >
-                  {isActive && (
-                    <motion.span
-                      layoutId="sidebar-active-tab"
-                      className="absolute inset-0 rounded-xl border border-gus-accent/40 bg-gus-accent/15"
-                      transition={{ type: "spring", stiffness: 400, damping: 32 }}
-                    />
-                  )}
-                  <Icon className="relative h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
-                </button>
-              );
-            })}
-
-            <div
-              data-tour="sidebar-bottom"
-              className="mt-auto flex w-full flex-col items-center gap-2"
+    // LazyMotion + m: solo se empaqueta el motor que se usa (domMax incluye
+    // animaciones, gestos y la prop `layout` de las listas).
+    <LazyMotion features={domMax}>
+      <MotionConfig reducedMotion={settings.animations ? "user" : "always"}>
+        <div
+          className={clsx(
+            "flex h-screen w-screen overflow-hidden bg-gus-bg text-gus-text",
+            !settings.animations && "gus-no-motion",
+          )}
+          style={
+            { "--color-gus-accent": accentHex(settings.accent, settings.theme) } as CSSProperties
+          }
+        >
+          {showSidebar && (
+            <aside
+              data-tour="sidebar"
+              style={{ width: sidebarWidth }}
+              className="relative flex h-full shrink-0 flex-col items-center gap-2 border-r border-gus-border bg-gus-panel py-4"
             >
-              <div aria-hidden="true" className="h-px w-8 bg-gus-border" />
-
-              <div className="flex flex-col items-center gap-2">
-                <button
-                  type="button"
-                  title={t("app.leaveVault")}
-                  aria-label={t("app.leaveVault")}
-                  onClick={leaveVault}
-                  className="flex h-11 w-11 items-center justify-center rounded-xl text-gus-muted outline-none transition-colors hover:bg-rose-400/10 hover:text-rose-300 focus-visible:ring-2 focus-visible:ring-gus-accent/60"
-                >
-                  <LogOut className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
-                </button>
-
-                <button
-                  type="button"
-                  title={t("app.trash")}
-                  aria-label={t("app.trash")}
-                  aria-pressed={activeTab === "trash"}
-                  onClick={() => setActiveTab("trash")}
-                  className={clsx(
-                    "relative flex h-11 w-11 items-center justify-center rounded-xl outline-none transition-colors",
-                    "focus-visible:ring-2 focus-visible:ring-gus-accent/60",
-                    activeTab === "trash"
-                      ? "text-gus-accent"
-                      : "text-gus-muted hover:bg-gus-card hover:text-gus-text",
-                  )}
-                >
-                  {activeTab === "trash" && (
-                    <motion.span
-                      layoutId="sidebar-active-tab"
-                      className="absolute inset-0 rounded-xl border border-gus-accent/40 bg-gus-accent/15"
-                      transition={{ type: "spring", stiffness: 400, damping: 32 }}
-                    />
-                  )}
-                  <Trash2 className="relative h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
-                </button>
-
-                <button
-                  type="button"
-                  title={t("app.settings")}
-                  aria-label={t("app.settings")}
-                  aria-pressed={activeTab === "settings"}
-                  onClick={() => setActiveTab("settings")}
-                  className={clsx(
-                    "relative flex h-11 w-11 items-center justify-center rounded-xl outline-none transition-colors",
-                    "focus-visible:ring-2 focus-visible:ring-gus-accent/60",
-                    activeTab === "settings"
-                      ? "text-gus-accent"
-                      : "text-gus-muted hover:bg-gus-card hover:text-gus-text",
-                  )}
-                >
-                  {activeTab === "settings" && (
-                    <motion.span
-                      layoutId="sidebar-active-tab"
-                      className="absolute inset-0 rounded-xl border border-gus-accent/40 bg-gus-accent/15"
-                      transition={{ type: "spring", stiffness: 400, damping: 32 }}
-                    />
-                  )}
-                  <SettingsIcon
-                    className="relative h-5 w-5"
-                    strokeWidth={1.75}
-                    aria-hidden="true"
-                  />
-                </button>
-              </div>
-            </div>
-
-            <div
-              role="separator"
-              aria-orientation="vertical"
-              aria-label={t("app.resizeSidebar")}
-              aria-valuenow={sidebarWidth}
-              aria-valuemin={SIDEBAR_MIN_WIDTH}
-              aria-valuemax={SIDEBAR_MAX_WIDTH}
-              tabIndex={0}
-              title={t("app.resizeHint")}
-              onPointerDown={handleSidebarResizeStart}
-              onDoubleClick={() => changeSidebarWidth(SIDEBAR_DEFAULT_WIDTH)}
-              onKeyDown={handleSidebarResizeKeyDown}
-              className="absolute inset-y-0 right-0 w-1.5 cursor-col-resize touch-none rounded-r-sm transition-colors hover:bg-gus-accent/40 focus-visible:bg-gus-accent/60 focus-visible:outline-none"
-            />
-          </aside>
-        )}
-
-        <main className="h-full min-w-0 flex-1 overflow-hidden">
-          {bootStatus === "loading" ? (
-            <div className="flex h-full flex-col items-center justify-center gap-4 text-sm text-gus-muted">
               <img
                 src={gusIcon}
-                alt=""
+                alt="Gus"
+                title="Gus"
                 draggable={false}
-                className="h-20 w-20 animate-pulse select-none"
+                className="h-9 w-9 select-none"
               />
-              {t("app.loading")}
-            </div>
-          ) : currentVault === null ? (
-            <VaultPicker
-              vaults={vaultConfig?.vaults ?? []}
-              baseDir={vaultConfig?.baseDir ?? DEFAULT_BASE_DIR}
-              lastVault={vaultConfig?.lastVault ?? null}
-              busy={vaultBusy}
-              error={vaultError}
-              language={language}
-              onLanguageChange={handleLanguageChange}
-              scheme={scheme}
-              onSchemeChange={handleSchemeChange}
-              onWelcomeFinish={markTourPending}
-              onOpen={openVault}
-              onCreate={handleCreateVault}
-              onAddExisting={handleAddExistingVault}
-              onRename={handleRenameVault}
-              onSetCover={handleSetVaultCover}
-              onRemoveMany={handleRemoveVaults}
-              onSelectBaseDir={handleSelectBaseDir}
-            />
-          ) : (
-            <AnimatePresence mode="wait" initial={false}>
-              <motion.section
-                key={activeTab}
-                initial={{ opacity: 0, x: 16 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -16 }}
-                transition={{ duration: 0.2, ease: "easeOut" }}
-                className="h-full w-full overflow-hidden"
+
+              <div aria-hidden="true" className="my-1 h-px w-8 bg-gus-border" />
+
+              {TABS.map(({ id, labelKey, Icon }) => {
+                const label = t(labelKey);
+                const isActive = activeTab === id;
+
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    title={label}
+                    aria-label={label}
+                    aria-pressed={isActive}
+                    onClick={() => setActiveTab(id)}
+                    className={clsx(
+                      "relative flex h-11 w-11 items-center justify-center rounded-xl outline-none transition-colors",
+                      "focus-visible:ring-2 focus-visible:ring-gus-accent/60",
+                      isActive
+                        ? "text-gus-accent"
+                        : "text-gus-muted hover:bg-gus-card hover:text-gus-text",
+                    )}
+                  >
+                    {isActive && (
+                      <m.span
+                        layoutId="sidebar-active-tab"
+                        className="absolute inset-0 rounded-xl border border-gus-accent/40 bg-gus-accent/15"
+                        transition={{ type: "spring", stiffness: 400, damping: 32 }}
+                      />
+                    )}
+                    <Icon className="relative h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
+                  </button>
+                );
+              })}
+
+              <div
+                data-tour="sidebar-bottom"
+                className="mt-auto flex w-full flex-col items-center gap-2"
               >
-                {activeTab === "home" ? (
-                  <DashboardView
-                    vaultPath={currentVault}
-                    vaultName={
-                      vaultConfig?.vaults.find((vault) => vault.path === currentVault)?.name ??
-                      baseName(currentVault)
-                    }
-                    onNavigate={setActiveTab}
-                    onNewTask={() => setNewTaskOpen(true)}
-                    onOpenNote={(file) => {
-                      setActiveTab("notes");
-                      handleSelectNote(file);
-                    }}
-                  />
-                ) : activeTab === "notes" ? (
-                  notesView
-                ) : activeTab === "tasks" ? (
-                  <TaskList
-                    vaultPath={currentVault}
-                    hideCompleted={settings.hideCompletedTasks}
-                    onNewTask={() => setNewTaskOpen(true)}
-                  />
-                ) : activeTab === "calendar" ? (
-                  <CalendarView
-                    vaultPath={currentVault}
-                    onOpenTasks={() => setActiveTab("tasks")}
-                    onNewTask={() => setNewTaskOpen(true)}
-                    showCompleted={settings.calendarShowCompleted}
-                  />
-                ) : activeTab === "trash" ? (
-                  <TrashView onRestore={() => setVaultRefresh((key) => key + 1)} />
-                ) : (
-                  <SettingsPanel
-                    settings={settings}
-                    onChange={handleSettingsChange}
-                    language={language}
-                    onLanguageChange={handleLanguageChange}
-                    onStartTour={() => setTourOpen(true)}
-                    onCheckUpdate={() => void handleCheckUpdate()}
-                    updateState={updateState}
-                  />
-                )}
-              </motion.section>
-            </AnimatePresence>
+                <div aria-hidden="true" className="h-px w-8 bg-gus-border" />
+
+                <div className="flex flex-col items-center gap-2">
+                  <button
+                    type="button"
+                    title={t("app.leaveVault")}
+                    aria-label={t("app.leaveVault")}
+                    onClick={leaveVault}
+                    className="flex h-11 w-11 items-center justify-center rounded-xl text-gus-muted outline-none transition-colors hover:bg-rose-400/10 hover:text-rose-300 focus-visible:ring-2 focus-visible:ring-gus-accent/60"
+                  >
+                    <LogOut className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
+                  </button>
+
+                  <button
+                    type="button"
+                    title={t("app.trash")}
+                    aria-label={t("app.trash")}
+                    aria-pressed={activeTab === "trash"}
+                    onClick={() => setActiveTab("trash")}
+                    className={clsx(
+                      "relative flex h-11 w-11 items-center justify-center rounded-xl outline-none transition-colors",
+                      "focus-visible:ring-2 focus-visible:ring-gus-accent/60",
+                      activeTab === "trash"
+                        ? "text-gus-accent"
+                        : "text-gus-muted hover:bg-gus-card hover:text-gus-text",
+                    )}
+                  >
+                    {activeTab === "trash" && (
+                      <m.span
+                        layoutId="sidebar-active-tab"
+                        className="absolute inset-0 rounded-xl border border-gus-accent/40 bg-gus-accent/15"
+                        transition={{ type: "spring", stiffness: 400, damping: 32 }}
+                      />
+                    )}
+                    <Trash2 className="relative h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
+                  </button>
+
+                  <button
+                    type="button"
+                    title={t("app.settings")}
+                    aria-label={t("app.settings")}
+                    aria-pressed={activeTab === "settings"}
+                    onClick={() => setActiveTab("settings")}
+                    className={clsx(
+                      "relative flex h-11 w-11 items-center justify-center rounded-xl outline-none transition-colors",
+                      "focus-visible:ring-2 focus-visible:ring-gus-accent/60",
+                      activeTab === "settings"
+                        ? "text-gus-accent"
+                        : "text-gus-muted hover:bg-gus-card hover:text-gus-text",
+                    )}
+                  >
+                    {activeTab === "settings" && (
+                      <m.span
+                        layoutId="sidebar-active-tab"
+                        className="absolute inset-0 rounded-xl border border-gus-accent/40 bg-gus-accent/15"
+                        transition={{ type: "spring", stiffness: 400, damping: 32 }}
+                      />
+                    )}
+                    <SettingsIcon
+                      className="relative h-5 w-5"
+                      strokeWidth={1.75}
+                      aria-hidden="true"
+                    />
+                  </button>
+                </div>
+              </div>
+
+              <div
+                role="separator"
+                aria-orientation="vertical"
+                aria-label={t("app.resizeSidebar")}
+                aria-valuenow={sidebarWidth}
+                aria-valuemin={SIDEBAR_MIN_WIDTH}
+                aria-valuemax={SIDEBAR_MAX_WIDTH}
+                tabIndex={0}
+                title={t("app.resizeHint")}
+                onPointerDown={handleSidebarResizeStart}
+                onDoubleClick={() => changeSidebarWidth(SIDEBAR_DEFAULT_WIDTH)}
+                onKeyDown={handleSidebarResizeKeyDown}
+                className="absolute inset-y-0 right-0 w-1.5 cursor-col-resize touch-none rounded-r-sm transition-colors hover:bg-gus-accent/40 focus-visible:bg-gus-accent/60 focus-visible:outline-none"
+              />
+            </aside>
           )}
-        </main>
 
-        <CommandPalette
-          open={paletteOpen}
-          onOpenChange={setPaletteOpen}
-          vaultPath={currentVault}
-          onSelectNote={handlePaletteSelectNote}
-          shortcuts={settings.shortcuts}
-        />
+          <main className="h-full min-w-0 flex-1 overflow-hidden">
+            {bootStatus === "loading" ? (
+              <div className="flex h-full flex-col items-center justify-center gap-4 text-sm text-gus-muted">
+                <img
+                  src={gusIcon}
+                  alt=""
+                  draggable={false}
+                  className="h-20 w-20 animate-pulse select-none"
+                />
+                {t("app.loading")}
+              </div>
+            ) : currentVault === null ? (
+              <VaultPicker
+                vaults={vaultConfig?.vaults ?? []}
+                baseDir={vaultConfig?.baseDir ?? DEFAULT_BASE_DIR}
+                lastVault={vaultConfig?.lastVault ?? null}
+                busy={vaultBusy}
+                error={vaultError}
+                language={language}
+                onLanguageChange={handleLanguageChange}
+                scheme={scheme}
+                onSchemeChange={handleSchemeChange}
+                onWelcomeFinish={markTourPending}
+                onOpen={openVault}
+                onCreate={handleCreateVault}
+                onAddExisting={handleAddExistingVault}
+                onRename={handleRenameVault}
+                onSetCover={handleSetVaultCover}
+                onRemoveMany={handleRemoveVaults}
+                onSelectBaseDir={handleSelectBaseDir}
+              />
+            ) : (
+              <AnimatePresence mode="wait" initial={false}>
+                <m.section
+                  key={activeTab}
+                  initial={{ opacity: 0, x: 16 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -16 }}
+                  transition={{ duration: 0.2, ease: "easeOut" }}
+                  className="h-full w-full overflow-hidden"
+                >
+                  {activeTab === "home" ? (
+                    <DashboardView
+                      vaultPath={currentVault}
+                      vaultName={
+                        vaultConfig?.vaults.find((vault) => vault.path === currentVault)?.name ??
+                        baseName(currentVault)
+                      }
+                      onNavigate={setActiveTab}
+                      onNewTask={openNewTask}
+                      onOpenNote={(file) => {
+                        setActiveTab("notes");
+                        handleSelectNote(file);
+                      }}
+                    />
+                  ) : activeTab === "notes" ? (
+                    notesView
+                  ) : activeTab === "tasks" ? (
+                    <TaskList
+                      vaultPath={currentVault}
+                      hideCompleted={settings.hideCompletedTasks}
+                      onNewTask={openNewTask}
+                    />
+                  ) : activeTab === "calendar" ? (
+                    <CalendarView
+                      vaultPath={currentVault}
+                      onOpenTasks={() => setActiveTab("tasks")}
+                      onNewTask={openNewTask}
+                      showCompleted={settings.calendarShowCompleted}
+                    />
+                  ) : activeTab === "trash" ? (
+                    <TrashView onRestore={() => setVaultRefresh((key) => key + 1)} />
+                  ) : (
+                    <SettingsPanel
+                      settings={settings}
+                      onChange={handleSettingsChange}
+                      language={language}
+                      onLanguageChange={handleLanguageChange}
+                      onStartTour={() => setTourOpen(true)}
+                      onCheckUpdate={() => void handleCheckUpdate()}
+                      updateState={updateState}
+                    />
+                  )}
+                </m.section>
+              </AnimatePresence>
+            )}
+          </main>
 
-        <NewTaskDialog open={newTaskOpen} onOpenChange={setNewTaskOpen} />
+          <CommandPalette
+            open={paletteOpen}
+            onOpenChange={setPaletteOpen}
+            vaultPath={currentVault}
+            onSelectNote={handlePaletteSelectNote}
+            shortcuts={settings.shortcuts}
+          />
 
-        <Tour
-          open={tourOpen}
-          onFinish={finishTour}
-          onStepChange={handleTourStepChange}
-        />
+          <NewTaskDialog
+            key={newTaskSeq}
+            open={newTaskOpen}
+            onOpenChange={setNewTaskOpen}
+          />
 
-        <AnimatePresence>
-          {updateNotice && (
-            <UpdateNotice
-              info={updateNotice}
-              current={APP_VERSION}
-              // A la derecha del menú lateral para no tapar sus botones.
-              offsetLeft={currentVault ? sidebarWidth + 16 : 16}
-              onDismiss={() => {
-                dismissUpdate(updateNotice.version);
-                setUpdateNotice(null);
-              }}
-            />
+          <Tour
+            open={tourOpen}
+            onFinish={finishTour}
+            onStepChange={handleTourStepChange}
+          />
+
+          <AnimatePresence>
+            {updateNotice && (
+              <UpdateNotice
+                info={updateNotice}
+                current={APP_VERSION}
+                // A la derecha del menú lateral para no tapar sus botones.
+                offsetLeft={currentVault ? sidebarWidth + 16 : 16}
+                onDismiss={() => {
+                  dismissUpdate(updateNotice.version);
+                  setUpdateNotice(null);
+                }}
+              />
+            )}
+          </AnimatePresence>
+
+          {linkError && (
+            <div
+              role="status"
+              aria-live="polite"
+              className={clsx(
+                "fixed right-4 z-50 max-w-sm rounded-xl border border-rose-400/40 bg-gus-panel px-4 py-3 text-xs text-rose-300 shadow-2xl shadow-black/40",
+                importNotice ? "bottom-20" : "bottom-4",
+              )}
+            >
+              {linkError}
+            </div>
           )}
-        </AnimatePresence>
 
-        {linkError && (
-          <div
-            role="status"
-            aria-live="polite"
-            className={clsx(
-              "fixed right-4 z-50 max-w-sm rounded-xl border border-rose-400/40 bg-gus-panel px-4 py-3 text-xs text-rose-300 shadow-2xl shadow-black/40",
-              importNotice ? "bottom-20" : "bottom-4",
-            )}
-          >
-            {linkError}
-          </div>
-        )}
+          {importNotice && (
+            <div
+              role="status"
+              aria-live="polite"
+              className={clsx(
+                "fixed right-4 bottom-4 z-50 max-w-sm rounded-xl border bg-gus-panel px-4 py-3 text-xs shadow-2xl shadow-black/40",
+                importNotice.ok
+                  ? "border-gus-accent/40 text-gus-accent"
+                  : "border-amber-400/40 text-amber-300",
+              )}
+            >
+              {importNotice.message}
+            </div>
+          )}
 
-        {importNotice && (
-          <div
-            role="status"
-            aria-live="polite"
-            className={clsx(
-              "fixed right-4 bottom-4 z-50 max-w-sm rounded-xl border bg-gus-panel px-4 py-3 text-xs shadow-2xl shadow-black/40",
-              importNotice.ok
-                ? "border-gus-accent/40 text-gus-accent"
-                : "border-amber-400/40 text-amber-300",
-            )}
-          >
-            {importNotice.message}
-          </div>
-        )}
-
-        {droppingFiles && (
-          <div
-            role="status"
-            aria-live="polite"
-            className="pointer-events-none fixed inset-3 z-40 flex flex-col items-center justify-center gap-2 rounded-3xl border-2 border-dashed border-gus-accent bg-gus-bg/80 text-center shadow-2xl shadow-black/40"
-          >
-            <Upload className="h-10 w-10 text-gus-accent" strokeWidth={1.5} aria-hidden="true" />
-            <p className="text-sm font-semibold text-gus-text">
-              {t(currentVault ? "app.dropVault" : "app.dropNoVault")}
-            </p>
-            {currentVault && (
-              <p className="max-w-md break-words text-xs text-gus-muted">
-                {t("app.dropEnter", {
-                  folder: relativeFolderLabel(dropFolder ?? currentVault, currentVault),
-                })}
+          {droppingFiles && (
+            <div
+              role="status"
+              aria-live="polite"
+              className="pointer-events-none fixed inset-3 z-40 flex flex-col items-center justify-center gap-2 rounded-3xl border-2 border-dashed border-gus-accent bg-gus-bg/80 text-center shadow-2xl shadow-black/40"
+            >
+              <Upload className="h-10 w-10 text-gus-accent" strokeWidth={1.5} aria-hidden="true" />
+              <p className="text-sm font-semibold text-gus-text">
+                {t(currentVault ? "app.dropVault" : "app.dropNoVault")}
               </p>
-            )}
-          </div>
-        )}
-      </div>
-    </MotionConfig>
+              {currentVault && (
+                <p className="max-w-md break-words text-xs text-gus-muted">
+                  {t("app.dropEnter", {
+                    folder: relativeFolderLabel(dropFolder ?? currentVault, currentVault),
+                  })}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      </MotionConfig>
+    </LazyMotion>
   );
 }
 

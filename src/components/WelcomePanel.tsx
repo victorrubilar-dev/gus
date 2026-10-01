@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { motion } from "framer-motion";
+import { m } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 import { FileText, Plus, Search, StickyNote } from "lucide-react";
 import type { NoteFile } from "./FileExplorer";
@@ -94,7 +94,7 @@ export default function WelcomePanel({
       aria-label={t("welcome.noNoteOpen")}
       className="gus-scrollbar flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto"
     >
-      <motion.div
+      <m.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.2, ease: "easeOut" }}
@@ -186,7 +186,7 @@ export default function WelcomePanel({
             </ul>
           </div>
         )}
-      </motion.div>
+      </m.div>
     </section>
   );
 }

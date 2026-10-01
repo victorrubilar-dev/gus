@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { motion } from "framer-motion";
+import { m } from "framer-motion";
 import {
   ArrowRight,
   Check,
@@ -324,14 +324,14 @@ export default function VaultPicker({
   if (showWelcome && vaults.length === 0) {
     return (
       <div className="gus-scrollbar flex h-full w-full items-center justify-center overflow-y-auto bg-gus-bg px-6 py-10">
-        <motion.section
+        <m.section
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.45, ease: "easeOut" }}
           className="w-full max-w-md text-center"
           aria-labelledby="welcome-title"
         >
-          <motion.div
+          <m.div
             initial={{ opacity: 0, scale: 0.7 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: 0.08, type: "spring", stiffness: 260, damping: 18 }}
@@ -344,9 +344,9 @@ export default function VaultPicker({
               draggable={false}
               className="mx-auto h-[110px] w-[110px] select-none drop-shadow-[0_10px_30px_rgba(0,0,0,0.35)]"
             />
-          </motion.div>
+          </m.div>
 
-          <motion.h1
+          <m.h1
             id="welcome-title"
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -354,16 +354,16 @@ export default function VaultPicker({
             className="text-3xl font-semibold tracking-tight"
           >
             {t("onboarding.title")}
-          </motion.h1>
+          </m.h1>
 
-          <motion.p
+          <m.p
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.24, duration: 0.35 }}
             className="mx-auto mt-3 max-w-sm text-sm leading-6 text-gus-muted"
           >
             {t("onboarding.subtitle")}
-          </motion.p>
+          </m.p>
 
           {shownError && (
             <p
@@ -375,7 +375,7 @@ export default function VaultPicker({
           )}
 
           {/* Primera elección: idioma y estilo, que es lo único que se decide aquí. */}
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.38, duration: 0.35 }}
@@ -440,9 +440,9 @@ export default function VaultPicker({
                 })}
               </p>
             </div>
-          </motion.div>
+          </m.div>
 
-          <motion.button
+          <m.button
             type="button"
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -458,15 +458,15 @@ export default function VaultPicker({
           >
             {t("onboarding.start")}
             <ArrowRight className="h-4 w-4" aria-hidden="true" />
-          </motion.button>
-        </motion.section>
+          </m.button>
+        </m.section>
       </div>
     );
   }
 
   return (
     <div className="gus-scrollbar flex h-full w-full items-start justify-center overflow-y-auto bg-gus-bg px-6 py-8">
-      <motion.div
+      <m.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.35, ease: "easeOut" }}
@@ -625,7 +625,7 @@ export default function VaultPicker({
             const isSelected = selectedPaths.has(vault.path);
 
             return (
-              <motion.li
+              <m.li
                 key={vault.path}
                 layout
                 initial={{ opacity: 0, y: 10 }}
@@ -792,13 +792,13 @@ export default function VaultPicker({
                     </div>
                   </form>
                 )}
-              </motion.li>
+              </m.li>
             );
           })}
         </ul>
 
         {mode === "create" && (
-          <motion.form
+          <m.form
             id="vault-create-form"
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
@@ -883,9 +883,9 @@ export default function VaultPicker({
                 {t("common.cancel")}
               </button>
             </div>
-          </motion.form>
+          </m.form>
         )}
-      </motion.div>
+      </m.div>
     </div>
   );
 }

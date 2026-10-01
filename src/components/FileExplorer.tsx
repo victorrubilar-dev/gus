@@ -9,7 +9,7 @@ import {
   type DragEvent as ReactDragEvent,
   type MouseEvent as ReactMouseEvent,
 } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, m } from "framer-motion";
 import {
   ArrowLeft,
   ArrowRight,
@@ -495,18 +495,6 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
     setDestinations(null);
     setRenamingId(id);
   }
-
-  useEffect(() => {
-    setNav({
-      trail: [{ name: rootLabel(vaultPath), path: vaultPath }],
-      past: [],
-      future: [],
-    });
-    setTrailMenuOpen(false);
-    setMenu(null);
-    setActionError(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vaultPath]);
 
   useEffect(() => {
     if (!menu && !trailMenuOpen) return;
@@ -1104,8 +1092,14 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
     if (!box) return;
 
     // Solo falta sitio: se oculta un tramo más (nunca se encogen todos juntos).
+    // El nuevo nivel se calcula desde `prev` y no desde `collapseLevel`: el
+    // valor derivado en render no debe copiarse al estado (costaría un render
+    // extra y la regla no-derived-state-effect lo marca).
     if (box.scrollWidth > box.clientWidth + 1 && collapseLevel < maxLevel) {
-      setCollapse({ key: trailKey, level: collapseLevel + 1 });
+      setCollapse((prev) => ({
+        key: trailKey,
+        level: (prev.key === trailKey ? prev.level : 0) + 1,
+      }));
     }
 
     let ancho = box.clientWidth;
@@ -1482,7 +1476,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
             const isRenaming = renamingId === file.id;
 
             return (
-              <motion.li
+              <m.li
                 key={file.id}
                 data-entry-id={file.id}
                 data-entry-kind="file"
@@ -1506,7 +1500,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
                   onDragStart={(event) => startDrag(event, { kind: "file", path: file.id })}
                   onDragEnd={clearDrag}
                 >
-                  <motion.div
+                  <m.div
                     initial={{ opacity: 0, y: -6 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.18, ease: "easeOut" }}
@@ -1534,7 +1528,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
                         )}
                       >
                         {isActive && (
-                          <motion.span
+                          <m.span
                             layoutId="file-active"
                             className="absolute inset-0 rounded-lg border border-gus-accent/40 bg-gus-card"
                             transition={{ type: "spring", stiffness: 500, damping: 40 }}
@@ -1580,9 +1574,9 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
                         </span>
                       </button>
                     )}
-                  </motion.div>
+                  </m.div>
                 </div>
-              </motion.li>
+              </m.li>
             );
           })}
         </AnimatePresence>
