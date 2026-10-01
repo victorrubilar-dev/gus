@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import type { MessageKey } from "./i18n/core";
 
 export type ThemeKey =
   | "gus-oscuro"
@@ -13,8 +14,8 @@ export type ThemeScheme = "dark" | "light";
 
 export interface ThemeDefinition {
   key: ThemeKey;
-  label: string;
-  hint: string;
+  labelKey: MessageKey;
+  hintKey: MessageKey;
   scheme: ThemeScheme;
   /** Color de acento propio del tema, mientras el usuario no elija otro. */
   accent: string;
@@ -45,56 +46,56 @@ function colors(
 export const THEME_LIST: ThemeDefinition[] = [
   {
     key: "gus-oscuro",
-    label: "Gus Oscuro",
-    hint: "El de siempre",
+    labelKey: "theme.gus-dark",
+    hintKey: "theme.gusDarkHint",
     scheme: "dark",
     accent: "#e07a5f",
     vars: colors("#0d0e11", "#16181f", "#1f222b", "#2a2e39", "#f4f1de", "#8d99ae", "#81b29a"),
   },
   {
     key: "gus-claro",
-    label: "Gus Claro",
-    hint: "El de siempre, en claro",
+    labelKey: "theme.gus-light",
+    hintKey: "theme.gusLightHint",
     scheme: "light",
     accent: "#b14a31",
     vars: colors("#f2f3f5", "#ffffff", "#e9ebf0", "#d5d9e1", "#15181f", "#5d6675", "#2f7d5f"),
   },
   {
     key: "oled",
-    label: "OLED",
-    hint: "Negro puro",
+    labelKey: "theme.oled",
+    hintKey: "theme.oledHint",
     scheme: "dark",
     accent: "#ff7a45",
     vars: colors("#000000", "#060607", "#101013", "#232327", "#f2f2f4", "#8e8e97", "#81b29a"),
   },
   {
     key: "dracula",
-    label: "Dracula",
-    hint: "Morado y rosa",
+    labelKey: "theme.dracula",
+    hintKey: "theme.draculaHint",
     scheme: "dark",
     accent: "#bd93f9",
     vars: colors("#282a36", "#21222c", "#343746", "#44475a", "#f8f8f2", "#8b93b3", "#50fa7b"),
   },
   {
     key: "nord",
-    label: "Nord",
-    hint: "Azules del ártico",
+    labelKey: "theme.nord",
+    hintKey: "theme.nordHint",
     scheme: "dark",
     accent: "#88c0d0",
     vars: colors("#2e3440", "#3b4252", "#434c5e", "#4c566a", "#eceff4", "#9aa7bd", "#a3be8c"),
   },
   {
     key: "solarized-oscuro",
-    label: "Solarized Oscuro",
-    hint: "Arena oscura y azul",
+    labelKey: "theme.solarized-dark",
+    hintKey: "theme.solarizedDarkHint",
     scheme: "dark",
     accent: "#3d9ade",
     vars: colors("#002b36", "#073642", "#0a404f", "#1c4f5e", "#e9e5d7", "#839496", "#859900"),
   },
   {
     key: "solarized-claro",
-    label: "Solarized Claro",
-    hint: "Arena clara",
+    labelKey: "theme.solarized-light",
+    hintKey: "theme.solarizedLightHint",
     scheme: "light",
     accent: "#1c6fbb",
     vars: colors("#fdf6e3", "#eee8d5", "#e6dfca", "#d4cbb0", "#073642", "#586e75", "#859900"),

@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { t as activeT } from "./i18n";
 
 /** Un archivo juzgado por el comando `import_files_to_vault`. */
 export interface ImportItem {
@@ -41,14 +42,16 @@ const IMAGE_EXTENSIONS = [
   "xbm",
 ];
 
-/** Filtros del diálogo «Añadir archivos». */
-export const IMPORT_FILTERS: { name: string; extensions: string[] }[] = [
-  {
-    name: "Notas, PDF e imágenes",
-    extensions: ["md", "pdf", ...IMAGE_EXTENSIONS],
-  },
-  { name: "Todos los archivos", extensions: ["*"] },
-];
+/** Filtros del diálogo «Añadir archivos», en el idioma activo. */
+export function importFilters(): { name: string; extensions: string[] }[] {
+  return [
+    {
+      name: activeT("import.filterDocs"),
+      extensions: ["md", "pdf", ...IMAGE_EXTENSIONS],
+    },
+    { name: activeT("import.filterAll"), extensions: ["*"] },
+  ];
+}
 
 /** Copia archivos del equipo al vault (no se mueven: el original queda donde estaba). */
 export async function importFilesIntoVault(
@@ -62,7 +65,7 @@ export async function importFilesIntoVault(
 export function relativeFolderLabel(dest: string, vault: string): string {
   if (vault && dest.startsWith(vault)) {
     const rest = dest.slice(vault.length).replace(/^[\\/]+/, "");
-    return rest || "raíz del vault";
+    return rest || activeT("welcome.vaultRoot");
   }
   return dest;
 }
@@ -78,7 +81,7 @@ export interface ImportSummary {
  */
 export function summarizeImport(items: ImportItem[], destLabel: string): ImportSummary {
   if (items.length === 0) {
-    return { ok: true, message: "No se seleccionó ningún archivo." };
+    return { ok: true, message: activeT("import.noneSelected") };
   }
 
   const added = items.filter((item) => item.path && !item.error);
@@ -88,11 +91,12 @@ export function summarizeImport(items: ImportItem[], destLabel: string): ImportS
   const motive = `${reasons.slice(0, 2).join(" · ")}${extra}`;
 
   if (added.length === 0) {
-    return { ok: false, message: `No se añadió ningún archivo: ${motive}.` };
+    return { ok: false, message: activeT("import.noneAdded", { motive }) };
   }
 
-  const head = `Añadido${added.length === 1 ? "" : "s"} ${added.length} archivo${added.length === 1 ? "" : "s"} a «${destLabel}»`;
-  const tail = problems.length > 0 ? ` ${problems.length} sin añadir: ${motive}.` : ".";
+  const head = activeT("import.addedHead", { count: added.length, folder: destLabel });
+  const tail =
+    problems.length > 0 ? ` ${activeT("import.skippedTail", { count: problems.length, motive })}` : ".";
 
   return { ok: problems.length === 0, message: `${head}${tail}` };
 }

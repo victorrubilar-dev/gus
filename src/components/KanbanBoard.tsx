@@ -3,14 +3,16 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Calendar, Flag } from "lucide-react";
 import clsx from "clsx";
 import type { Task } from "../lib/taskStore";
-import { PRIORITY_CLASS, PRIORITY_LABEL } from "../lib/taskPriority";
+import { PRIORITY_CLASS, priorityLabel } from "../lib/taskPriority";
+import { useT } from "../lib/i18n";
+import type { MessageKey } from "../lib/i18n/core";
 
 export type KanbanColumnId = "todo" | "doing" | "done";
 
-const COLUMNS: { id: KanbanColumnId; label: string; hint: string }[] = [
-  { id: "todo", label: "Por hacer", hint: "Arrastra aquí lo que aún no empieces" },
-  { id: "doing", label: "En progreso", hint: "Arrastra aquí lo que estés haciendo" },
-  { id: "done", label: "Completadas", hint: "Arrastra aquí lo que termines" },
+const COLUMNS: { id: KanbanColumnId; labelKey: MessageKey; hintKey: MessageKey }[] = [
+  { id: "todo", labelKey: "kanban.todo", hintKey: "kanban.todoHint" },
+  { id: "doing", labelKey: "kanban.doing", hintKey: "kanban.doingHint" },
+  { id: "done", labelKey: "kanban.done", hintKey: "kanban.doneHint" },
 ];
 
 export function columnOf(task: Task): KanbanColumnId {
@@ -28,7 +30,7 @@ function todayIso(): string {
 function shortDue(iso: string): string {
   const date = new Date(`${iso}T00:00:00`);
   if (Number.isNaN(date.getTime())) return iso;
-  return date.toLocaleDateString("es-ES", { day: "numeric", month: "short" });
+  return date.toLocaleDateString(undefined, { day: "numeric", month: "short" });
 }
 
 export interface KanbanBoardProps {
@@ -44,6 +46,7 @@ export default function KanbanBoard({
   onTagClick,
   tagFilter = null,
 }: KanbanBoardProps) {
+  const t = useT();
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [overColumn, setOverColumn] = useState<KanbanColumnId | null>(null);
   const now = todayIso();
@@ -71,7 +74,7 @@ export default function KanbanBoard({
         return (
           <section
             key={column.id}
-            aria-label={`Columna ${column.label}`}
+            aria-label={`${t("kanban.column", { name: t(column.labelKey) })}`}
             className={clsx(
               "flex min-h-40 flex-col gap-2 rounded-xl border p-2.5 transition-colors",
               isOver ? "border-gus-accent/60 bg-gus-accent/5" : "border-gus-border bg-gus-panel/40",
@@ -79,7 +82,7 @@ export default function KanbanBoard({
           >
             <header className="flex items-center justify-between px-0.5">
               <h3 className="text-[11px] font-semibold uppercase tracking-wider text-gus-muted">
-                {column.label}
+                {t(column.labelKey)}
               </h3>
               <span className="rounded-full border border-gus-border bg-gus-card px-1.5 py-px text-[10px] text-gus-muted">
                 {cards.length}
@@ -142,7 +145,7 @@ export default function KanbanBoard({
                           </p>
                           {task.priority && (
                             <span
-                              title={`Prioridad ${PRIORITY_LABEL[task.priority]}`}
+                              title={`${t("tasks.priorityLabel", { name: priorityLabel(task.priority) })}`}
                               className={clsx(
                                 "inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] capitalize",
                                 PRIORITY_CLASS[task.priority],
@@ -211,7 +214,7 @@ export default function KanbanBoard({
 
               {cards.length === 0 && (
                 <li className="rounded-lg border border-dashed border-gus-border px-3 py-6 text-center text-[11px] text-gus-muted">
-                  {column.hint}
+                  {t(column.hintKey)}
                 </li>
               )}
             </ul>

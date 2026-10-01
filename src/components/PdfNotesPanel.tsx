@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { Plus, Trash2, X } from "lucide-react";
 import clsx from "clsx";
 import type { PdfNote } from "../lib/pdfAnnotations";
+import { useT } from "../lib/i18n";
 
 /**
  * Panel lateral con las notas del PDF, ordenadas por página. El botón de
@@ -27,6 +28,7 @@ export default function PdfNotesPanel({
   onJump: (page: number) => void;
   onClose: () => void;
 }) {
+  const t = useT();
   const pendingFocusRef = useRef<string | null>(null);
 
   // Al crear una nota se abre y enfoca su cuadro de texto.
@@ -48,12 +50,12 @@ export default function PdfNotesPanel({
   return (
     <aside className="flex w-72 shrink-0 flex-col border-l border-gus-border bg-gus-panel">
       <div className="flex items-center justify-between border-b border-gus-border px-3 py-2">
-        <span className="text-xs font-semibold text-gus-text">Notas del PDF</span>
+        <span className="text-xs font-semibold text-gus-text">{t("pdf.notes.title")}</span>
         <button
           type="button"
           onClick={onClose}
-          title="Cerrar notas"
-          aria-label="Cerrar notas"
+          title={t("pdf.notes.close")}
+          aria-label={t("pdf.notes.close")}
           className="flex h-6 w-6 items-center justify-center rounded text-gus-muted transition-colors hover:bg-gus-border/40 hover:text-gus-text focus-visible:outline-2 focus-visible:outline-gus-accent/60"
         >
           <X size={14} />
@@ -89,7 +91,7 @@ export default function PdfNotesPanel({
                   <button
                     type="button"
                     onClick={() => onJump(note.page)}
-                    title={`Ir a la página ${note.page}`}
+                    title={t("pdf.notes.goToPage", { page: note.page })}
                     className="rounded border border-gus-accent/40 bg-gus-accent/15 px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-gus-accent transition-colors hover:bg-gus-accent/25 focus-visible:outline-2 focus-visible:outline-gus-accent/60"
                   >
                     pág. {note.page}
@@ -97,8 +99,8 @@ export default function PdfNotesPanel({
                   <button
                     type="button"
                     onClick={() => onDelete(note.id)}
-                    title="Borrar nota"
-                    aria-label="Borrar nota de la página"
+                    title={t("pdf.notes.delete")}
+                    aria-label={t("pdf.notes.deleteAria")}
                     className={clsx(
                       "flex h-5 w-5 items-center justify-center rounded text-gus-muted transition-all",
                       "opacity-0 hover:bg-rose-500/15 hover:text-rose-300 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-gus-accent/60",
@@ -113,7 +115,7 @@ export default function PdfNotesPanel({
                   value={note.text}
                   onChange={(event) => onChange(note.id, event.target.value)}
                   rows={3}
-                  placeholder="Escribe tu nota…"
+                  placeholder={t("pdf.notes.placeholder")}
                   className="gus-scrollbar w-full resize-none rounded bg-transparent text-xs leading-relaxed text-gus-text placeholder:text-gus-muted/70 focus:outline-none"
                 />
               </li>

@@ -16,9 +16,10 @@ import clsx from "clsx";
 import { normalizeTags } from "../lib/markdownTasks";
 import { createTaskId, loadTaskStore, type Task } from "../lib/taskStore";
 import { NEW_TASK_EVENT, type NewTask } from "../lib/newTask";
-import { PRIORITY_CLASS, PRIORITY_LABEL, isTaskPriority, priorityRank } from "../lib/taskPriority";
+import { PRIORITY_CLASS, priorityLabel, isTaskPriority, priorityRank } from "../lib/taskPriority";
+import { useT } from "../lib/i18n";
 import {
-  WEEKDAYS,
+  weekdayLabels,
   fromIso,
   longDayLabel,
   monthCells,
@@ -35,7 +36,7 @@ function sortTasks(tasks: Task[]): Task[] {
     (a, b) =>
       Number(a.completes) - Number(b.completes) ||
       priorityRank(b.priority) - priorityRank(a.priority) ||
-      a.title.localeCompare(b.title, "es"),
+      a.title.localeCompare(b.title),
   );
 }
 
@@ -52,6 +53,7 @@ export default function CalendarView({
   onNewTask,
   showCompleted = true,
 }: CalendarViewProps) {
+  const t = useT();
   const [items, setItems] = useState<Task[]>([]);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -197,7 +199,7 @@ export default function CalendarView({
     }
   }
   const tagEntries = [...tagCounts.values()].sort((a, b) =>
-    a.label.localeCompare(b.label, "es"),
+    a.label.localeCompare(b.label),
   );
 
   function toggleTagFilter(tag: string) {
@@ -239,15 +241,15 @@ export default function CalendarView({
     setSelectedIso(toIso(now));
   }
 
-  const summary = [
-    { label: "Vencidas", value: overdue.length, className: "text-rose-300" },
-    { label: "Para hoy", value: dueToday.length, className: "text-amber-300" },
-    { label: "Este mes", value: dueThisMonth.length, className: "text-gus-accent" },
-    { label: "Sin fecha", value: undated.length, className: "text-sky-300" },
+  const summary: { label: string; value: number; className: string }[] = [
+    { label: t("calendar.overdue"), value: overdue.length, className: "text-rose-300" },
+    { label: t("calendar.dueToday"), value: dueToday.length, className: "text-amber-300" },
+    { label: t("calendar.thisMonth"), value: dueThisMonth.length, className: "text-gus-accent" },
+    { label: t("calendar.undated"), value: undated.length, className: "text-sky-300" },
   ];
 
   return (
-    <section className="flex h-full flex-col gap-4 overflow-y-auto p-6">
+    <section data-tour="calendar" className="flex h-full flex-col gap-4 overflow-y-auto p-6">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-gus-accent/40 bg-gus-accent/15 text-gus-accent">
@@ -255,7 +257,7 @@ export default function CalendarView({
           </div>
           <div>
             <h2 className="text-sm font-semibold uppercase tracking-wider text-gus-muted">
-              Calendario
+              {t("calendar.title")}
             </h2>
             <p className="text-xs text-gus-muted">
               Resumen de vencimientos de tus tareas
@@ -267,8 +269,8 @@ export default function CalendarView({
           <button
             type="button"
             onClick={() => setReloadKey((key) => key + 1)}
-            title="Recargar tareas"
-            aria-label="Recargar tareas"
+            title={t("calendar.reload")}
+            aria-label={t("calendar.reload")}
             className="flex h-9 w-9 items-center justify-center rounded-lg border border-gus-border bg-gus-card text-gus-muted transition-colors hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
           >
             <RefreshCw className="h-4 w-4" aria-hidden="true" />
@@ -288,10 +290,10 @@ export default function CalendarView({
       {tagEntries.length > 0 && (
         <div
           role="group"
-          aria-label="Filtrar tareas por etiqueta"
+          aria-label={t("calendar.filterTags")}
           className="flex flex-wrap items-center gap-1.5"
         >
-          <span className="text-[11px] text-gus-muted">Etiquetas:</span>
+          <span className="text-[11px] text-gus-muted">{t("tasks.tagsLabel")}</span>
           {tagEntries.map(({ label, count }) => {
             const active =
               !!tagFilter && tagFilter.toLowerCase() === label.toLowerCase();
@@ -320,7 +322,7 @@ export default function CalendarView({
             <button
               type="button"
               onClick={() => setTagFilter(null)}
-              title="Quitar el filtro de etiqueta"
+              title={t("tasks.removeFilter")}
               className="flex items-center gap-1 rounded-full border border-gus-border px-2 py-0.5 text-[11px] text-gus-muted transition-colors hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
             >
               Todas <X className="h-3 w-3" aria-hidden="true" />
@@ -337,18 +339,18 @@ export default function CalendarView({
 
       {status === "loading" && (
         <div className="flex flex-1 items-center justify-center text-sm text-gus-muted">
-          Cargando calendario…
+          {t("calendar.loading")}
         </div>
       )}
 
       {status === "error" && (
         <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
-          <p className="text-sm text-gus-muted">No se pudieron cargar las tareas.</p>
+          <p className="text-sm text-gus-muted">{t("calendar.loadError")}</p>
           {loadError && (
             <p className="max-w-xl break-words text-xs text-rose-400/80">{loadError}</p>
           )}
           <button type="button" onClick={() => setReloadKey((key) => key + 1)} className={INPUT_CLASS}>
-            Reintentar
+            {t("editor.retry")}
           </button>
         </div>
       )}
@@ -375,8 +377,8 @@ export default function CalendarView({
                 <button
                   type="button"
                   onClick={() => shiftMonth(-1)}
-                  title="Mes anterior"
-                  aria-label="Mes anterior"
+                  title={t("calendar.previousMonth")}
+                  aria-label={t("calendar.previousMonth")}
                   className="flex h-8 w-8 items-center justify-center rounded-lg text-gus-muted transition-colors hover:bg-gus-panel hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
                 >
                   <ChevronLeft className="h-4 w-4" aria-hidden="true" />
@@ -385,8 +387,10 @@ export default function CalendarView({
                 <div className="text-center">
                   <h3 className="text-sm font-semibold">{monthLabel(visibleMonth)}</h3>
                   <p className="text-[11px] text-gus-muted">
-                    {displayItems.filter((task) => task.due?.startsWith(monthPrefix)).length}{" "}
-                    tareas con fecha
+                    {t("calendar.datedCount", {
+                      count: displayItems.filter((task) => task.due?.startsWith(monthPrefix))
+                        .length,
+                    })}
                   </p>
                 </div>
 
@@ -396,13 +400,13 @@ export default function CalendarView({
                     onClick={goToday}
                     className="rounded-lg border border-gus-border px-2 py-1 text-xs text-gus-muted transition-colors hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
                   >
-                    Hoy
+                    {t("common.today")}
                   </button>
                   <button
                     type="button"
                     onClick={() => shiftMonth(1)}
-                    title="Mes siguiente"
-                    aria-label="Mes siguiente"
+                    title={t("calendar.nextMonth")}
+                    aria-label={t("calendar.nextMonth")}
                     className="flex h-8 w-8 items-center justify-center rounded-lg text-gus-muted transition-colors hover:bg-gus-panel hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
                   >
                     <ChevronRight className="h-4 w-4" aria-hidden="true" />
@@ -411,7 +415,7 @@ export default function CalendarView({
               </div>
 
               <div className="grid grid-cols-7 gap-px overflow-hidden rounded-xl border border-gus-border bg-gus-border">
-                {WEEKDAYS.map((weekday) => (
+                {weekdayLabels().map((weekday) => (
                   <div
                     key={weekday}
                     className="bg-gus-panel px-2 py-1.5 text-center text-[10px] font-semibold uppercase tracking-wider text-gus-muted"
@@ -444,7 +448,7 @@ export default function CalendarView({
                       type="button"
                       onClick={() => setSelectedIso(iso)}
                       aria-pressed={isSelected}
-                      aria-label={`${longDayLabel(iso)}, ${dayTasks.length} tareas`}
+                      aria-label={t("calendar.dayAria", { day: longDayLabel(iso), count: dayTasks.length })}
                       className={clsx(
                         "min-h-20 bg-gus-bg p-1.5 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-gus-accent",
                         isSelected && "bg-gus-accent/10 ring-1 ring-inset ring-gus-accent/60",
@@ -480,7 +484,7 @@ export default function CalendarView({
                         ))}
                         {dayTasks.length > 2 && (
                           <span className="px-1 text-[9px] text-gus-muted">
-                            +{dayTasks.length - 2} más
+                            {t("calendar.more", { count: dayTasks.length - 2 })}
                           </span>
                         )}
                       </span>
@@ -493,7 +497,7 @@ export default function CalendarView({
             <aside className="flex min-h-0 flex-col gap-3 rounded-xl border border-gus-border bg-gus-card p-4 min-[900px]:h-[calc(100%-3.25rem)]">
               <div>
                 <p className="text-[11px] uppercase tracking-wider text-gus-muted">
-                  Día seleccionado
+                  {t("calendar.selectedDay")}
                 </p>
                 <h3 className="mt-0.5 text-sm font-semibold first-letter:uppercase">
                   {longDayLabel(selectedIso)}
@@ -502,9 +506,11 @@ export default function CalendarView({
 
               <div className="flex items-center justify-between text-xs text-gus-muted">
                 <span>
-                  {selectedTasks.filter((task) => !task.completes).length} pendientes
+                  {t("calendar.pendingCount", {
+                    count: selectedTasks.filter((task) => !task.completes).length,
+                  })}
                 </span>
-                <span>{selectedTasks.length} en total</span>
+                <span>{t("calendar.totalCount", { count: selectedTasks.length })}</span>
               </div>
 
               <AnimatePresence initial={false}>
@@ -518,15 +524,15 @@ export default function CalendarView({
                   >
                     <p className="text-xs text-gus-muted">
                       {selectedIso === todayIso
-                        ? "No hay tareas con plazo hoy."
-                        : "No hay tareas con plazo este día."}
+                        ? t("calendar.noTasksToday")
+                        : t("calendar.noTasksDay")}
                     </p>
                     <button
                       type="button"
                       onClick={onOpenTasks}
                       className="text-xs text-gus-accent underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
                     >
-                      Ver todas las tareas
+                      {t("calendar.allTasks")}
                     </button>
                   </motion.div>
                 ) : (
@@ -549,8 +555,8 @@ export default function CalendarView({
                           aria-checked={task.completes}
                           aria-label={
                             task.completes
-                              ? `Marcar «${task.title}» como pendiente`
-                              : `Marcar «${task.title}» como completada`
+                              ? t("calendar.markPending", { title: task.title })
+                              : t("calendar.markDone", { title: task.title })
                           }
                           onClick={() => toggle(task.id)}
                           className={clsx(
@@ -583,7 +589,7 @@ export default function CalendarView({
                             <div className="mt-1 flex flex-wrap items-center gap-1">
                               {task.priority && (
                                 <span
-                                  title={`Prioridad ${PRIORITY_LABEL[task.priority]}`}
+                                  title={t("tasks.priorityLabel", { name: priorityLabel(task.priority) })}
                                   className={clsx(
                                     "inline-flex items-center gap-1 rounded-full border px-1.5 py-px text-[9px] capitalize",
                                     PRIORITY_CLASS[task.priority],

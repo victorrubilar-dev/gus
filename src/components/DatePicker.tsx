@@ -1,8 +1,9 @@
 import { useState } from "react";
 import clsx from "clsx";
+import { useT } from "../lib/i18n";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import {
-  WEEKDAYS,
+  weekdayLabels,
   fromIso,
   longDayLabel,
   monthCells,
@@ -19,6 +20,7 @@ export interface DatePickerProps {
 
 /* Sustituye a `<input type="date">`: su selector nativo se solapa con el menú superpuesto en algunos webviews. */
 export default function DatePicker({ value, onChange }: DatePickerProps) {
+  const t = useT();
   const [visibleMonth, setVisibleMonth] = useState<Date>(() => fromIso(value ?? "") ?? startOfMonth(new Date()));
 
   function shiftMonth(delta: number) {
@@ -40,8 +42,8 @@ export default function DatePicker({ value, onChange }: DatePickerProps) {
         <button
           type="button"
           onClick={() => shiftMonth(-1)}
-          aria-label="Mes anterior"
-          title="Mes anterior"
+          aria-label={t("calendar.previousMonth")}
+          title={t("calendar.previousMonth")}
           className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-gus-muted transition-colors hover:bg-gus-panel hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
         >
           <ChevronLeft className="h-4 w-4" aria-hidden="true" />
@@ -62,8 +64,8 @@ export default function DatePicker({ value, onChange }: DatePickerProps) {
           <button
             type="button"
             onClick={() => shiftMonth(1)}
-            aria-label="Mes siguiente"
-            title="Mes siguiente"
+            aria-label={t("calendar.nextMonth")}
+            title={t("calendar.nextMonth")}
             className="flex h-7 w-7 items-center justify-center rounded-lg text-gus-muted transition-colors hover:bg-gus-panel hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
           >
             <ChevronRight className="h-4 w-4" aria-hidden="true" />
@@ -73,7 +75,7 @@ export default function DatePicker({ value, onChange }: DatePickerProps) {
 
       <div className="px-2 pt-2 pb-2">
         <div className="grid grid-cols-7" aria-hidden="true">
-          {WEEKDAYS.map((weekday) => (
+          {weekdayLabels().map((weekday) => (
             <div
               key={weekday}
               className="pb-1 text-center text-[10px] font-semibold uppercase tracking-wider text-gus-muted"
@@ -124,7 +126,7 @@ export default function DatePicker({ value, onChange }: DatePickerProps) {
             value ? "text-gus-text" : "text-gus-muted",
           )}
         >
-          {value ? longDayLabel(value) : "Sin fecha elegida"}
+          {value ? longDayLabel(value) : t("calendar.noDateChosen")}
         </span>
 
         {value && (

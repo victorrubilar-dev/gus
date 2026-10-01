@@ -1,6 +1,7 @@
 import {
   lazy,
   Suspense,
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -46,9 +47,29 @@ import {
 } from "./lib/importFiles";
 import { findWikiNote, wikiTargetToPath, type WikiNote } from "./lib/wikiLink";
 import { accentHex, DEFAULT_SETTINGS, normalizeSettings, type AppSettings } from "./lib/settings";
-import { applyTheme } from "./lib/themes";
+import { applyTheme, themeDefinition, type ThemeScheme } from "./lib/themes";
+import {
+  checkForUpdate,
+  dismissUpdate,
+  dismissedVersion,
+  type UpdateCheckResult,
+  type UpdateInfo,
+  type UpdateUiState,
+} from "./lib/updateCheck";
+import { APP_VERSION } from "./lib/version";
 import { setPersonalWords } from "./lib/spellCheck";
+import { globalShortcutFor } from "./lib/shortcuts";
+import {
+  I18nProvider,
+  readStoredLanguage,
+  storeLanguage,
+  useT,
+  type Language,
+  type MessageKey,
+} from "./lib/i18n";
 import { toLocalCoord, uiZoomFactor } from "./lib/uiZoom";
+import Tour, { type TourTab } from "./components/Tour";
+import UpdateNotice from "./components/UpdateNotice";
 import gusIcon from "./assets/gus-icon-512.png";
 import "./App.css";
 
@@ -75,11 +96,11 @@ interface OpenPdf {
   error?: string;
 }
 
-const TABS: { id: TabId; label: string; Icon: LucideIcon }[] = [
-  { id: "home", label: "Resumen", Icon: LayoutDashboard },
-  { id: "notes", label: "Notas", Icon: StickyNote },
-  { id: "tasks", label: "Tareas", Icon: ListTodo },
-  { id: "calendar", label: "Calendario", Icon: CalendarDays },
+const TABS: { id: TabId; labelKey: MessageKey; Icon: LucideIcon }[] = [
+  { id: "home", labelKey: "app.tab.home", Icon: LayoutDashboard },
+  { id: "notes", labelKey: "app.tab.notes", Icon: StickyNote },
+  { id: "tasks", labelKey: "app.tab.tasks", Icon: ListTodo },
+  { id: "calendar", labelKey: "app.tab.calendar", Icon: CalendarDays },
 ];
 
 const DEFAULT_BASE_DIR = "~/Documents/gus-vaults";
@@ -88,6 +109,28 @@ const SIDEBAR_MIN_WIDTH = 64;
 const SIDEBAR_MAX_WIDTH = 320;
 const SIDEBAR_DEFAULT_WIDTH = 96;
 const SIDEBAR_WIDTH_KEY = "gus.sidebar-width";
+
+/**
+ * Estado del recorrido guiado: «pending» cuando la primera bienvenida lo deja
+ * para cuando haya vault abierto y «done» cuando ya se ha visto (o saltado).
+ */
+const TOUR_KEY = "gus.tour";
+
+function readTourPending(): boolean {
+  try {
+    return window.localStorage.getItem(TOUR_KEY) === "pending";
+  } catch {
+    return false;
+  }
+}
+
+function storeTourStatus(status: "pending" | "done"): void {
+  try {
+    window.localStorage.setItem(TOUR_KEY, status);
+  } catch {
+    // Sin memoria entre sesiones el tour podrá lanzarse desde Ajustes.
+  }
+}
 
 function clampSidebarWidth(width: number): number {
   if (!Number.isFinite(width)) return SIDEBAR_DEFAULT_WIDTH;
@@ -147,8 +190,32 @@ function titleFromFileName(name: string): string {
 // Visor de PDF: carga pdf.js solo cuando se abre el primer documento.
 const PdfViewer = lazy(() => import("./components/PdfViewer"));
 
-function App() {
+/**
+ * Raíz de la app: solo monta el proveedor de idioma con lo que hay en
+ * `localStorage` (la ventana aparece ya en el idioma elegido, sin parpadeo) y,
+ * al salir, no toca nada más.
+ */
+function AppRoot() {
+  const [language, setLanguageState] = useState<Language>(readStoredLanguage);
+
+  return (
+    <I18nProvider language={language}>
+      <App language={language} onLanguageChange={setLanguageState} />
+    </I18nProvider>
+  );
+}
+
+function App({
+  language,
+  onLanguageChange,
+}: {
+  language: Language;
+  onLanguageChange: (lang: Language) => void;
+}) {
+  const t = useT();
   const [activeTab, setActiveTab] = useState<TabId>("home");
+  /** Con el panel derecho oculto solo se ve el explorador, a lo ancho. */
+  const [rightHidden, setRightHidden] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [newTaskOpen, setNewTaskOpen] = useState(false);
   const [note, setNote] = useState<OpenNote | null>(null);
@@ -189,6 +256,12 @@ function App() {
   const [currentVault, setCurrentVault] = useState<string | null>(null);
   const [vaultBusy, setVaultBusy] = useState(false);
   const [vaultError, setVaultError] = useState<string | null>(null);
+
+  /** Recorrido guiado: se abre solo al primer vault y también desde Ajustes. */
+  const [tourOpen, setTourOpen] = useState(false);
+  /** Comprobación de versiones nuevas en el repositorio de GitHub. */
+  const [updateState, setUpdateState] = useState<UpdateUiState>({ status: "idle" });
+  const [updateNotice, setUpdateNotice] = useState<UpdateInfo | null>(null);
 
   const settings = vaultConfig?.settings ?? DEFAULT_SETTINGS;
 
@@ -251,34 +324,99 @@ function App() {
     applyTheme(settings.theme);
   }, [settings.theme, vaultConfig]);
 
+  /**
+   * El recorrido guiado queda pendiente en la primera bienvenida (entonces
+   * todavía no hay vault): se lanza en cuanto se abre el primero.
+   */
   useEffect(() => {
-    function handleZoomKey(event: KeyboardEvent) {
-      if ((!event.ctrlKey && !event.metaKey) || event.altKey) return;
-      // Se acepta event.key y event.code: el layout latam no genera "=" en la tecla física.
-      const zoomIn =
-        event.key === "+" ||
-        event.key === "=" ||
-        event.code === "Equal" ||
-        event.code === "NumpadAdd";
-      const zoomOut =
-        event.key === "-" ||
-        event.key === "_" ||
-        event.code === "Minus" ||
-        event.code === "NumpadSubtract";
-      const zoomReset = event.key === "0" || event.code === "Digit0";
-      let next: number | null = null;
-      if (zoomIn) next = settings.uiZoom + 10;
-      else if (zoomOut) next = settings.uiZoom - 10;
-      else if (zoomReset) next = 100;
-      if (next === null) return;
-      event.preventDefault();
-      const zoom = Math.min(200, Math.max(50, Math.round(next)));
-      if (zoom !== settings.uiZoom) handleSettingsChange({ ...settings, uiZoom: zoom });
+    if (bootStatus !== "ready" || currentVault === null) return;
+    if (!readTourPending()) return;
+    setTourOpen(true);
+  }, [bootStatus, currentVault]);
+
+  /** Comprobación de versión nueva al arrancar: nunca frena ni rompe la app. */
+  useEffect(() => {
+    if (bootStatus !== "ready") return;
+
+    let cancelled = false;
+    setUpdateState({ status: "checking" });
+    void checkForUpdate().then((result) => {
+      if (cancelled) return;
+      applyUpdateResult(result);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [bootStatus]);
+
+  /** Traduce el resultado de la comprobación al estado que pinta la interfaz. */
+  function applyUpdateResult(result: UpdateCheckResult) {
+    setUpdateState(result);
+    // De la versión que ya se decidió ignorar no se vuelve a avisar.
+    if (result.status === "available" && dismissedVersion() !== result.info.version) {
+      setUpdateNotice(result.info);
+    }
+  }
+
+  /** Comprobación manual, desde Ajustes → General. */
+  async function handleCheckUpdate() {
+    setUpdateState({ status: "checking" });
+    applyUpdateResult(await checkForUpdate());
+  }
+
+  /**
+   * Atajos globales de la ventana. Los lee de los ajustes, así que cambiarlos
+   * en Ajustes → Atajos los cambia aquí también. El editor tiene los suyos
+   * (Ctrl+S, deshacer…), que se atienden antes porque viven en el textarea.
+   */
+  useEffect(() => {
+    function handleGlobalKey(event: KeyboardEvent) {
+      const id = globalShortcutFor(event, settings.shortcuts);
+      if (!id) return;
+
+      switch (id) {
+        case "zoomIn":
+        case "zoomOut":
+        case "zoomReset": {
+          // El «+» y el «−» del teclado numérico llegan como código, no como tecla.
+          const factor = id === "zoomIn" ? 10 : id === "zoomOut" ? -10 : 0;
+          const zoom =
+            factor === 0
+              ? 100
+              : Math.min(200, Math.max(50, settings.uiZoom + factor));
+          event.preventDefault();
+          if (zoom !== settings.uiZoom) handleSettingsChange({ ...settings, uiZoom: zoom });
+          return;
+        }
+        case "newTask":
+          if (!currentVault) return;
+          event.preventDefault();
+          setNewTaskOpen(true);
+          return;
+        case "focusSearch":
+          // «Buscar nota» de la pantalla de bienvenida, con atajo propio.
+          event.preventDefault();
+          setActiveTab("notes");
+          setPaletteOpen(true);
+          return;
+        case "togglePanel":
+          // Muestra u oculta el contenido de la derecha, como un visor de lado.
+          event.preventDefault();
+          setRightHidden((hidden) => !hidden);
+          return;
+        case "commandPalette":
+          if (!currentVault) return;
+          event.preventDefault();
+          setPaletteOpen((open) => !open);
+          return;
+        default:
+      }
     }
 
-    window.addEventListener("keydown", handleZoomKey);
-    return () => window.removeEventListener("keydown", handleZoomKey);
-  }, [settings]);
+    window.addEventListener("keydown", handleGlobalKey);
+    return () => window.removeEventListener("keydown", handleGlobalKey);
+  }, [settings, currentVault]);
 
   function handleSelectNote(file: NoteFile) {
     if (file.kind === "image") {
@@ -418,7 +556,7 @@ function App() {
 
     const saved = await editorRef.current?.flush() ?? true;
     if (!saved) {
-      throw new Error("No se pudieron guardar los cambios de la nota antes de modificarla.");
+      throw new Error(t("app.saveBeforeAction"));
     }
   }
 
@@ -474,7 +612,7 @@ function App() {
   async function handleDroppedFiles(paths: string[], position: { x: number; y: number }) {
     const dest = resolveDropFolder(position);
     if (!dest) {
-      showImportNotice({ ok: false, message: "Abre un vault para añadir archivos." });
+      showImportNotice({ ok: false, message: t("app.noVaultForFiles") });
       return;
     }
     if (paths.length === 0) return;
@@ -568,7 +706,7 @@ function App() {
       }
 
       const relative = wikiTargetToPath(target);
-      if (!relative) throw new Error(`Nombre de nota no válido: «${target}»`);
+      if (!relative) throw new Error(t("app.badNoteName", { name: target }));
 
       const created = await invoke<string>("create_vault_file", {
         path: joinPath(currentVault, `${relative}.md`),
@@ -776,7 +914,7 @@ function App() {
       const path = rawPath.trim();
       const exists = await invoke<boolean>("vault_dir_exists", { path });
       if (!exists) {
-        setVaultError(`No existe la carpeta «${path}»`);
+        setVaultError(t("app.vaultNotFound", { path }));
         return false;
       }
 
@@ -809,7 +947,7 @@ function App() {
 
     const cleanName = name.trim();
     if (!cleanName) {
-      setVaultError("Ponle un nombre al vault.");
+      setVaultError(t("app.vaultNeedsName"));
       return false;
     }
 
@@ -880,6 +1018,36 @@ function App() {
     saveVaultConfig({ ...vaultConfig, baseDir: clean });
   }
 
+  /** El idioma no va en el archivo del vault: se guarda aparte, en el equipo. */
+  function handleLanguageChange(lang: Language) {
+    onLanguageChange(lang);
+    storeLanguage(lang);
+  }
+
+  /**
+   * La primera bienvenida solo ofrece claro u oscuro y cada elección aplica su
+   * tema por defecto; el resto de paletas se siguen eligiendo en Ajustes.
+   */
+  function handleSchemeChange(scheme: ThemeScheme) {
+    handleSettingsChange({ ...settings, theme: scheme === "light" ? "gus-claro" : "gus-oscuro" });
+  }
+
+  /** Estilo actual, para marcar la tarjeta elegida en la bienvenida. */
+  const scheme: ThemeScheme = themeDefinition(settings.theme).scheme;
+
+  /** La bienvenida deja el tour pendiente: se lanza al abrir el primer vault. */
+  function markTourPending() {
+    storeTourStatus("pending");
+  }
+
+  function finishTour() {
+    setTourOpen(false);
+    storeTourStatus("done");
+  }
+
+  /** Identidad estable: el tour no debe reiniciarse si App re-renderiza. */
+  const handleTourStepChange = useCallback((tab: TourTab) => setActiveTab(tab), []);
+
   function handleSettingsChange(next: AppSettings) {
     if (!vaultConfig) return;
     // Cambiar de tema estrena el acento propio del tema; después se puede cambiar a mano.
@@ -889,11 +1057,12 @@ function App() {
   }
 
   const showEntryPanel =
-    image !== null ||
-    pdf !== null ||
-    note !== null ||
-    noteStatus === "loading" ||
-    noteStatus === "error";
+    !rightHidden &&
+    (image !== null ||
+      pdf !== null ||
+      note !== null ||
+      noteStatus === "loading" ||
+      noteStatus === "error");
 
   const notesView = currentVault === null ? null : (
     <div className="flex h-full w-full">
@@ -907,22 +1076,25 @@ function App() {
         onBeforeFileAction={handleBeforeFileAction}
         onExportPdf={handleExportPdf}
         width={explorerWidth}
+        shortcuts={settings.shortcuts}
       />
 
-      <div
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="Redimensionar el explorador de notas"
+      {!rightHidden && (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label={t("app.resizeExplorer")}
         aria-valuenow={explorerWidth}
         aria-valuemin={EXPLORER_MIN_WIDTH}
         aria-valuemax={EXPLORER_MAX_WIDTH}
         tabIndex={0}
-        title="Arrastra para redimensionar · doble clic: tamaño normal"
+        title={t("app.resizeHint")}
         onPointerDown={handleExplorerResizeStart}
         onDoubleClick={() => changeExplorerWidth(EXPLORER_DEFAULT_WIDTH)}
-        onKeyDown={handleExplorerResizeKeyDown}
-        className="w-1.5 shrink-0 cursor-col-resize touch-none transition-colors hover:bg-gus-accent/40 focus-visible:bg-gus-accent/60 focus-visible:outline-none"
-      />
+          onKeyDown={handleExplorerResizeKeyDown}
+          className="w-1.5 shrink-0 cursor-col-resize touch-none transition-colors hover:bg-gus-accent/40 focus-visible:bg-gus-accent/60 focus-visible:outline-none"
+        />
+      )}
 
       {showEntryPanel && (
         <div className="flex min-w-0 flex-1 flex-col">
@@ -931,18 +1103,18 @@ function App() {
               <div className="flex items-center justify-between gap-3 border-b border-gus-border bg-gus-panel px-4 py-2">
                 <span className="truncate font-mono text-xs text-gus-muted">{image.title}</span>
                 <span className="shrink-0 rounded-full border border-gus-accent/40 bg-gus-accent/15 px-2 py-0.5 text-[10px] uppercase tracking-wide text-gus-accent">
-                  Imagen
+                  {t("app.badge.image")}
                 </span>
               </div>
 
               <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-black/20 p-4">
                 {imageStatus === "loading" && (
-                  <p className="text-sm text-white/60">Cargando imagen…</p>
+                  <p className="text-sm text-white/60">{t("app.loadingImage")}</p>
                 )}
 
                 {imageStatus === "error" && (
                   <div className="flex max-w-md flex-col items-center gap-2 px-6 text-center">
-                    <p className="text-sm text-gus-muted">No se pudo abrir la imagen</p>
+                    <p className="text-sm text-gus-muted">{t("app.imageError")}</p>
                     {image.error && (
                       <p className="break-words text-xs text-rose-300">{image.error}</p>
                     )}
@@ -956,7 +1128,7 @@ function App() {
                     onError={() => {
                       setImage({
                         ...image,
-                        error: `Este navegador no sabe decodificar «${image.title}»; el archivo está intacto en el vault.`,
+                        error: t("app.imageDecodeError", { name: image.title }),
                       });
                       setImageStatus("error");
                     }}
@@ -976,12 +1148,12 @@ function App() {
 
               <div className="flex min-h-0 flex-1 flex-col items-center justify-center bg-black/20">
                 {pdfStatus === "loading" && (
-                  <p className="text-sm text-white/60">Cargando PDF…</p>
+                  <p className="text-sm text-white/60">{t("app.loadingPdf")}</p>
                 )}
 
                 {pdfStatus === "error" && (
                   <div className="flex max-w-md flex-col items-center gap-2 px-6 text-center">
-                    <p className="text-sm text-gus-muted">No se pudo abrir el PDF</p>
+                    <p className="text-sm text-gus-muted">{t("app.pdfError")}</p>
                     {pdf.error && (
                       <p className="break-words text-xs text-rose-300">{pdf.error}</p>
                     )}
@@ -989,7 +1161,7 @@ function App() {
                 )}
 
                 {pdfStatus === "ready" && pdf.src && (
-                  <Suspense fallback={<p className="text-sm text-white/60">Cargando visor…</p>}>
+                  <Suspense fallback={<p className="text-sm text-white/60">{t("app.loadingViewer")}</p>}>
                     <PdfViewer src={pdf.src} title={pdf.title} path={pdf.path} />
                   </Suspense>
                 )}
@@ -999,13 +1171,13 @@ function App() {
             <>
               {noteStatus === "loading" && (
                 <div className="flex h-full items-center justify-center text-sm text-gus-muted">
-                  Cargando nota…
+                  {t("app.loadingNote")}
                 </div>
               )}
 
               {noteStatus === "error" && (
                 <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-sm text-gus-muted">
-                  <span>No se pudo abrir la nota</span>
+                  <span>{t("app.noteError")}</span>
                   {noteError && (
                     <span className="break-words text-xs text-rose-400/80">{noteError}</span>
                   )}
@@ -1023,7 +1195,8 @@ function App() {
                   autoSave={handleAutoSave}
                   autoSaveEnabled={settings.autoSave}
                   fontSize={settings.editorFontSize}
-                  spellLang={settings.spellLang}
+                  spellLangs={settings.spellLangs}
+                  shortcuts={settings.shortcuts}
                   spellWords={settings.spellWords}
                   onSpellWordsChange={(words) =>
                     handleSettingsChange({ ...settings, spellWords: words })
@@ -1064,6 +1237,7 @@ function App() {
       >
         {showSidebar && (
           <aside
+            data-tour="sidebar"
             style={{ width: sidebarWidth }}
             className="relative flex h-full shrink-0 flex-col items-center gap-2 border-r border-gus-border bg-gus-panel py-4"
           >
@@ -1077,7 +1251,8 @@ function App() {
 
             <div aria-hidden="true" className="my-1 h-px w-8 bg-gus-border" />
 
-            {TABS.map(({ id, label, Icon }) => {
+            {TABS.map(({ id, labelKey, Icon }) => {
+              const label = t(labelKey);
               const isActive = activeTab === id;
 
               return (
@@ -1108,14 +1283,17 @@ function App() {
               );
             })}
 
-            <div className="mt-auto flex w-full flex-col items-center gap-2">
+            <div
+              data-tour="sidebar-bottom"
+              className="mt-auto flex w-full flex-col items-center gap-2"
+            >
               <div aria-hidden="true" className="h-px w-8 bg-gus-border" />
 
               <div className="flex flex-col items-center gap-2">
                 <button
                   type="button"
-                  title="Salir del vault"
-                  aria-label="Salir del vault"
+                  title={t("app.leaveVault")}
+                  aria-label={t("app.leaveVault")}
                   onClick={leaveVault}
                   className="flex h-11 w-11 items-center justify-center rounded-xl text-gus-muted outline-none transition-colors hover:bg-rose-400/10 hover:text-rose-300 focus-visible:ring-2 focus-visible:ring-gus-accent/60"
                 >
@@ -1124,8 +1302,8 @@ function App() {
 
                 <button
                   type="button"
-                  title="Papelera"
-                  aria-label="Papelera"
+                  title={t("app.trash")}
+                  aria-label={t("app.trash")}
                   aria-pressed={activeTab === "trash"}
                   onClick={() => setActiveTab("trash")}
                   className={clsx(
@@ -1148,8 +1326,8 @@ function App() {
 
                 <button
                   type="button"
-                  title="Configuración"
-                  aria-label="Configuración"
+                  title={t("app.settings")}
+                  aria-label={t("app.settings")}
                   aria-pressed={activeTab === "settings"}
                   onClick={() => setActiveTab("settings")}
                   className={clsx(
@@ -1179,12 +1357,12 @@ function App() {
             <div
               role="separator"
               aria-orientation="vertical"
-              aria-label="Redimensionar el menú lateral"
+              aria-label={t("app.resizeSidebar")}
               aria-valuenow={sidebarWidth}
               aria-valuemin={SIDEBAR_MIN_WIDTH}
               aria-valuemax={SIDEBAR_MAX_WIDTH}
               tabIndex={0}
-              title="Arrastra para redimensionar · doble clic: tamaño normal"
+              title={t("app.resizeHint")}
               onPointerDown={handleSidebarResizeStart}
               onDoubleClick={() => changeSidebarWidth(SIDEBAR_DEFAULT_WIDTH)}
               onKeyDown={handleSidebarResizeKeyDown}
@@ -1202,7 +1380,7 @@ function App() {
                 draggable={false}
                 className="h-20 w-20 animate-pulse select-none"
               />
-              Cargando Gus…
+              {t("app.loading")}
             </div>
           ) : currentVault === null ? (
             <VaultPicker
@@ -1211,6 +1389,11 @@ function App() {
               lastVault={vaultConfig?.lastVault ?? null}
               busy={vaultBusy}
               error={vaultError}
+              language={language}
+              onLanguageChange={handleLanguageChange}
+              scheme={scheme}
+              onSchemeChange={handleSchemeChange}
+              onWelcomeFinish={markTourPending}
               onOpen={openVault}
               onCreate={handleCreateVault}
               onAddExisting={handleAddExistingVault}
@@ -1250,10 +1433,6 @@ function App() {
                     vaultPath={currentVault}
                     hideCompleted={settings.hideCompletedTasks}
                     onNewTask={() => setNewTaskOpen(true)}
-                    onOpenNote={(path, name) => {
-                      setActiveTab("notes");
-                      handleSelectNote({ id: path, name, kind: "note" });
-                    }}
                   />
                 ) : activeTab === "calendar" ? (
                   <CalendarView
@@ -1265,7 +1444,15 @@ function App() {
                 ) : activeTab === "trash" ? (
                   <TrashView onRestore={() => setVaultRefresh((key) => key + 1)} />
                 ) : (
-                  <SettingsPanel settings={settings} onChange={handleSettingsChange} />
+                  <SettingsPanel
+                    settings={settings}
+                    onChange={handleSettingsChange}
+                    language={language}
+                    onLanguageChange={handleLanguageChange}
+                    onStartTour={() => setTourOpen(true)}
+                    onCheckUpdate={() => void handleCheckUpdate()}
+                    updateState={updateState}
+                  />
                 )}
               </motion.section>
             </AnimatePresence>
@@ -1277,9 +1464,31 @@ function App() {
           onOpenChange={setPaletteOpen}
           vaultPath={currentVault}
           onSelectNote={handlePaletteSelectNote}
+          shortcuts={settings.shortcuts}
         />
 
         <NewTaskDialog open={newTaskOpen} onOpenChange={setNewTaskOpen} />
+
+        <Tour
+          open={tourOpen}
+          onFinish={finishTour}
+          onStepChange={handleTourStepChange}
+        />
+
+        <AnimatePresence>
+          {updateNotice && (
+            <UpdateNotice
+              info={updateNotice}
+              current={APP_VERSION}
+              // A la derecha del menú lateral para no tapar sus botones.
+              offsetLeft={currentVault ? sidebarWidth + 16 : 16}
+              onDismiss={() => {
+                dismissUpdate(updateNotice.version);
+                setUpdateNotice(null);
+              }}
+            />
+          )}
+        </AnimatePresence>
 
         {linkError && (
           <div
@@ -1317,11 +1526,13 @@ function App() {
           >
             <Upload className="h-10 w-10 text-gus-accent" strokeWidth={1.5} aria-hidden="true" />
             <p className="text-sm font-semibold text-gus-text">
-              {currentVault ? "Suelta para añadir al vault" : "Abre un vault para añadir archivos"}
+              {t(currentVault ? "app.dropVault" : "app.dropNoVault")}
             </p>
             {currentVault && (
               <p className="max-w-md break-words text-xs text-gus-muted">
-                Entra en «{relativeFolderLabel(dropFolder ?? currentVault, currentVault)}»
+                {t("app.dropEnter", {
+                  folder: relativeFolderLabel(dropFolder ?? currentVault, currentVault),
+                })}
               </p>
             )}
           </div>
@@ -1331,4 +1542,4 @@ function App() {
   );
 }
 
-export default App;
+export default AppRoot;

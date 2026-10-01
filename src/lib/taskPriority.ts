@@ -1,15 +1,22 @@
-import type { TaskPriority } from "../utils/taskParser";
+import { t as activeT } from "./i18n";
+import type { MessageKey } from "./i18n/core";
 
-export type { TaskPriority };
+/** Prioridad de una tarea, tal y como se guarda en el almacén. */
+export type TaskPriority = "urgente" | "alta" | "media" | "baja";
 
 export const TASK_PRIORITIES: TaskPriority[] = ["urgente", "alta", "media", "baja"];
 
-export const PRIORITY_LABEL: Record<TaskPriority, string> = {
-  urgente: "Urgente",
-  alta: "Alta",
-  media: "Media",
-  baja: "Baja",
+export const PRIORITY_LABEL_KEY: Record<TaskPriority, MessageKey> = {
+  urgente: "priority.urgent",
+  alta: "priority.high",
+  media: "priority.medium",
+  baja: "priority.low",
 };
+
+/** Nombre de la prioridad en el idioma activo. */
+export function priorityLabel(priority: TaskPriority): string {
+  return activeT(PRIORITY_LABEL_KEY[priority]);
+}
 
 export const PRIORITY_CLASS: Record<TaskPriority, string> = {
   urgente: "border-rose-400/50 bg-rose-400/15 text-rose-300",

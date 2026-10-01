@@ -1,22 +1,25 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Calendar, Check, FileText, Flag, ListTodo, Plus, RefreshCw, SquareKanban, Trash2, X } from "lucide-react";
+import { Calendar, Check, Flag, ListTodo, Plus, RefreshCw, SquareKanban, Trash2, X } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import clsx from "clsx";
-import { normalizeTags, parseTagInput, setTaskChecked } from "../lib/markdownTasks";
-import { parseMarkdownTasks, type ParsedMarkdownTask } from "../utils/taskParser";
+import { normalizeTags, parseTagInput } from "../lib/markdownTasks";
 import { createTaskId, loadTaskStore, type Task } from "../lib/taskStore";
 import {
   PRIORITY_CLASS,
-  PRIORITY_LABEL,
+  priorityLabel,
   isTaskPriority,
   nextPriority,
 } from "../lib/taskPriority";
+import { useT } from "../lib/i18n";
+import type { MessageKey, TranslateParams } from "../lib/i18n/core";
 import { NEW_TASK_EVENT, type NewTask } from "../lib/newTask";
 import KanbanBoard, { type KanbanColumnId } from "./KanbanBoard";
 
 export type { Task };
+
+type Translator = (key: MessageKey, params?: TranslateParams) => string;
 
 export interface TaskListProps {
   tasks?: Task[];
@@ -24,7 +27,6 @@ export interface TaskListProps {
   onTasksChange?: (tasks: Task[]) => void;
   hideCompleted?: boolean;
   onNewTask: () => void;
-  onOpenNote?: (path: string, name: string) => void;
 }
 
 const TAG_COLORS = [
@@ -43,40 +45,6 @@ function tagColor(tag: string): string {
   return TAG_COLORS[hash % TAG_COLORS.length];
 }
 
-interface NoteRef {
-  name: string;
-  path: string;
-  relative: string;
-}
-
-interface NoteTask extends ParsedMarkdownTask {
-  id: string;
-  notePath: string;
-  noteName: string;
-  noteFolder: string;
-}
-
-function sortNoteTasks(tasks: NoteTask[]): NoteTask[] {
-  return [...tasks].sort(
-    (a, b) =>
-      Number(a.completed) - Number(b.completed) ||
-      a.noteName.localeCompare(b.noteName, "es") ||
-      a.line - b.line,
-  );
-}
-
-function locateNoteTask(content: string, task: ParsedMarkdownTask): ParsedMarkdownTask | null {
-  const parsed = parseMarkdownTasks(content);
-  const key = (row: ParsedMarkdownTask) => row.raw.replace(/\[([ xX])\]/, "[ ]");
-  const wanted = key(task);
-
-  return (
-    parsed.find((row) => row.line === task.line && key(row) === wanted) ??
-    parsed.find((row) => key(row) === wanted) ??
-    null
-  );
-}
-
 function hoyIso(): string {
   const hoy = new Date();
   return `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}-${String(
@@ -88,34 +56,42 @@ function formatoFecha(iso: string): string {
   const fecha = new Date(`${iso}T00:00:00`);
   if (Number.isNaN(fecha.getTime())) return iso;
 
-  return fecha.toLocaleDateString("es-ES", {
+  return fecha.toLocaleDateString(undefined, {
     day: "numeric",
     month: "short",
     ...(fecha.getFullYear() === new Date().getFullYear() ? {} : { year: "numeric" }),
   });
 }
 
-function dueState(task: { completes: boolean; due?: string }): {
-  due: string;
-  title: string;
-  className: string;
-} | null {
+function dueState(
+  task: { completes: boolean; due?: string },
+  t: Translator,
+): { due: string; title: string; className: string } | null {
   const due = task.due;
   if (!due) return null;
 
   const normal = "border-gus-border bg-gus-panel text-gus-muted";
+  const plain = `${t("tasks.dueLabel")}: ${formatoFecha(due)}`;
   if (task.completes) {
-    return { due, title: `Plazo: ${formatoFecha(due)}`, className: normal };
+    return { due, title: plain, className: normal };
   }
 
   const hoy = hoyIso();
   if (due < hoy) {
-    return { due, title: "Plazo vencido", className: "border-rose-400/40 bg-rose-400/10 text-rose-300" };
+    return {
+      due,
+      title: t("tasks.dueOverdue"),
+      className: "border-rose-400/40 bg-rose-400/10 text-rose-300",
+    };
   }
   if (due === hoy) {
-    return { due, title: "Vence hoy", className: "border-amber-400/40 bg-amber-400/10 text-amber-300" };
+    return {
+      due,
+      title: t("tasks.dueToday"),
+      className: "border-amber-400/40 bg-amber-400/10 text-amber-300",
+    };
   }
-  return { due, title: `Plazo: ${formatoFecha(due)}`, className: normal };
+  return { due, title: plain, className: normal };
 }
 
 function CheckboxVisual({ checked }: { checked: boolean }) {
@@ -138,8 +114,8 @@ export default function TaskList({
   onTasksChange,
   hideCompleted = false,
   onNewTask,
-  onOpenNote,
 }: TaskListProps) {
+  const t = useT();
   const fileMode = vaultPath != null && vaultPath !== "";
 
   const [items, setItems] = useState<Task[]>(() =>
@@ -161,14 +137,7 @@ export default function TaskList({
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [view, setView] = useState<"list" | "board">("board");
 
-  const [noteTasks, setNoteTasks] = useState<NoteTask[]>([]);
-  const [noteStatus, setNoteStatus] = useState<"loading" | "ready" | "error">("loading");
-  const [noteError, setNoteError] = useState<string | null>(null);
-  const [noteSyncError, setNoteSyncError] = useState<string | null>(null);
-  const [notesReloadKey, setNotesReloadKey] = useState(0);
-
   const writeQueueRef = useRef<Promise<unknown>>(Promise.resolve());
-  const noteQueueRef = useRef<Promise<unknown>>(Promise.resolve());
   const onTasksChangeRef = useRef(onTasksChange);
   onTasksChangeRef.current = onTasksChange;
 
@@ -197,63 +166,6 @@ export default function TaskList({
       cancelled = true;
     };
   }, [fileMode, vaultPath, reloadKey]);
-
-  useEffect(() => {
-    if (!fileMode || !vaultPath) return;
-
-    let cancelled = false;
-    setNoteTasks([]);
-    setNoteStatus("loading");
-    setNoteError(null);
-
-    (async () => {
-      try {
-        const notes = await invoke<NoteRef[]>("list_vault_notes", { path: vaultPath });
-        const collected: NoteTask[] = [];
-        const BATCH = 8;
-
-        for (let index = 0; index < notes.length; index += BATCH) {
-          const batch = notes.slice(index, index + BATCH);
-          const contents = await Promise.all(
-            batch.map((note) =>
-              invoke<string>("read_vault_file", { path: note.path }).catch(() => null),
-            ),
-          );
-          if (cancelled) return;
-
-          batch.forEach((note, offset) => {
-            const content = contents[offset];
-            if (content == null) return;
-
-            const slash = note.relative.lastIndexOf("/");
-            const folder = slash === -1 ? "" : note.relative.slice(0, slash);
-            for (const task of parseMarkdownTasks(content)) {
-              collected.push({
-                ...task,
-                id: `${note.path}#${task.line}`,
-                notePath: note.path,
-                noteName: note.name,
-                noteFolder: folder,
-              });
-            }
-          });
-        }
-
-        if (cancelled) return;
-        setNoteTasks(sortNoteTasks(collected));
-        setNoteStatus("ready");
-      } catch (error) {
-        if (cancelled) return;
-        setNoteTasks([]);
-        setNoteError(String(error));
-        setNoteStatus("error");
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [fileMode, vaultPath, notesReloadKey]);
 
   function notify(next: Task[]) {
     onTasksChangeRef.current?.(next);
@@ -448,45 +360,6 @@ export default function TaskList({
     commitTasks(items.filter((task) => task.id !== id));
   }
 
-  function toggleNoteTask(task: NoteTask) {
-    const completes = !task.completed;
-    const previous = noteTasks;
-
-    setNoteSyncError(null);
-    setNoteTasks((prev) =>
-      prev.map((row) => (row.id === task.id ? { ...row, completed: completes } : row)),
-    );
-
-    noteQueueRef.current = noteQueueRef.current.then(async () => {
-      try {
-        const content = await invoke<string>("read_vault_file", { path: task.notePath });
-        const target = locateNoteTask(content, task);
-        if (!target) throw new Error("la línea cambió en la nota");
-
-        const next = setTaskChecked(content, target.line, completes);
-        if (next !== content) {
-          await invoke("write_vault_file", { path: task.notePath, content: next });
-        }
-
-        setNoteTasks((prev) =>
-          sortNoteTasks([
-            ...prev.filter((row) => row.notePath !== task.notePath),
-            ...parseMarkdownTasks(next).map((row) => ({
-              ...row,
-              id: `${task.notePath}#${row.line}`,
-              notePath: task.notePath,
-              noteName: task.noteName,
-              noteFolder: task.noteFolder,
-            })),
-          ]),
-        );
-      } catch (error) {
-        setNoteTasks(previous);
-        setNoteSyncError(String(error));
-      }
-    });
-  }
-
   const visible = [...items]
     .filter((task) => (!hideCompleted || !task.completes) && matchesTag(task.tags))
     .sort((a, b) => Number(a.completes) - Number(b.completes));
@@ -494,13 +367,9 @@ export default function TaskList({
 
   const boardItems = items.filter((task) => matchesTag(task.tags));
 
-  const noteVisible = noteTasks.filter(
-    (task) => (!hideCompleted || !task.completed) && matchesTag(task.tags),
-  );
-  const noteDone = noteTasks.filter((task) => task.completed).length;
 
   const tagCounts = new Map<string, { label: string; count: number }>();
-  for (const task of [...items, ...noteTasks]) {
+  for (const task of items) {
     for (const tag of task.tags) {
       const key = tag.toLowerCase();
       const slot = tagCounts.get(key);
@@ -509,24 +378,24 @@ export default function TaskList({
     }
   }
   const tagEntries = [...tagCounts.values()].sort((a, b) =>
-    a.label.localeCompare(b.label, "es"),
+    a.label.localeCompare(b.label),
   );
 
   const chipClass = "rounded-full border px-2 py-0.5 text-[11px] capitalize";
 
   return (
-    <section className="flex h-full flex-col gap-4 p-6">
+    <section data-tour="tasks" className="flex h-full flex-col gap-4 p-6">
       <header className="flex flex-wrap items-center justify-between gap-2">
         <h2
           className="text-sm font-semibold uppercase tracking-wider text-gus-muted"
-          title={vaultPath ? `Almacén oculto · ${vaultPath}` : "lista estática"}
+          title={vaultPath ? t("tasks.storeTitle", { path: vaultPath }) : t("tasks.staticList")}
         >
-          Tareas
+          {t("tasks.title")}
         </h2>
         <div className="flex items-center gap-3">
           <div
             role="tablist"
-            aria-label="Vista de tareas"
+            aria-label={t("tasks.title")}
             className="flex rounded-lg border border-gus-border bg-gus-card p-0.5"
           >
             <button
@@ -534,7 +403,7 @@ export default function TaskList({
               role="tab"
               aria-selected={view === "board"}
               onClick={() => setView("board")}
-              title="Tablero Kanban: arrastra las tarjetas entre columnas"
+              title={t("tasks.kanban")}
               className={clsx(
                 "flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] transition-colors focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none",
                 view === "board"
@@ -543,14 +412,14 @@ export default function TaskList({
               )}
             >
               <SquareKanban className="h-3.5 w-3.5" aria-hidden="true" />
-              Tablero
+              {t("tasks.viewBoard")}
             </button>
             <button
               type="button"
               role="tab"
               aria-selected={view === "list"}
               onClick={() => setView("list")}
-              title="Vista lista: las tareas una debajo de otra"
+              title={t("tasks.list")}
               className={clsx(
                 "flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] transition-colors focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none",
                 view === "list"
@@ -559,13 +428,13 @@ export default function TaskList({
               )}
             >
               <ListTodo className="h-3.5 w-3.5" aria-hidden="true" />
-              Lista
+              {t("tasks.viewList")}
             </button>
           </div>
           <span className="text-xs text-gus-muted">
             {status === "loading"
-              ? "cargando…"
-              : `${done + noteDone}/${items.length + noteTasks.length} completadas`}
+              ? t("common.loading")
+              : t("tasks.doneCount", { done, total: items.length })}
           </span>
         </div>
       </header>
@@ -578,12 +447,12 @@ export default function TaskList({
           className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-gus-accent px-3 py-2 text-sm font-medium text-gus-bg transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none disabled:opacity-50"
         >
           <Plus className="h-4 w-4" aria-hidden="true" />
-          Nueva tarea
+          {t("tasks.new")}
         </button>
 
         {syncError && (
           <p className="rounded-lg border border-rose-400/30 bg-rose-400/5 px-3 py-2 text-xs text-rose-300">
-            No se pudo guardar en el almacén oculto: {syncError}
+            {t("tasks.syncError", { error: syncError })}
           </p>
         )}
 
@@ -592,10 +461,10 @@ export default function TaskList({
       {tagEntries.length > 0 && (
         <div
           role="group"
-          aria-label="Filtrar tareas por etiqueta"
+          aria-label={t("tasks.filterTag")}
           className="flex flex-wrap items-center gap-1.5"
         >
-          <span className="text-[11px] text-gus-muted">Etiquetas:</span>
+          <span className="text-[11px] text-gus-muted">{t("tasks.tagsLabel")}</span>
           {tagEntries.map(({ label, count }) => {
             const active =
               !!tagFilter && tagFilter.toLowerCase() === label.toLowerCase();
@@ -624,10 +493,10 @@ export default function TaskList({
             <button
               type="button"
               onClick={() => setTagFilter(null)}
-              title="Quitar el filtro de etiqueta"
+              title={t("tasks.removeFilter")}
               className="flex items-center gap-1 rounded-full border border-gus-border px-2 py-0.5 text-[11px] text-gus-muted transition-colors hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
             >
-              Todas <X className="h-3 w-3" aria-hidden="true" />
+              {t("common.all")} <X className="h-3 w-3" aria-hidden="true" />
             </button>
           )}
         </div>
@@ -638,13 +507,13 @@ export default function TaskList({
           <div className="space-y-3">
             {status === "loading" && (
               <p className="rounded-xl border border-dashed border-gus-border px-4 py-8 text-center text-sm text-gus-muted">
-                Leyendo tareas del archivo…
+                {t("tasks.loading")}
               </p>
             )}
 
             {status === "error" && (
               <p className="break-words rounded-xl border border-rose-400/30 bg-rose-400/5 px-4 py-4 text-xs text-rose-300">
-                No se pudo leer el almacén oculto de tareas
+                {t("tasks.loadError")}
                 {vaultPath && <span className="font-mono"> · {vaultPath}</span>}
                 {loadError && <span className="block text-rose-400/80">{loadError}</span>}
               </p>
@@ -662,16 +531,11 @@ export default function TaskList({
         )}
 
         {view === "list" && (
-        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-gus-muted">
-          Rápidas
-        </h3>
-        )}
-        {view === "list" && (
         <ul className="space-y-2">
           <AnimatePresence initial={false}>
             {visible.map((task) => {
               const isEditing = editingId === task.id;
-              const plazo = dueState(task);
+              const plazo = dueState(task, t);
 
               return (
                 <motion.li
@@ -723,12 +587,13 @@ export default function TaskList({
                     onClick={() => cyclePriority(task.id)}
                     title={
                       task.priority
-                        ? `Prioridad ${PRIORITY_LABEL[task.priority]} · clic para cambiar`
-                        : "Sin prioridad · clic para subir a baja"
+                        ? t("tasks.priorityChange", { name: priorityLabel(task.priority) })
+                        : t("tasks.priorityHint")
                     }
-                    aria-label={`Prioridad de "${task.title}": ${
-                      task.priority ? PRIORITY_LABEL[task.priority] : "ninguna"
-                    }. Cambiar.`}
+                    aria-label={t("tasks.priorityAria", {
+                      title: task.title,
+                      name: task.priority ? priorityLabel(task.priority) : t("priority.none"),
+                    })}
                     className={clsx(
                       "flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] capitalize transition-colors focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none",
                       task.priority
@@ -737,7 +602,7 @@ export default function TaskList({
                     )}
                   >
                     <Flag className="h-3 w-3" aria-hidden="true" />
-                    {task.priority}
+                    {task.priority ? priorityLabel(task.priority) : null}
                   </button>
 
                   {plazo && (
@@ -756,7 +621,7 @@ export default function TaskList({
                   {isEditing ? (
                     <div className="absolute top-full right-11 z-30 mt-1 w-60 rounded-xl border border-gus-border bg-gus-card p-2 shadow-xl shadow-black/40">
                       <p className="mb-1.5 text-[10px] tracking-wider text-gus-muted uppercase">
-                        Etiquetas de "{task.title}"
+                        {t("tasks.tagsOf", { title: task.title })}
                       </p>
                       <div
                         className="flex flex-wrap gap-1.5"
@@ -775,7 +640,7 @@ export default function TaskList({
                             <button
                               type="button"
                               onClick={() => setEditTags((prev) => prev.filter((t) => t !== tag))}
-                              aria-label={`Quitar etiqueta ${tag}`}
+                              aria-label={t("tasks.removeTag", { tag })}
                               className="-mr-1 rounded-full px-1 opacity-60 transition hover:opacity-100 focus-visible:ring-2 focus-visible:ring-current/60 focus-visible:outline-none"
                             >
                               <X className="h-3 w-3" aria-hidden="true" />
@@ -783,7 +648,7 @@ export default function TaskList({
                           </span>
                         ))}
                         {editTags.length === 0 && (
-                          <span className="text-[11px] text-gus-muted">Sin etiquetas</span>
+                          <span className="text-[11px] text-gus-muted">{t("tasks.noTags")}</span>
                         )}
                       </div>
                       <input
@@ -792,9 +657,9 @@ export default function TaskList({
                         onChange={(event) => setEditInput(event.target.value)}
                         onKeyDown={handleEditKeyDown}
                         onBlur={handleEditBlur}
-                        placeholder="añadir… (Enter o coma)"
-                        title="Enter añade · Esc cancela · al salir se guarda"
-                        aria-label={`Nueva etiqueta para ${task.title}`}
+                        placeholder={t("tasks.addTagPlaceholder")}
+                        title={t("tasks.editHint")}
+                        aria-label={t("tasks.newTagFor", { title: task.title })}
                         className="mt-2 w-full rounded-md border border-gus-border bg-gus-panel px-2 py-1 text-xs text-gus-text outline-none transition-colors placeholder:text-gus-muted focus:border-gus-accent/60"
                       />
                     </div>
@@ -808,7 +673,7 @@ export default function TaskList({
                             key={tag}
                             type="button"
                             onClick={() => toggleTagFilter(tag)}
-                            title={`Filtrar por #${tag}`}
+                            title={t("tasks.filterByTag", { tag })}
                             aria-pressed={active}
                             className={clsx(
                               chipClass,
@@ -824,8 +689,8 @@ export default function TaskList({
                       <button
                         type="button"
                         onClick={() => startEditTags(task)}
-                        title="Editar etiquetas"
-                        aria-label={`Etiquetas de "${task.title}"`}
+                        title={t("tasks.editTags")}
+                        aria-label={t("tasks.tagsOf", { title: task.title })}
                         aria-haspopup="dialog"
                         className="rounded-full border border-dashed border-gus-border px-2 py-0.5 text-[11px] text-gus-muted transition-colors group-hover:border-gus-accent/50 group-hover:text-gus-accent focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
                       >
@@ -837,7 +702,7 @@ export default function TaskList({
                   <button
                     type="button"
                     onClick={() => remove(task.id)}
-                    aria-label={`Eliminar "${task.title}"`}
+                    aria-label={t("tasks.deleteNamed", { title: task.title })}
                     className="shrink-0 rounded-md p-1.5 text-gus-muted opacity-0 transition hover:bg-rose-400/10 hover:text-rose-400 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-rose-400/60 focus-visible:outline-none group-hover:opacity-100"
                   >
                     <Trash2 className="h-4 w-4" aria-hidden="true" />
@@ -849,14 +714,14 @@ export default function TaskList({
 
           {status === "loading" && (
             <li className="rounded-xl border border-dashed border-gus-border px-4 py-8 text-center text-sm text-gus-muted">
-              Leyendo tareas del archivo…
+              {t("tasks.loading")}
             </li>
           )}
 
           {status === "error" && (
             <li className="flex flex-col items-start gap-2 rounded-xl border border-rose-400/30 bg-rose-400/5 px-4 py-4 text-xs text-rose-300">
               <span className="break-words">
-                No se pudo leer el almacén oculto de tareas
+                {t("tasks.loadError")}
                 {vaultPath && <span className="font-mono"> · {vaultPath}</span>}
                 {loadError && <span className="block text-rose-400/80">{loadError}</span>}
               </span>
@@ -866,7 +731,7 @@ export default function TaskList({
                 className="flex items-center gap-1.5 rounded-md border border-gus-border bg-gus-card px-2 py-1 text-gus-muted transition-colors hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
               >
                 <RefreshCw className="h-3 w-3" aria-hidden="true" />
-                Reintentar
+                {t("editor.retry")}
               </button>
             </li>
           )}
@@ -874,179 +739,13 @@ export default function TaskList({
           {status === "ready" && visible.length === 0 && (
             <li className="rounded-xl border border-dashed border-gus-border px-4 py-10 text-center text-sm text-gus-muted">
               {tagFilter
-                ? `Ninguna tarea rápida con la etiqueta «${tagFilter}».`
-                : "Sin tareas todavía. ¡Añade la primera!"}
+                ? t("tasks.emptyFiltered", { tag: tagFilter })
+                : t("tasks.empty")}
             </li>
           )}
         </ul>
         )}
 
-        {fileMode && view === "list" && (
-          <section aria-labelledby="notas-tareas-heading">
-            <h3
-              id="notas-tareas-heading"
-              className="text-[11px] font-semibold uppercase tracking-wider text-gus-muted"
-            >
-              Notas del vault
-              {noteStatus === "ready" && (
-                <span className="ml-2 font-normal normal-case">
-                  · {noteDone}/{noteTasks.length}
-                </span>
-              )}
-            </h3>
-
-            {noteSyncError && (
-              <p className="mt-2 rounded-lg border border-rose-400/30 bg-rose-400/5 px-3 py-2 text-xs text-rose-300">
-                No se pudo escribir en la nota: {noteSyncError}
-              </p>
-            )}
-
-            <ul className="mt-2 space-y-2">
-              {noteStatus === "loading" && (
-                <li className="rounded-xl border border-dashed border-gus-border px-4 py-8 text-center text-sm text-gus-muted">
-                  Leyendo tareas de las notas…
-                </li>
-              )}
-
-              {noteStatus === "error" && (
-                <li className="flex flex-col items-start gap-2 rounded-xl border border-rose-400/30 bg-rose-400/5 px-4 py-4 text-xs text-rose-300">
-                  <span className="break-words">
-                    No se pudieron leer las notas del vault
-                    {vaultPath && <span className="font-mono"> · {vaultPath}</span>}
-                    {noteError && <span className="block text-rose-400/80">{noteError}</span>}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setNotesReloadKey((key) => key + 1)}
-                    className="flex items-center gap-1.5 rounded-md border border-gus-border bg-gus-card px-2 py-1 text-gus-muted transition-colors hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
-                  >
-                    <RefreshCw className="h-3 w-3" aria-hidden="true" />
-                    Reintentar
-                  </button>
-                </li>
-              )}
-
-              <AnimatePresence initial={false}>
-                {noteVisible.map((task) => {
-                  const plazo = dueState({ completes: task.completed, due: task.due });
-
-                  return (
-                    <motion.li
-                      key={task.id}
-                      layout
-                      initial={{ opacity: 0, height: 0, y: -8 }}
-                      animate={{ opacity: 1, height: "auto", y: 0 }}
-                      exit={{ opacity: 0, height: 0, x: -24 }}
-                      transition={{
-                        duration: 0.2,
-                        ease: "easeOut",
-                        layout: { type: "spring", stiffness: 500, damping: 45 },
-                      }}
-                      className="group relative flex items-center gap-3 overflow-hidden rounded-xl border border-gus-border bg-gus-card px-3 py-2.5"
-                    >
-                      <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3">
-                        <input
-                          type="checkbox"
-                          checked={task.completed}
-                          onChange={() => void toggleNoteTask(task)}
-                          className="peer sr-only"
-                        />
-                        <CheckboxVisual checked={task.completed} />
-                        <span className="flex min-w-0 flex-col">
-                          <span
-                            className={clsx(
-                              "truncate text-sm transition-colors",
-                              task.completed
-                                ? "text-gus-muted line-through"
-                                : "text-gus-text",
-                            )}
-                          >
-                            {task.title || "(tarea sin texto)"}
-                          </span>
-                          <span className="truncate text-[11px] text-gus-muted">
-                            {task.noteName.replace(/\.md$/i, "")}
-                            {task.noteFolder ? ` · ${task.noteFolder}` : ""}
-                          </span>
-                        </span>
-                      </label>
-
-                      {task.priority && (
-                        <span
-                          title={`Prioridad ${PRIORITY_LABEL[task.priority]}`}
-                          className={clsx(
-                            "shrink-0 rounded-full border px-2 py-0.5 text-[11px] capitalize",
-                            PRIORITY_CLASS[task.priority],
-                          )}
-                        >
-                          !{task.priority}
-                        </span>
-                      )}
-
-                      {plazo && (
-                        <span
-                          title={plazo.title}
-                          className={clsx(
-                            "flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[11px]",
-                            plazo.className,
-                          )}
-                        >
-                          <Calendar className="h-3 w-3" aria-hidden="true" />
-                          {plazo.due ? formatoFecha(plazo.due) : null}
-                        </span>
-                      )}
-
-                      {task.tags.length > 0 && (
-                        <span className="flex shrink-0 flex-wrap items-center justify-end gap-1">
-                          {task.tags.map((tag) => {
-                            const active =
-                              !!tagFilter && tagFilter.toLowerCase() === tag.toLowerCase();
-                            return (
-                              <button
-                                key={tag}
-                                type="button"
-                                onClick={() => toggleTagFilter(tag)}
-                                title={`Filtrar por #${tag}`}
-                                aria-pressed={active}
-                                className={clsx(
-                                  chipClass,
-                                  "transition hover:opacity-80 focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none",
-                                  tagColor(tag),
-                                  active && "ring-2 ring-gus-accent/70",
-                                )}
-                              >
-                                {tag}
-                              </button>
-                            );
-                          })}
-                        </span>
-                      )}
-
-                      {onOpenNote && (
-                        <button
-                          type="button"
-                          onClick={() => onOpenNote(task.notePath, task.noteName)}
-                          title={`Abrir «${task.noteName}»`}
-                          aria-label={`Abrir la nota ${task.noteName}`}
-                          className="shrink-0 rounded-md p-1.5 text-gus-muted opacity-0 transition hover:text-gus-accent focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none group-hover:opacity-100"
-                        >
-                          <FileText className="h-4 w-4" aria-hidden="true" />
-                        </button>
-                      )}
-                    </motion.li>
-                  );
-                })}
-              </AnimatePresence>
-
-              {noteStatus === "ready" && noteVisible.length === 0 && (
-                <li className="rounded-xl border border-dashed border-gus-border px-4 py-8 text-center text-sm text-gus-muted">
-                  {tagFilter
-                    ? `Ninguna tarea de notas con la etiqueta «${tagFilter}».`
-                    : "Ninguna nota tiene tareas pendientes."}
-                </li>
-              )}
-            </ul>
-          </section>
-        )}
       </div>
     </section>
   );

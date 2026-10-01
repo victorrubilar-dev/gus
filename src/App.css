@@ -156,8 +156,13 @@ body {
   -webkit-text-fill-color: var(--color-gus-muted);
 }
 
+/* El texto lo pinta siempre el overlay: la selección nativa solo debe aportar
+   el fondo. Si el motor pintara también su propio texto al seleccionar (algunos
+   WebKit lo hacen), aparecería duplicado al lado del texto del overlay. */
 .gus-source-area::selection {
   background: color-mix(in oklab, var(--color-gus-accent) 30%, transparent);
+  color: transparent;
+  -webkit-text-fill-color: transparent;
 }
 
 .gus-misspelled {

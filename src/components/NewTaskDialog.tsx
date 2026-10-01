@@ -7,10 +7,11 @@ import DatePicker from "./DatePicker";
 import { normalizeTags, parseTagInput } from "../lib/markdownTasks";
 import {
   PRIORITY_CLASS,
-  PRIORITY_LABEL,
+  priorityLabel,
   PRIORITY_OPTIONS,
   type TaskPriority,
 } from "../lib/taskPriority";
+import { useT } from "../lib/i18n";
 
 const INPUT_CLASS =
   "w-full rounded-lg border border-gus-border bg-gus-card px-3 py-2 text-sm text-gus-text outline-none transition-colors placeholder:text-gus-muted focus:border-gus-accent/60";
@@ -23,6 +24,7 @@ export interface NewTaskDialogProps {
 }
 
 export default function NewTaskDialog({ open, onOpenChange }: NewTaskDialogProps) {
+  const t = useT();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [tags, setTags] = useState<string[]>([]);
@@ -94,7 +96,7 @@ export default function NewTaskDialog({ open, onOpenChange }: NewTaskDialogProps
 
     const cleanTitle = title.trim();
     if (!cleanTitle) {
-      setError("La tarea necesita un nombre.");
+      setError(t("tasks.needsTitle"));
       return;
     }
     const allTags = normalizeTags([...tags, ...parseTagInput(tagInput)]);
@@ -136,7 +138,7 @@ export default function NewTaskDialog({ open, onOpenChange }: NewTaskDialogProps
           <motion.div
             role="dialog"
             aria-modal="true"
-            aria-label="Nueva tarea"
+            aria-label={t("tasks.new")}
             initial={{ opacity: 0, y: -14, scale: 0.97 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -10, scale: 0.98 }}
@@ -176,8 +178,8 @@ export default function NewTaskDialog({ open, onOpenChange }: NewTaskDialogProps
                       setTitle(event.target.value);
                       if (error) setError(null);
                     }}
-                    placeholder="¿Qué hay que hacer?"
-                    aria-label="Nombre de la tarea"
+                    placeholder={t("tasks.title.placeholder")}
+                    aria-label={t("tasks.title.label")}
                     aria-required="true"
                     className={INPUT_CLASS}
                   />
@@ -185,22 +187,24 @@ export default function NewTaskDialog({ open, onOpenChange }: NewTaskDialogProps
 
                 <div>
                   <label htmlFor="tarea-descripcion" className={LABEL_CLASS}>
-                    Descripción <span className="text-gus-muted/70">(opcional)</span>
+                    {t("tasks.description.label")}{" "}
+                    <span className="text-gus-muted/70">({t("common.optional")})</span>
                   </label>
                   <textarea
                     id="tarea-descripcion"
                     rows={3}
                     value={description}
                     onChange={(event) => setDescription(event.target.value)}
-                    placeholder="Detalles, enlaces, pasos…"
-                    aria-label="Descripción de la tarea"
+                    placeholder={t("tasks.description.placeholder")}
+                    aria-label={t("tasks.description.label")}
                     className={clsx(INPUT_CLASS, "min-h-20 resize-none leading-relaxed")}
                   />
                 </div>
 
                 <div>
                   <label htmlFor="tarea-etiquetas" className={LABEL_CLASS}>
-                    Etiquetas <span className="text-gus-muted/70">(opcional)</span>
+                    {t("tasks.tags.label")}{" "}
+                    <span className="text-gus-muted/70">({t("common.optional")})</span>
                   </label>
                   <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-gus-border bg-gus-card px-2.5 py-2 transition-colors focus-within:border-gus-accent/60">
                     {tags.map((tag) => (
@@ -212,7 +216,7 @@ export default function NewTaskDialog({ open, onOpenChange }: NewTaskDialogProps
                         <button
                           type="button"
                           onClick={() => setTags((prev) => prev.filter((item) => item !== tag))}
-                          aria-label={`Quitar etiqueta ${tag}`}
+                          aria-label={t("tasks.removeTag", { tag })}
                           className="-mr-1 rounded-full px-1 opacity-60 transition hover:opacity-100 focus-visible:ring-2 focus-visible:ring-current/60 focus-visible:outline-none"
                         >
                           <X className="h-3 w-3" aria-hidden="true" />
@@ -225,8 +229,12 @@ export default function NewTaskDialog({ open, onOpenChange }: NewTaskDialogProps
                       onChange={(event) => handleTagInputChange(event.target.value)}
                       onKeyDown={handleTagInputKeyDown}
                       onBlur={commitTagInput}
-                      placeholder={tags.length > 0 ? "añadir otra…" : "añadir… (Enter o coma)"}
-                      aria-label="Etiquetas de la tarea"
+                      placeholder={
+                        tags.length > 0
+                          ? t("tasks.addAnotherTag")
+                          : t("tasks.addTagPlaceholder")
+                      }
+                      aria-label={t("tasks.tags.label")}
                       className="min-w-32 flex-1 bg-transparent px-1 py-0.5 text-sm text-gus-text outline-none placeholder:text-gus-muted"
                     />
                   </div>
@@ -234,7 +242,8 @@ export default function NewTaskDialog({ open, onOpenChange }: NewTaskDialogProps
 
                 <div>
                   <span className={LABEL_CLASS} id="tarea-prioridad">
-                    Prioridad <span className="text-gus-muted/70">(opcional)</span>
+                    {t("tasks.priority.label")}{" "}
+                    <span className="text-gus-muted/70">({t("common.optional")})</span>
                   </span>
                   <div
                     role="radiogroup"
@@ -259,7 +268,7 @@ export default function NewTaskDialog({ open, onOpenChange }: NewTaskDialogProps
                               : "border-gus-border text-gus-muted hover:border-gus-accent/40 hover:text-gus-text",
                           )}
                         >
-                          {option ? PRIORITY_LABEL[option] : "Sin prioridad"}
+                          {option ? priorityLabel(option) : t("priority.none")}
                         </button>
                       );
                     })}
@@ -323,11 +332,11 @@ export default function NewTaskDialog({ open, onOpenChange }: NewTaskDialogProps
                   <kbd className="rounded border border-gus-border bg-gus-card px-1 py-0.5">
                     Enter
                   </kbd>{" "}
-                  crear ·{" "}
+                  {t("tasks.hintCreate")} ·{" "}
                   <kbd className="rounded border border-gus-border bg-gus-card px-1 py-0.5">
                     Esc
                   </kbd>{" "}
-                  cerrar
+                  {t("tasks.hintClose")}
                 </span>
                 <div className="flex gap-2">
                   <button
@@ -335,7 +344,7 @@ export default function NewTaskDialog({ open, onOpenChange }: NewTaskDialogProps
                     disabled={sending}
                     className="rounded-lg bg-gus-accent px-4 py-1.5 text-sm font-medium text-gus-bg transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none disabled:opacity-50"
                   >
-                    {sending ? "Creando…" : "Crear tarea"}
+                    {sending ? t("tasks.creating") : t("tasks.create")}
                   </button>
                   <button
                     type="button"

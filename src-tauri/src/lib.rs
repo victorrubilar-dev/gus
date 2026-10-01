@@ -1044,8 +1044,11 @@ pub struct AppSettings {
     pub auto_save: bool,
     pub hide_completed_tasks: bool,
     pub calendar_show_completed: bool,
-    pub spell_lang: String,
+    /// Diccionarios del corrector, uno o varios a la vez. Vacío = apagado.
+    pub spell_langs: Vec<String>,
     pub spell_words: Vec<String>,
+    /// Atajos de teclado cambiados a mano (id → combinación).
+    pub shortcuts: std::collections::BTreeMap<String, String>,
 }
 
 impl Default for AppSettings {
@@ -1060,30 +1063,85 @@ impl Default for AppSettings {
             auto_save: true,
             hide_completed_tasks: false,
             calendar_show_completed: true,
-            spell_lang: "es".into(),
+            spell_langs: vec!["es".into()],
             spell_words: Vec::new(),
+            shortcuts: Default::default(),
         }
     }
 }
+
+/// Teclas con nombre propio que puede formar parte de un atajo.
+const NAMED_KEYS: [&str; 13] = [
+    "arrowup", "arrowdown", "arrowleft", "arrowright", "escape", "enter", "backspace", "delete",
+    "tab", "space", "home", "end", "insert",
+];
 
 impl AppSettings {
     /// Colores de acento aceptados (deben coincidir con los del frontend).
     const ACCENTS: [&'static str; 4] = ["terracota", "menta", "marfil", "cielo"];
 
-    /// Idiomas del corrector aceptados (deben coincidir con los del frontend).
-    const SPELL_LANGS: [&'static str; 8] =
-        ["off", "es", "en-US", "en-GB", "fr", "de", "pt-BR", "it"];
+    /// Diccionarios aceptados (deben coincidir con los del frontend). Se
+    /// pueden activar varios a la vez; sin ninguno el corrector se apaga.
+    const SPELL_LANGS: [&'static str; 7] = ["es", "en-US", "en-GB", "fr", "de", "pt-BR", "it"];
+
+    /// Acciones con atajo conocido. Lo que no esté aquí se descarta, para que
+    /// un `config.json` escrito a mano no guarde combinaciones huérfanas.
+    const SHORTCUT_IDS: [&'static str; 26] = [
+        "commandPalette", "saveNote", "newNote", "newFolder", "newTask", "exportPdf",
+        "toggleView", "undo", "redo", "zoomIn", "zoomOut", "zoomReset", "focusSearch",
+        "togglePanel", "back", "forward", "parentFolder", "bold", "italic", "underline",
+        "strikethrough", "inlineCode", "copyCell", "cutCell", "moveLineUp", "moveLineDown",
+    ];
 
     /// Corrige valores escritos a mano en el `config.json` (nunca falla).
     fn sanitize(&mut self) {
         if !Self::ACCENTS.contains(&self.accent.as_str()) {
             self.accent = Self::default().accent;
         }
-        if !Self::SPELL_LANGS.contains(&self.spell_lang.as_str()) {
-            self.spell_lang = Self::default().spell_lang;
+
+        // Diccionarios: se quitan los que no existan y las repeticiones, en el
+        // orden elegido. Una lista vacía es válida (corrector apagado).
+        let mut langs: Vec<String> = Vec::new();
+        for raw in std::mem::take(&mut self.spell_langs) {
+            if !Self::SPELL_LANGS.contains(&raw.as_str()) || langs.contains(&raw) {
+                continue;
+            }
+            langs.push(raw);
         }
+        self.spell_langs = langs;
+
         self.editor_font_size = self.editor_font_size.clamp(12, 22);
         self.ui_zoom = self.ui_zoom.clamp(50, 200);
+
+        // Atajos: solo los que existen y con una forma de combinación legible
+        // («ctrl+shift+k»); lo demás se cae al valor de por defecto del frontend.
+        let mut shortcuts: std::collections::BTreeMap<String, String> = Default::default();
+        for (id, combo) in std::mem::take(&mut self.shortcuts) {
+            if !Self::SHORTCUT_IDS.contains(&id.as_str()) {
+                continue;
+            }
+            let parts: Vec<String> = combo
+                .split('+')
+                .map(|part| part.trim().to_ascii_lowercase())
+                .filter(|part| !part.is_empty())
+                .collect();
+            // Ha de ser una sola tecla, con o sin modificadores.
+            if parts.is_empty() || parts.len() > 4 {
+                continue;
+            }
+            let known = parts.iter().all(|part| {
+                matches!(
+                    part.as_str(),
+                    "ctrl" | "cmd" | "mod" | "meta" | "alt" | "option" | "opt" | "shift"
+                ) || part.chars().count() == 1
+                    || NAMED_KEYS.contains(&part.as_str())
+            });
+            if !known {
+                continue;
+            }
+            shortcuts.insert(id, parts.join("+"));
+        }
+        self.shortcuts = shortcuts;
 
         let mut words: Vec<String> = Vec::new();
         for raw in std::mem::take(&mut self.spell_words) {
@@ -3222,7 +3280,7 @@ mod tests {
         assert!(legacy.settings.animations);
         assert_eq!(legacy.settings.accent, "terracota");
         assert_eq!(legacy.settings.editor_font_size, 14);
-        assert_eq!(legacy.settings.spell_lang, "es");
+        assert_eq!(legacy.settings.spell_langs, vec!["es".to_string()]);
         assert!(legacy.settings.spell_words.is_empty());
 
         let custom = AppConfig {
@@ -3233,7 +3291,7 @@ mod tests {
                 editor_font_size: 18,
                 auto_save: false,
                 hide_completed_tasks: true,
-                spell_lang: "de".into(),
+                spell_langs: vec!["de".into(), "fr".into()],
                 spell_words: vec!["Gus".into(), "Tauri".into()],
                 ..AppSettings::default()
             },
@@ -3248,7 +3306,8 @@ mod tests {
               "baseDir": null,
               "vaults": [],
               "lastVault": null,
-              "settings": { "accent": "neon", "editorFontSize": 240, "spellLang": "xx",
+              "settings": { "accent": "neon", "editorFontSize": 240,
+                             "spellLangs": ["de", "xx", "de", "off"],
                              "spellWords": ["  Gus  ", "", "Gus", "Tauri"] }
             }"#,
         )
@@ -3256,7 +3315,9 @@ mod tests {
         let saned = load_config_from(&path);
         assert_eq!(saned.settings.accent, "terracota");
         assert_eq!(saned.settings.editor_font_size, 22);
-        assert_eq!(saned.settings.spell_lang, "es");
+        // Los diccionarios que no existen y las repeticiones se descartan; la
+        // lista vacía sí es válida (corrector apagado).
+        assert_eq!(saned.settings.spell_langs, vec!["de".to_string()]);
         assert_eq!(saned.settings.spell_words, vec!["Gus", "Tauri"]);
 
         std::fs::remove_dir_all(&dir).ok();
@@ -3491,5 +3552,80 @@ mod tests {
         assert!(err.contains("urgente"), "mensaje = {err}");
 
         std::fs::remove_dir_all(&dir).ok();
+    }
+}
+
+#[cfg(test)]
+mod config_tests {
+    use super::*;
+
+    /// El corrector acepta varios diccionarios a la vez y una lista vacía.
+    #[test]
+    fn spell_langs_admite_varios_y_vacio() {
+        let mut settings = AppSettings {
+            spell_langs: vec!["es".into(), "en-US".into(), "fr".into()],
+            ..AppSettings::default()
+        };
+        settings.sanitize();
+        assert_eq!(
+            settings.spell_langs,
+            vec!["es".to_string(), "en-US".to_string(), "fr".to_string()]
+        );
+
+        let mut off = AppSettings {
+            spell_langs: Vec::new(),
+            ..AppSettings::default()
+        };
+        off.sanitize();
+        assert!(off.spell_langs.is_empty());
+    }
+
+    /// Un config.json antiguo, con `spellLang` de un solo idioma, se migra.
+    #[test]
+    fn migra_el_idioma_unico_del_config_antiguo() {
+        let raw = r#"{
+          "baseDir": null, "vaults": [], "lastVault": null,
+          "settings": { "spellLang": "de" }
+        }"#;
+
+        // Lo que llega al frontend es una lista con el idioma guardado.
+        let value: serde_json::Value = serde_json::from_str(raw).expect("json");
+        let old = value["settings"]["spellLang"].as_str().expect("spellLang");
+
+        let mut settings = AppSettings {
+            spell_langs: vec![old.to_string()],
+            ..AppSettings::default()
+        };
+        settings.sanitize();
+        assert_eq!(settings.spell_langs, vec!["de".to_string()]);
+    }
+
+    /// Los atajos guardados se limpian: solo acciones conocidas y combinaciones
+    /// con forma de atajo, en minúsculas y sin espacios.
+    #[test]
+    fn sanea_los_atajos_guardados() {
+        use std::collections::BTreeMap;
+
+        let mut shortcuts = BTreeMap::new();
+        shortcuts.insert("saveNote".to_string(), "Ctrl + Shift + K".to_string());
+        shortcuts.insert("atajoRetirado".to_string(), "ctrl+j".to_string());
+        shortcuts.insert("undo".to_string(), "esto no es un atajo".to_string());
+        shortcuts.insert("redo".to_string(), String::new());
+        shortcuts.insert("newNote".to_string(), "alt+arrowup".to_string());
+
+        let mut settings = AppSettings {
+            shortcuts,
+            ..AppSettings::default()
+        };
+        settings.sanitize();
+
+        assert_eq!(settings.shortcuts.get("saveNote").map(String::as_str), Some("ctrl+shift+k"));
+        assert_eq!(settings.shortcuts.get("newNote").map(String::as_str), Some("alt+arrowup"));
+        // Acción que ya no existe.
+        assert!(!settings.shortcuts.contains_key("atajoRetirado"));
+        // Combinación sin forma de atajo: la resuelve el frontend con su valor
+        // por defecto, así que aquí simplemente no se guarda.
+        assert!(!settings.shortcuts.contains_key("undo"));
+        assert!(!settings.shortcuts.contains_key("redo"));
     }
 }

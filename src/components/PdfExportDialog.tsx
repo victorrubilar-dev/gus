@@ -16,6 +16,8 @@ import {
   toBase64,
   type PdfPageImage,
 } from "../lib/pdfExport";
+import { useT } from "../lib/i18n";
+import type { MessageKey } from "../lib/i18n/core";
 
 type PdfTheme = "light" | "dark";
 
@@ -27,9 +29,9 @@ export interface PdfExportDialogProps {
   onClose: () => void;
 }
 
-const THEME_OPTIONS: { id: PdfTheme; label: string; Icon: typeof Sun }[] = [
-  { id: "light", label: "Claro", Icon: Sun },
-  { id: "dark", label: "Oscuro", Icon: Moon },
+const THEME_OPTIONS: { id: PdfTheme; labelKey: MessageKey; Icon: typeof Sun }[] = [
+  { id: "light", labelKey: "theme.light", Icon: Sun },
+  { id: "dark", labelKey: "theme.dark", Icon: Moon },
 ];
 
 const PAGE_BACKGROUND: Record<PdfTheme, string> = {
@@ -41,6 +43,7 @@ const PAGE_BACKGROUND: Record<PdfTheme, string> = {
 const FIT_PADDING = 56;
 
 export default function PdfExportDialog({ title, children, onClose }: PdfExportDialogProps) {
+  const t = useT();
   const [theme, setTheme] = useState<PdfTheme>("light");
   const [page, setPage] = useState(0);
   const [pageCount, setPageCount] = useState(1);
@@ -150,7 +153,7 @@ export default function PdfExportDialog({ title, children, onClose }: PdfExportD
     let target: string | null = null;
     try {
       target = await save({
-        title: "Exportar a PDF",
+        title: t("pdf.export.title"),
         defaultPath: `${safeFileName(title)}.pdf`,
         filters: [{ name: "PDF", extensions: ["pdf"] }],
       });
@@ -167,7 +170,7 @@ export default function PdfExportDialog({ title, children, onClose }: PdfExportD
     const strip = stripRef.current;
     const pageWindow = windowRef.current;
     if (!strip || !pageWindow) {
-      setError("No se pudo preparar la página.");
+      setError(t("pdf.export.prepareError"));
       return;
     }
 
@@ -175,7 +178,7 @@ export default function PdfExportDialog({ title, children, onClose }: PdfExportD
     setBusy(true);
 
     try {
-      setStatus("Preparando la página…");
+      setStatus(t("pdf.export.preparing"));
       await settlePage(pageWindow);
 
       const pages: PdfPageImage[] = [];
@@ -190,13 +193,13 @@ export default function PdfExportDialog({ title, children, onClose }: PdfExportD
         pages.push(await capturePdfPage(pageWindow, PAGE_BACKGROUND[theme]));
       }
 
-      setStatus("Montando el PDF…");
+      setStatus(t("pdf.export.generating"));
       const pdf = buildPdf(pages, title || "Nota");
 
-      setStatus("Guardando…");
+      setStatus(t("common.saving"));
       await invoke("write_pdf_file", { path: target, data: toBase64(pdf) });
 
-      setStatus("¡Listo!");
+      setStatus(t("pdf.export.saved"));
       onClose();
     } catch (reason: unknown) {
       setError(reason instanceof Error ? reason.message : String(reason));
@@ -211,12 +214,12 @@ export default function PdfExportDialog({ title, children, onClose }: PdfExportD
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Exportar a PDF"
+      aria-label={t("pdf.export.title")}
       className="fixed inset-0 z-50 flex items-center justify-center p-6"
     >
       <motion.button
         type="button"
-        aria-label="Cerrar el diálogo"
+        aria-label={t("common.close")}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         onClick={requestClose}
@@ -234,16 +237,16 @@ export default function PdfExportDialog({ title, children, onClose }: PdfExportD
         <header className="flex shrink-0 items-center gap-3 border-b border-gus-border px-4 py-3">
           <FileDown className="h-4 w-4 shrink-0 text-gus-accent" aria-hidden="true" />
           <div className="min-w-0 flex-1">
-            <h2 className="text-sm font-semibold text-gus-text">Exportar a PDF</h2>
-            <p className="truncate text-xs text-gus-muted">{title || "Sin título"}</p>
+            <h2 className="text-sm font-semibold text-gus-text">{t("pdf.export.title")}</h2>
+            <p className="truncate text-xs text-gus-muted">{title || t("common.untitled")}</p>
           </div>
 
           <div
             role="group"
-            aria-label="Tono de la página"
+            aria-label={t("pdf.export.theme")}
             className="flex shrink-0 rounded-lg border border-gus-border bg-gus-card p-0.5"
           >
-            {THEME_OPTIONS.map(({ id, label, Icon }) => (
+            {THEME_OPTIONS.map(({ id, labelKey, Icon }) => (
               <button
                 key={id}
                 type="button"
@@ -258,7 +261,7 @@ export default function PdfExportDialog({ title, children, onClose }: PdfExportD
                 )}
               >
                 <Icon className="h-3.5 w-3.5" aria-hidden="true" />
-                {label}
+                {t(labelKey)}
               </button>
             ))}
           </div>
@@ -266,7 +269,7 @@ export default function PdfExportDialog({ title, children, onClose }: PdfExportD
           <button
             type="button"
             onClick={requestClose}
-            aria-label="Cerrar"
+            aria-label={t("common.close")}
             disabled={busy}
             className="shrink-0 rounded-lg p-1.5 text-gus-muted transition-colors hover:bg-gus-card hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none disabled:opacity-50"
           >
@@ -305,7 +308,7 @@ export default function PdfExportDialog({ title, children, onClose }: PdfExportD
                   <div ref={stripRef} className="gus-pdf-strip">
                     <Suspense
                       fallback={
-                        <p className="text-sm text-gus-muted">Cargando vista previa…</p>
+                        <p className="text-sm text-gus-muted">{t("editor.previewLoading")}</p>
                       }
                     >
                       {children}
@@ -328,7 +331,7 @@ export default function PdfExportDialog({ title, children, onClose }: PdfExportD
               <p className="truncate text-xs text-gus-muted">{status}</p>
             ) : (
               <p className="truncate text-xs text-gus-muted">
-                Vista previa fiel: lo que ves es lo que se exporta.
+                {t("pdf.export.previewHint")}
               </p>
             )}
           </div>
@@ -338,19 +341,19 @@ export default function PdfExportDialog({ title, children, onClose }: PdfExportD
               type="button"
               onClick={() => setPage((current) => Math.max(0, current - 1))}
               disabled={busy || page === 0}
-              aria-label="Página anterior"
+              aria-label={t("pdf.export.previousPage")}
               className="rounded-md p-1 text-gus-muted transition-colors hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none disabled:opacity-40"
             >
               <ChevronLeft className="h-4 w-4" aria-hidden="true" />
             </button>
             <span className="min-w-16 text-center text-xs text-gus-muted tabular-nums">
-              {page + 1} / {pageCount}
+              {t("pdf.export.pageOf", { page: page + 1, total: pageCount })}
             </span>
             <button
               type="button"
               onClick={() => setPage((current) => Math.min(pageCount - 1, current + 1))}
               disabled={busy || page >= pageCount - 1}
-              aria-label="Página siguiente"
+              aria-label={t("pdf.export.nextPage")}
               className="rounded-md p-1 text-gus-muted transition-colors hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none disabled:opacity-40"
             >
               <ChevronRight className="h-4 w-4" aria-hidden="true" />
@@ -363,7 +366,7 @@ export default function PdfExportDialog({ title, children, onClose }: PdfExportD
             disabled={busy}
             className="shrink-0 rounded-lg border border-gus-border bg-gus-card px-3 py-1.5 text-xs text-gus-muted transition-colors hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none disabled:opacity-50"
           >
-            Cancelar
+            {t("common.cancel")}
           </button>
 
           <button
@@ -373,7 +376,7 @@ export default function PdfExportDialog({ title, children, onClose }: PdfExportD
             className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-gus-accent px-3 py-1.5 text-xs font-medium text-gus-bg transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none disabled:opacity-60"
           >
             <FileDown className="h-3.5 w-3.5" aria-hidden="true" />
-            {busy ? "Exportando…" : "Exportar a PDF"}
+            {t(busy ? "pdf.export.exporting" : "pdf.export.export")}
           </button>
         </footer>
       </motion.div>

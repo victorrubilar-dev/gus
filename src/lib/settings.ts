@@ -1,4 +1,12 @@
-import { SPELL_LANGUAGES, type SpellLang } from "./spellCheck";
+import { isLanguage, DEFAULT_LANGUAGE, type Language } from "./i18n/core";
+import type { MessageKey } from "./i18n/core";
+import {
+  DEFAULT_SPELL_LANGS,
+  SPELL_LANGUAGES,
+  normalizeSpellLangs,
+  type SpellLang,
+} from "./spellCheck";
+import { DEFAULT_SHORTCUTS, normalizeShortcuts, type ShortcutMap } from "./shortcuts";
 import { DEFAULT_THEME, isThemeKey, themeDefinition, type ThemeKey } from "./themes";
 
 export type AccentKey = "terracota" | "menta" | "marfil" | "cielo";
@@ -17,15 +25,26 @@ export interface AppSettings {
   autoSave: boolean;
   hideCompletedTasks: boolean;
   calendarShowCompleted: boolean;
-  spellLang: SpellLang;
+  /** Corrector: uno o varios diccionarios a la vez. Vacío = apagado. */
+  spellLangs: SpellLang[];
   spellWords: string[];
+  /** Atajos de teclado cambiados a mano por la persona. */
+  shortcuts: ShortcutMap;
 }
 
-export const ACCENTS: Record<AccentKey, { label: string; hex: string }> = {
-  terracota: { label: "Terracota", hex: "#e07a5f" },
-  menta: { label: "Menta", hex: "#81b29a" },
-  marfil: { label: "Marfil", hex: "#f4f1de" },
-  cielo: { label: "Cielo", hex: "#89b4fa" },
+/**
+ * El idioma no se guarda aquí: es una preferencia de la persona y no del vault,
+ * así que vive en `localStorage` (ver `lib/i18n`). Se exporta aparte para que
+ * los componentes que no reciben los ajustes (el explorador, el editor) puedan
+ * consultarlo.
+ */
+export type { Language } from "./i18n/core";
+
+export const ACCENTS: Record<AccentKey, { labelKey: MessageKey; hex: string }> = {
+  terracota: { labelKey: "accent.terracota", hex: "#e07a5f" },
+  menta: { labelKey: "accent.menta", hex: "#81b29a" },
+  marfil: { labelKey: "accent.marfil", hex: "#f4f1de" },
+  cielo: { labelKey: "accent.cielo", hex: "#89b4fa" },
 };
 
 export const FONT_SIZES = [13, 14, 16, 18] as const;
@@ -41,8 +60,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   autoSave: true,
   hideCompletedTasks: false,
   calendarShowCompleted: true,
-  spellLang: "es",
+  spellLangs: [...DEFAULT_SPELL_LANGS],
   spellWords: [],
+  shortcuts: { ...DEFAULT_SHORTCUTS },
 };
 
 function asBool(value: unknown, fallback: boolean): boolean {
@@ -55,7 +75,6 @@ export function normalizeSettings(raw: unknown): AppSettings {
 
   const accent = data.accent;
   const fontSize = data.editorFontSize;
-  const spellLang = data.spellLang;
 
   return {
     openLastVault: asBool(data.openLastVault, DEFAULT_SETTINGS.openLastVault),
@@ -80,13 +99,21 @@ export function normalizeSettings(raw: unknown): AppSettings {
       data.calendarShowCompleted,
       DEFAULT_SETTINGS.calendarShowCompleted,
     ),
-    spellLang:
-      typeof spellLang === "string" &&
-      SPELL_LANGUAGES.some((entry) => entry.value === spellLang)
-        ? (spellLang as SpellLang)
-        : DEFAULT_SETTINGS.spellLang,
+    spellLangs: normalizeSpellLangs(data.spellLangs ?? legacySpellLangs(data.spellLang)),
     spellWords: normalizeSpellWords(data.spellWords),
+    shortcuts: normalizeShortcuts(data.shortcuts),
   };
+}
+
+/** Ajustes guardados antes de los diccionarios múltiples: un único idioma. */
+function legacySpellLangs(raw: unknown): unknown {
+  return typeof raw === "string" ? [raw] : undefined;
+}
+
+/** Ajustes guardados antes del idioma de aplicación (se usaba siempre español). */
+export function readLegacyLanguage(data: Record<string, unknown> | null): Language {
+  const value = data?.language;
+  return isLanguage(value) ? value : DEFAULT_LANGUAGE;
 }
 
 function normalizeSpellWords(raw: unknown): string[] {
@@ -107,39 +134,59 @@ export function accentHex(accent: AccentChoice, theme: ThemeKey): string {
   return ACCENTS[accent]?.hex ?? ACCENTS.terracota.hex;
 }
 
-export type SettingsCategoryId = "general" | "appearance" | "notes" | "tasks" | "calendar";
+export type SettingsCategoryId =
+  | "general"
+  | "appearance"
+  | "notes"
+  | "tasks"
+  | "calendar"
+  | "language"
+  | "shortcuts";
 
 export interface SettingsCategory {
   id: SettingsCategoryId;
-  label: string;
+  labelKey: MessageKey;
+  /** Palabras para el buscador de Ajustes, en ambos idiomas. */
   keywords: string;
 }
 
 export const SETTINGS_CATEGORIES: SettingsCategory[] = [
   {
     id: "general",
-    label: "General",
-    keywords: "inicio arranque vault abrir",
+    labelKey: "settings.cat.general",
+    keywords: "inicio arranque vault abrir general start launch open",
   },
   {
     id: "appearance",
-    label: "Apariencia",
-    keywords: "tema color animaciones movimiento diseño escala zoom tamaño",
+    labelKey: "settings.cat.appearance",
+    keywords:
+      "tema color animaciones movimiento diseño escala zoom tamaño theme color animations design scale",
   },
   {
     id: "notes",
-    label: "Notas",
-    keywords: "editor texto letra tamaño autoguardado guardar corrector ortografia idioma",
+    labelKey: "settings.cat.notes",
+    keywords:
+      "editor texto letra tamaño autoguardado guardar corrector ortografia idioma notes editor text autosave spell",
   },
   {
     id: "tasks",
-    label: "Tareas",
-    keywords: "lista completadas pendientes",
+    labelKey: "settings.cat.tasks",
+    keywords: "lista completadas pendientes tasks list completed pending",
   },
   {
     id: "calendar",
-    label: "Calendario",
-    keywords: "fecha vencimiento mes",
+    labelKey: "settings.cat.calendar",
+    keywords: "fecha vencimiento mes calendar date due month",
+  },
+  {
+    id: "language",
+    labelKey: "settings.cat.language",
+    keywords: "idioma lengua traduccion español ingles language translation spanish english",
+  },
+  {
+    id: "shortcuts",
+    labelKey: "settings.cat.shortcuts",
+    keywords: "atajos teclado combinaciones teclas shortcuts keyboard hotkeys keys",
   },
 ];
 
@@ -151,154 +198,154 @@ export type ToggleKey =
   | "hideCompletedTasks"
   | "calendarShowCompleted";
 
-export type SettingDefinition =
-  | {
-      kind: "toggle";
-      category: SettingsCategoryId;
-      key: ToggleKey;
-      label: string;
-      description: string;
-      keywords: string;
-    }
-  | {
-      kind: "choice";
-      category: SettingsCategoryId;
-      key: "editorFontSize";
-      label: string;
-      description: string;
-      keywords: string;
-      options: readonly number[];
-    }
-  | {
-      kind: "zoom";
-      category: SettingsCategoryId;
-      key: "uiZoom";
-      label: string;
-      description: string;
-      keywords: string;
-    }
-  | {
-      kind: "select";
-      category: SettingsCategoryId;
-      key: "spellLang";
-      label: string;
-      description: string;
-      keywords: string;
-      options: readonly { value: SpellLang; label: string }[];
-    }
-  | {
-      kind: "accent";
-      category: SettingsCategoryId;
-      key: "accent";
-      label: string;
-      description: string;
-      keywords: string;
-    }
-  | {
-      kind: "theme";
-      category: SettingsCategoryId;
-      key: "theme";
-      label: string;
-      description: string;
-      keywords: string;
-    };
+interface DefinitionBase {
+  category: SettingsCategoryId;
+  labelKey: MessageKey;
+  descriptionKey: MessageKey;
+  keywords: string;
+}
+
+export type SettingDefinition = DefinitionBase &
+  (
+    | { kind: "toggle"; key: ToggleKey }
+    | { kind: "choice"; key: "editorFontSize"; options: readonly number[] }
+    | { kind: "zoom"; key: "uiZoom" }
+    /** Varios diccionarios del corrector a la vez (o ninguno: queda apagado). */
+    | { kind: "spell"; key: "spellLangs"; options: readonly { value: SpellLang; label: string }[] }
+    /** Un solo idioma para toda la aplicación. */
+    | { kind: "language"; key: "language" }
+    | { kind: "accent"; key: "accent" }
+    | { kind: "theme"; key: "theme" }
+    | { kind: "shortcuts"; key: "shortcuts" }
+    /** Botón con efecto propio (no guarda nada en los ajustes del vault). */
+    | { kind: "action"; key: "tour" | "updateCheck" }
+  );
 
 export const SETTINGS_DEFINITIONS: SettingDefinition[] = [
   {
     kind: "toggle",
     category: "general",
     key: "openLastVault",
-    label: "Reabrir el último vault",
-    description: "Al arrancar Gus vuelve al vault que usabas la última vez.",
-    keywords: "autoabrir continuar sesion arranque",
+    labelKey: "settings.openLastVault",
+    descriptionKey: "settings.openLastVault.desc",
+    keywords: "autoabrir continuar sesion arranque reopen continue session",
   },
   {
     kind: "toggle",
     category: "general",
     key: "alwaysNotesTab",
-    label: "Empezar en «Notas» al cambiar de vault",
-    description:
-      "Al abrir un vault se muestra el Resumen; con este ajuste se va directo a la pestaña de notas.",
-    keywords: "pestaña notas reset cambiar vault inicio resumen",
+    labelKey: "settings.alwaysNotesTab",
+    descriptionKey: "settings.alwaysNotesTab.desc",
+    keywords: "pestaña notas reset cambiar vault inicio resumen tab reset change start",
+  },
+  {
+    kind: "action",
+    category: "general",
+    key: "tour",
+    labelKey: "settings.tour",
+    descriptionKey: "settings.tour.desc",
+    keywords:
+      "tour recorrido guia ayuda introduccion presentacion novedades tour guide help walkthrough start",
+  },
+  {
+    kind: "action",
+    category: "general",
+    key: "updateCheck",
+    labelKey: "settings.update",
+    descriptionKey: "settings.update.desc",
+    keywords:
+      "actualizar actualizacion version github release novedades update upgrade release version news",
+  },
+  {
+    kind: "language",
+    category: "language",
+    key: "language",
+    labelKey: "settings.language",
+    descriptionKey: "settings.language.desc",
+    keywords: "idioma lengua traduccion español ingles language translation spanish english",
   },
   {
     kind: "theme",
     category: "appearance",
     key: "theme",
-    label: "Tema",
-    description: "Paleta de colores de toda la interfaz, con su color de acento propio.",
+    labelKey: "settings.theme",
+    descriptionKey: "settings.theme.desc",
     keywords:
-      "tema estilo apariencia oscuro claro oled dracula nord solarized modo paleta colores",
+      "tema estilo apariencia oscuro claro oled dracula nord solarized modo paleta colores theme style dark light palette",
   },
   {
     kind: "toggle",
     category: "appearance",
     key: "animations",
-    label: "Animaciones",
-    description: "Transiciones y efectos de la interfaz. Desactívalas para un Gus más plano.",
-    keywords: "movimiento transiciones efectos reducir",
+    labelKey: "settings.animations",
+    descriptionKey: "settings.animations.desc",
+    keywords: "movimiento transiciones efectos reducir motion transitions effects reduce",
   },
   {
     kind: "accent",
     category: "appearance",
     key: "accent",
-    label: "Color de acento",
-    description:
-      "Color de botones, resaltados y acentos de toda la aplicación. «Del tema» usa el color propio de cada tema.",
-    keywords: "color tema paleta terracota menta marfil cielo acento",
+    labelKey: "settings.accent",
+    descriptionKey: "settings.accent.desc",
+    keywords: "color tema paleta terracota menta marfil cielo acento colour accent",
   },
   {
     kind: "zoom",
     category: "appearance",
     key: "uiZoom",
-    label: "Escala de la interfaz",
-    description:
-      "Agranda o achica toda la interfaz. Atajos: Ctrl + «+» y Ctrl + «−»; Ctrl + 0 restablece.",
-    keywords: "zoom escala tamaño agrandar achicar grande pequeño atajo interfaz",
+    labelKey: "settings.uiZoom",
+    descriptionKey: "settings.uiZoom.desc",
+    keywords: "zoom escala tamaño agrandar achicar grande pequeño atajo interfaz scale size zoom",
   },
   {
     kind: "choice",
     category: "notes",
     key: "editorFontSize",
-    label: "Tamaño de letra del editor",
-    description: "Tamaño del texto al escribir notas en markdown.",
+    labelKey: "settings.editorFontSize",
+    descriptionKey: "settings.editorFontSize.desc",
     options: FONT_SIZES,
-    keywords: "letra texto fuente tamaño px editor markdown",
+    keywords: "letra texto fuente tamaño px editor markdown font text size",
   },
   {
-    kind: "select",
+    kind: "spell",
     category: "notes",
-    key: "spellLang",
-    label: "Corrector ortográfico",
-    description:
-      "Subraya en rojo las palabras que no estén en el diccionario del idioma elegido.",
+    key: "spellLangs",
+    labelKey: "settings.spellLangs",
+    descriptionKey: "settings.spellLangs.desc",
     options: SPELL_LANGUAGES,
-    keywords: "corrector ortografia faltas mal escritas idioma resaltar subrayar spellcheck",
+    keywords:
+      "corrector ortografia faltas mal escritas idioma resaltar subrayar spellcheck spell dictionary",
   },
   {
     kind: "toggle",
     category: "notes",
     key: "autoSave",
-    label: "Autoguardado",
-    description:
-      "Guarda la nota con un pequeño retardo mientras escribes. Ctrl+S guarda al momento.",
-    keywords: "guardar automatico debounce escribir",
+    labelKey: "settings.autoSave",
+    descriptionKey: "settings.autoSave.desc",
+    keywords: "guardar automatico debounce escribir autosave automatic writing",
   },
   {
     kind: "toggle",
     category: "tasks",
     key: "hideCompletedTasks",
-    label: "Ocultar completadas",
-    description: "La lista de tareas solo muestra las pendientes.",
-    keywords: "filtrar lista tareas terminadas hechas",
+    labelKey: "settings.hideCompletedTasks",
+    descriptionKey: "settings.hideCompletedTasks.desc",
+    keywords: "filtrar lista tareas terminadas hechas filter list tasks done",
   },
   {
     kind: "toggle",
     category: "calendar",
     key: "calendarShowCompleted",
-    label: "Mostrar completadas en el calendario",
-    description:
-      "Las tareas terminadas aparecen tachadas en los días y en el detalle del día.",
-    keywords: "calendario dias completadas mostrar ocultar",
+    labelKey: "settings.calendarShowCompleted",
+    descriptionKey: "settings.calendarShowCompleted.desc",
+    keywords: "calendario dias completadas mostrar ocultar calendar days completed show hide",
+  },
+  {
+    kind: "shortcuts",
+    category: "shortcuts",
+    key: "shortcuts",
+    labelKey: "settings.shortcuts",
+    descriptionKey: "settings.shortcuts.desc",
+    keywords: "atajos teclado combinaciones teclas shortcut keyboard hotkey",
   },
 ];

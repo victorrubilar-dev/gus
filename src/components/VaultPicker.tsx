@@ -14,6 +14,9 @@ import clsx from "clsx";
 import { invoke } from "@tauri-apps/api/core";
 import { joinPath } from "../lib/fileName";
 import gusIcon from "../assets/gus-icon-512.png";
+import { LANGUAGE_LIST, useT, type Language } from "../lib/i18n";
+import type { ThemeScheme } from "../lib/themes";
+import ThemeCard from "./ThemeCard";
 
 export interface VaultInfo {
   name: string;
@@ -34,6 +37,14 @@ interface VaultPickerProps {
   lastVault: string | null;
   busy?: boolean;
   error?: string | null;
+  /** Idioma mostrado en la primera bienvenida (se puede cambiar allí mismo). */
+  language: Language;
+  onLanguageChange: (lang: Language) => void;
+  /** Estilo claro/oscuro mostrado en la primera bienvenida. */
+  scheme: ThemeScheme;
+  onSchemeChange: (scheme: ThemeScheme) => void;
+  /** Se avisa al salir de la bienvenida: de ahí arranca el tour guiado. */
+  onWelcomeFinish?: () => void;
   onOpen: (path: string) => void;
   onCreate: (name: string, baseDir: string) => Promise<boolean>;
   onAddExisting: (path: string) => Promise<boolean>;
@@ -103,6 +114,11 @@ export default function VaultPicker({
   lastVault,
   busy = false,
   error = null,
+  language,
+  onLanguageChange,
+  scheme,
+  onSchemeChange,
+  onWelcomeFinish,
   onOpen,
   onCreate,
   onAddExisting,
@@ -111,6 +127,7 @@ export default function VaultPicker({
   onRemoveMany,
   onSelectBaseDir,
 }: VaultPickerProps) {
+  const t = useT();
   const [mode, setMode] = useState<Mode>("idle");
   const [showWelcome, setShowWelcome] = useState(vaults.length === 0);
   const [nameInput, setNameInput] = useState("");
@@ -137,7 +154,7 @@ export default function VaultPicker({
   async function submitCreate() {
     const raw = nameInput.trim();
     if (!raw) {
-      setLocalError("Ponle un nombre al vault.");
+      setLocalError(t("app.vaultNeedsName"));
       return;
     }
     setLocalError(null);
@@ -158,7 +175,7 @@ export default function VaultPicker({
       const selected = await open({
         directory: true,
         multiple: false,
-        title: "Selecciona un vault existente",
+        title: t("vaults.addExisting"),
       });
 
       if (typeof selected !== "string") return;
@@ -180,7 +197,7 @@ export default function VaultPicker({
       const selected = await open({
         directory: true,
         multiple: false,
-        title: "Elige dónde crear el vault",
+        title: t("vaults.baseFolder"),
       });
 
       if (typeof selected !== "string") return;
@@ -203,10 +220,10 @@ export default function VaultPicker({
       const selected = await open({
         directory: false,
         multiple: false,
-        title: `Elige la portada de ${vault.name}`,
+        title: t("vaults.chooseCover", { name: vault.name }),
         filters: [
           {
-            name: "Imágenes",
+            name: t("vaults.imageFiles"),
             extensions: [
               "png",
               "jpg",
@@ -260,7 +277,7 @@ export default function VaultPicker({
 
     const cleanName = renameInput.trim();
     if (!cleanName) {
-      setLocalError("Ponle un nombre al vault.");
+      setLocalError(t("app.vaultNeedsName"));
       return;
     }
 
@@ -336,7 +353,7 @@ export default function VaultPicker({
             transition={{ delay: 0.16, duration: 0.35 }}
             className="text-3xl font-semibold tracking-tight"
           >
-            Bienvenido a Gus
+            {t("onboarding.title")}
           </motion.h1>
 
           <motion.p
@@ -345,7 +362,7 @@ export default function VaultPicker({
             transition={{ delay: 0.24, duration: 0.35 }}
             className="mx-auto mt-3 max-w-sm text-sm leading-6 text-gus-muted"
           >
-            Tu app para organizar tu día a día
+            {t("onboarding.subtitle")}
           </motion.p>
 
           {shownError && (
@@ -357,20 +374,89 @@ export default function VaultPicker({
             </p>
           )}
 
+          {/* Primera elección: idioma y estilo, que es lo único que se decide aquí. */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.38, duration: 0.35 }}
+            className="mt-7 flex flex-col gap-4 rounded-2xl border border-gus-border bg-gus-panel p-4 text-left"
+          >
+            <p className="text-xs leading-5 text-gus-muted">{t("onboarding.setup")}</p>
+
+            <div>
+              <p className="mb-1.5 text-[11px] font-semibold tracking-wider text-gus-muted uppercase">
+                {t("onboarding.language")}
+              </p>
+              <div
+                role="radiogroup"
+                aria-label={t("onboarding.language")}
+                className="flex gap-1.5 rounded-lg border border-gus-border bg-gus-card p-1.5"
+              >
+                {LANGUAGE_LIST.map((entry) => {
+                  const isActive = language === entry.value;
+                  return (
+                    <button
+                      key={entry.value}
+                      type="button"
+                      role="radio"
+                      aria-checked={isActive}
+                      onClick={() => onLanguageChange(entry.value)}
+                      className={clsx(
+                        "flex-1 rounded-md px-3 py-1.5 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-gus-accent/70",
+                        isActive
+                          ? "bg-gus-accent text-gus-bg"
+                          : "text-gus-muted hover:text-gus-text",
+                      )}
+                    >
+                      {entry.native}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-1.5 text-[11px] leading-snug text-gus-muted">
+                {t("onboarding.languageHint")}
+              </p>
+            </div>
+
+            <div>
+              <p className="mb-1.5 text-[11px] font-semibold tracking-wider text-gus-muted uppercase">
+                {t("onboarding.style")}
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <ThemeCard
+                  theme="gus-oscuro"
+                  selected={scheme === "dark"}
+                  onSelect={() => onSchemeChange("dark")}
+                />
+                <ThemeCard
+                  theme="gus-claro"
+                  selected={scheme === "light"}
+                  onSelect={() => onSchemeChange("light")}
+                />
+              </div>
+              <p className="mt-1.5 text-[11px] leading-snug text-gus-muted">
+                {t("onboarding.styleHint", {
+                  style: t(scheme === "light" ? "theme.gus-light" : "theme.gus-dark"),
+                })}
+              </p>
+            </div>
+          </motion.div>
+
           <motion.button
             type="button"
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.32, duration: 0.35 }}
+            transition={{ delay: 0.46, duration: 0.35 }}
             whileHover={{ y: -2 }}
             whileTap={{ scale: 0.98 }}
             onClick={() => {
+              onWelcomeFinish?.();
               setShowWelcome(false);
               setLocalError(null);
             }}
             className="mt-8 inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-gus-accent px-7 text-sm font-semibold text-gus-bg outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:ring-offset-2 focus-visible:ring-offset-gus-bg"
           >
-            Empezar
+            {t("onboarding.start")}
             <ArrowRight className="h-4 w-4" aria-hidden="true" />
           </motion.button>
         </motion.section>
@@ -397,12 +483,12 @@ export default function VaultPicker({
             />
             <div>
               <h1 className="text-2xl font-semibold">
-                {vaults.length === 0 ? "¿Cómo quieres empezar?" : "Tus vaults"}
+                {t(vaults.length === 0 ? "vaults.emptyTitle" : "vaults.title")}
               </h1>
               <p className="mt-1 text-sm text-gus-muted">
-                {vaults.length === 0
-                  ? "Crea uno nuevo o selecciona una carpeta que ya tengas."
-                  : "Elige un vault o añade otro para empezar."}
+                {t(
+                  vaults.length === 0 ? "vaults.emptyHint" : "vaults.subtitle",
+                )}
               </p>
             </div>
           </div>
@@ -423,7 +509,7 @@ export default function VaultPicker({
               )}
             >
               <Plus className="h-4 w-4" aria-hidden="true" />
-              Crear vault
+              {t("vaults.newVault")}
             </button>
 
             <button
@@ -436,7 +522,7 @@ export default function VaultPicker({
               )}
             >
               <FolderOpen className="h-4 w-4" aria-hidden="true" />
-              {picking ? "Abriendo…" : "Abrir existente"}
+              {t(picking ? "vaults.opening" : "vaults.openExisting")}
             </button>
 
             <button
@@ -453,7 +539,7 @@ export default function VaultPicker({
               )}
             >
               <Pencil className="h-4 w-4" aria-hidden="true" />
-              {editMode ? "Salir de edición" : "Editar vaults"}
+              {t(editMode ? "vaults.doneEditing" : "vaults.editMode")}
             </button>
           </div>
         </header>
@@ -469,10 +555,7 @@ export default function VaultPicker({
 
         {editMode && (
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-gus-accent/40 bg-gus-accent/10 px-3 py-2">
-            <p className="text-xs text-gus-muted">
-              Selecciona los vaults para eliminarlos de la lista, o usa los iconos de
-              cada tarjeta para cambiar su portada o nombre.
-            </p>
+            <p className="text-xs text-gus-muted">{t("vaults.editHint")}</p>
 
             <div className="flex flex-wrap items-center gap-2">
               <button
@@ -485,8 +568,8 @@ export default function VaultPicker({
                 )}
               >
                 {selectedPaths.size === vaults.length && vaults.length > 0
-                  ? "Deseleccionar todo"
-                  : "Seleccionar todo"}
+                  ? t("vaults.deselectAll")
+                  : t("vaults.selectAll")}
               </button>
 
               {confirmBulkDelete ? (
@@ -499,7 +582,7 @@ export default function VaultPicker({
                       "border border-rose-400/40 bg-rose-400/10 text-xs text-rose-300 hover:bg-rose-400/20",
                     )}
                   >
-                    Confirmar ({selectedPaths.size})
+                    {t("vaults.confirmRemove", { count: selectedPaths.size })}
                   </button>
                   <button
                     type="button"
@@ -509,7 +592,7 @@ export default function VaultPicker({
                       "border border-gus-border text-xs text-gus-muted hover:text-gus-text",
                     )}
                   >
-                    Cancelar
+                    {t("common.cancel")}
                   </button>
                 </>
               ) : (
@@ -522,7 +605,7 @@ export default function VaultPicker({
                     "border border-rose-400/40 bg-rose-400/10 text-xs text-rose-300 hover:bg-rose-400/20",
                   )}
                 >
-                  Eliminar seleccionados ({selectedPaths.size})
+                  {t("vaults.removeSelectedCount", { count: selectedPaths.size })}
                 </button>
               )}
             </div>
@@ -532,7 +615,7 @@ export default function VaultPicker({
         <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {vaults.length === 0 && (
             <li className="rounded-xl border border-dashed border-gus-border px-3 py-10 text-center text-xs text-gus-muted sm:col-span-2 xl:col-span-3">
-              No hay vaults todavía. Usa los botones de arriba para continuar.
+              {t("vaults.noVaultsYet")}
             </li>
           )}
 
@@ -560,7 +643,7 @@ export default function VaultPicker({
                   type="button"
                   onClick={() => onOpen(vault.path)}
                   disabled={busy || pickerBusy}
-                  aria-label={`Abrir vault ${vault.name}`}
+                  aria-label={t("vaults.openVaultAria", { name: vault.name })}
                   className="absolute inset-0 z-0 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-gus-accent disabled:cursor-not-allowed"
                 />
 
@@ -569,8 +652,8 @@ export default function VaultPicker({
                     type="button"
                     onClick={() => toggleSelect(vault.path)}
                     aria-pressed={isSelected}
-                    aria-label={`Seleccionar ${vault.name}`}
-                    title={isSelected ? "Deseleccionar vault" : "Seleccionar vault"}
+                    aria-label={t("vaults.selectVault", { name: vault.name })}
+                    title={t(isSelected ? "vaults.deselectVault" : "vaults.selectVault", { name: vault.name })}
                     className={clsx(
                       "absolute top-2 left-2 z-10 flex h-7 w-7 items-center justify-center rounded-full border backdrop-blur transition focus-visible:ring-2 focus-visible:ring-gus-accent/70 focus-visible:outline-none",
                       isSelected
@@ -589,11 +672,9 @@ export default function VaultPicker({
                       onClick={() => void pickCover(vault)}
                       disabled={busy || pickerBusy}
                       title={
-                        vault.cover
-                          ? "Cambiar la imagen de portada"
-                          : "Elegir una imagen de portada"
+                        t(vault.cover ? "vaults.changeCover" : "vaults.setCover")
                       }
-                      aria-label={`Elegir portada de ${vault.name}`}
+                      aria-label={t("vaults.coverAria", { name: vault.name })}
                       className="rounded-md bg-black/45 p-1.5 text-white/80 backdrop-blur transition hover:bg-black/70 hover:text-white focus-visible:ring-2 focus-visible:ring-gus-accent/70 focus-visible:outline-none disabled:opacity-50"
                     >
                       <ImageIcon
@@ -607,8 +688,8 @@ export default function VaultPicker({
                         type="button"
                         onClick={() => void resetCover(vault)}
                         disabled={busy || pickerBusy}
-                        title="Volver al fondo predeterminado"
-                        aria-label={`Quitar la portada de ${vault.name}`}
+                        title={t("vaults.removeCover")}
+                        aria-label={t("vaults.removeCoverAria", { name: vault.name })}
                         className="rounded-md bg-black/45 p-1.5 text-white/80 backdrop-blur transition hover:bg-black/70 hover:text-white focus-visible:ring-2 focus-visible:ring-gus-accent/70 focus-visible:outline-none disabled:opacity-50"
                       >
                         <RotateCcw className="h-4 w-4" aria-hidden="true" />
@@ -619,8 +700,8 @@ export default function VaultPicker({
                       type="button"
                       onClick={() => startRename(vault.path, vault.name)}
                       disabled={busy || pickerBusy}
-                      title="Cambiar el nombre visible"
-                      aria-label={`Renombrar ${vault.name}`}
+                      title={t("vaults.renameVault")}
+                      aria-label={t("vaults.renameAria", { name: vault.name })}
                       className="rounded-md bg-black/45 p-1.5 text-white/80 backdrop-blur transition hover:bg-black/70 hover:text-white focus-visible:ring-2 focus-visible:ring-gus-accent/70 focus-visible:outline-none disabled:opacity-50"
                     >
                       <Pencil className="h-4 w-4" aria-hidden="true" />
@@ -636,7 +717,7 @@ export default function VaultPicker({
                       </span>
                       {lastVault === vault.path && (
                         <span className="shrink-0 rounded-full border border-gus-accent/50 bg-gus-accent/20 px-1.5 py-px text-[9px] tracking-wide text-gus-accent uppercase backdrop-blur">
-                          último
+                          {t("vaults.lastUsed")}
                         </span>
                       )}
                     </div>
@@ -655,7 +736,7 @@ export default function VaultPicker({
                       disabled={busy || pickerBusy}
                       className="pointer-events-auto shrink-0 rounded-lg bg-gus-accent px-3 py-1.5 text-xs font-semibold text-gus-bg outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-gus-accent/70 focus-visible:ring-offset-2 focus-visible:ring-offset-black/40 disabled:opacity-50"
                     >
-                      Abrir
+                      {t("vaults.open")}
                     </button>
                   )}
                 </div>
@@ -669,7 +750,7 @@ export default function VaultPicker({
                     className="absolute inset-0 z-20 flex flex-col justify-center gap-2 bg-gus-bg/95 p-4 backdrop-blur-sm"
                   >
                     <label htmlFor={`vault-rename-${index}`} className="text-xs text-gus-muted">
-                      Nombre visible
+                      {t("vaults.visibleName")}
                     </label>
                     <input
                       id={`vault-rename-${index}`}
@@ -695,7 +776,7 @@ export default function VaultPicker({
                           "bg-gus-accent font-medium text-gus-bg hover:opacity-90",
                         )}
                       >
-                        Guardar
+                        {t("common.save")}
                       </button>
                       <button
                         type="button"
@@ -706,7 +787,7 @@ export default function VaultPicker({
                           "border border-gus-border text-gus-muted hover:text-gus-text",
                         )}
                       >
-                        Cancelar
+                        {t("common.cancel")}
                       </button>
                     </div>
                   </form>
@@ -730,21 +811,21 @@ export default function VaultPicker({
           >
             <div>
               <label htmlFor="vault-name" className="mb-1 block text-xs text-gus-muted">
-                Nombre del vault
+                {t("vaults.vaultName")}
               </label>
               <input
                 id="vault-name"
                 autoFocus
                 value={nameInput}
                 onChange={(event) => setNameInput(event.target.value)}
-                placeholder="Mi diario"
+                placeholder={t("vaults.namePlaceholder")}
                 className={INPUT_CLASS}
               />
             </div>
 
             <div>
               <label htmlFor="vault-base" className="mb-1 block text-xs text-gus-muted">
-                Carpeta donde se creará
+                {t("vaults.baseFolder")}
               </label>
               <div className="flex gap-2">
                 <div className="relative min-w-0 flex-1">
@@ -769,11 +850,11 @@ export default function VaultPicker({
                     "shrink-0 border border-gus-border text-gus-muted hover:text-gus-text",
                   )}
                 >
-                  {choosingBase ? "Eligiendo…" : "Elegir carpeta"}
+                  {t(choosingBase ? "vaults.choosing" : "vaults.browse")}
                 </button>
               </div>
               <p className="mt-1 text-[11px] break-all text-gus-muted">
-                Se creará en:{" "}
+                {t("vaults.willCreateAt")}{" "}
                 <span className="font-mono">
                   {joinPath(effectiveBase, nameInput.trim() || "…")}
                 </span>
@@ -789,7 +870,7 @@ export default function VaultPicker({
                   "bg-gus-accent font-medium text-gus-bg hover:opacity-90",
                 )}
               >
-                Crear
+                {t("vaults.create")}
               </button>
               <button
                 type="button"
@@ -799,7 +880,7 @@ export default function VaultPicker({
                   "border border-gus-border text-gus-muted hover:text-gus-text",
                 )}
               >
-                Cancelar
+                {t("common.cancel")}
               </button>
             </div>
           </motion.form>

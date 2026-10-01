@@ -23,8 +23,9 @@ export function startOfMonth(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), 1);
 }
 
+/** Las fechas se formatean en el idioma de la aplicación. */
 export function monthLabel(date: Date): string {
-  const label = date.toLocaleDateString("es-ES", { month: "long", year: "numeric" });
+  const label = date.toLocaleDateString(undefined, { month: "long", year: "numeric" });
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
@@ -32,7 +33,7 @@ export function longDayLabel(iso: string): string {
   const date = fromIso(iso);
   if (!date) return iso;
 
-  return date.toLocaleDateString("es-ES", {
+  return date.toLocaleDateString(undefined, {
     weekday: "long",
     day: "numeric",
     month: "long",
@@ -52,4 +53,15 @@ export function monthCells(visibleMonth: Date): (Date | null)[] {
   });
 }
 
-export const WEEKDAYS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+/** Iniciales de los días de la semana, en el idioma de la aplicación. */
+export function weekdayLabels(): string[] {
+  // Se toma un lunes de 2024 (que empieza en día 1) para tener los siete días
+  // en orden, sin depender del mes que se esté viendo.
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(2024, 0, 1 + index);
+    return date
+      .toLocaleDateString(undefined, { weekday: "short" })
+      .replace(".", "")
+      .slice(0, 3);
+  });
+}

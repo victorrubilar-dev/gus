@@ -1,6 +1,7 @@
 import clsx from "clsx";
 import { Check } from "lucide-react";
 import { themeDefinition, themePreviewStyle, type ThemeKey } from "../lib/themes";
+import { useT } from "../lib/i18n";
 
 export interface ThemeCardProps {
   theme: ThemeKey;
@@ -16,6 +17,7 @@ export interface ThemeCardProps {
  * el color del tema activo (se lee igual en un tema claro u oscuro).
  */
 export default function ThemeCard({ theme, selected, onSelect, withHint }: ThemeCardProps) {
+  const t = useT();
   const definition = themeDefinition(theme);
 
   return (
@@ -23,7 +25,7 @@ export default function ThemeCard({ theme, selected, onSelect, withHint }: Theme
       type="button"
       onClick={onSelect}
       aria-pressed={selected}
-      title={definition.label}
+      title={t(definition.labelKey)}
       className={clsx(
         "flex flex-col gap-1.5 rounded-xl border p-2.5 text-left outline-none transition-colors",
         "focus-visible:ring-2 focus-visible:ring-gus-accent/70",
@@ -48,7 +50,7 @@ export default function ThemeCard({ theme, selected, onSelect, withHint }: Theme
       </span>
 
       <span className="flex items-center justify-between gap-1">
-        <span className="truncate text-xs font-medium text-gus-text">{definition.label}</span>
+        <span className="truncate text-xs font-medium text-gus-text">{t(definition.labelKey)}</span>
         {selected && (
           <Check
             className="h-3.5 w-3.5 shrink-0 text-gus-accent"
@@ -59,7 +61,7 @@ export default function ThemeCard({ theme, selected, onSelect, withHint }: Theme
       </span>
 
       {withHint && (
-        <span className="text-[10px] leading-tight text-gus-muted">{definition.hint}</span>
+        <span className="text-[10px] leading-tight text-gus-muted">{t(definition.hintKey)}</span>
       )}
     </button>
   );

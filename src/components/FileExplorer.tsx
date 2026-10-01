@@ -36,8 +36,15 @@ import {
   renameTarget,
   safeFileName,
 } from "../lib/fileName";
+import { useT } from "../lib/i18n";
 import {
-  IMPORT_FILTERS,
+  comboFor,
+  comboLabel,
+  explorerShortcutFor,
+  type ShortcutMap,
+} from "../lib/shortcuts";
+import {
+  importFilters,
   importFilesIntoVault,
   relativeFolderLabel,
   summarizeImport,
@@ -62,6 +69,8 @@ export interface FileExplorerProps {
   onBeforeFileAction?: (path: string) => void | Promise<void>;
   /** Exporta la nota a PDF (la abre en el editor con el diálogo listo). */
   onExportPdf?: (file: NoteFile) => void;
+  /** Atajos vigentes: solo para los textos de ayuda de la barra de ruta. */
+  shortcuts?: ShortcutMap;
 }
 
 /** Acciones imperativas que el explorador expone a la app (botón de bienvenida). */
@@ -275,10 +284,15 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
     onBeforeFileAction,
     onExportPdf,
     width,
+    shortcuts,
   },
   ref,
 ) {
+  const t = useT();
   const staticMode = files !== undefined;
+  /** Combinaciones vigentes, para los textos de ayuda de los botones de la ruta. */
+  const backCombo = comboLabel(comboFor(shortcuts, "back")) || "Alt+←";
+  const forwardCombo = comboLabel(comboFor(shortcuts, "forward")) || "Alt+→";
 
   /** El botón «Nueva nota» de la pantalla de bienvenida hace lo mismo que «+». */
   useImperativeHandle(ref, () => ({
@@ -328,6 +342,9 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
 
   /** Handler más reciente de Supr: el listener de window se engancha una sola vez. */
   const deleteKeyRef = useRef<(event: KeyboardEvent) => void>(() => {});
+  /** Botones del confirm de papelera: tener el foco en uno es la opción marcada. */
+  const confirmTrashRef = useRef<HTMLButtonElement | null>(null);
+  const confirmCancelRef = useRef<HTMLButtonElement | null>(null);
   /** Raíz de la lista de filas: para anclar el menú a la fila bajo el teclado. */
   const listRef = useRef<HTMLUListElement | null>(null);
   /** Barra de ruta: mide su ancho para decidir cuántos tramos mostrar. */
@@ -519,17 +536,14 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
   }, [trailMenuOpen]);
 
   /**
-   * Alt+← / Alt+→ recorren el historial y Alt+↑ sube al padre. Se saltan los campos
-   * de texto porque el editor ya usa Alt+↑/↓ para mover líneas.
+   * Recorrer el historial y subir al padre con los atajos configurados. Se saltan
+   * los campos de texto porque el editor ya usa Alt+↑/↓ para mover líneas.
    */
   useEffect(() => {
     if (staticMode) return;
 
     function onKey(event: KeyboardEvent) {
-      if (!event.altKey || event.ctrlKey || event.metaKey) return;
-      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight" && event.key !== "ArrowUp") {
-        return;
-      }
+      if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
 
       const target = event.target;
       if (
@@ -539,16 +553,21 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
         return;
       }
 
+      const id = explorerShortcutFor(event, shortcuts);
+      if (!id) return;
+
       event.preventDefault();
-      if (event.key === "ArrowLeft") goBack();
-      else if (event.key === "ArrowRight") goForward();
-      else goUp();
+      if (id === "back") goBack();
+      else if (id === "forward") goForward();
+      else if (id === "parentFolder") goUp();
+      else if (id === "newNote") void handleNewNote();
+      else if (id === "newFolder") void handleNewFolder();
     }
 
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [staticMode]);
+  }, [staticMode, shortcuts]);
 
   // El manejador siempre refleja el último render (menú, confirmación y props vivos).
   useEffect(() => {
@@ -580,9 +599,16 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
       return;
     }
 
-    // Paso 2: el confirm está abierto → otra vez Supr lo confirma.
+    // Paso 2: el confirm está abierto → otra vez Supr activa lo marcado. Por
+    // defecto el foco está en «Mover a la papelera», así que el pulso de
+    // siempre (Supr, Supr) sigue borrando; si las flechas han ido a «Cancelar»,
+    // Supr cancela, igual que haría Intro.
     if (menu && confirmId === menu.id) {
       event.preventDefault();
+      if (document.activeElement === confirmCancelRef.current) {
+        setConfirmId(null);
+        return;
+      }
       if (menuFolder) void deleteFolder(menuFolder);
       else if (menuFile) void deleteFile(menuFile);
       return;
@@ -780,8 +806,8 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
       const picked = await open({
         directory: false,
         multiple: true,
-        title: "Añadir archivos al vault",
-        filters: IMPORT_FILTERS,
+        title: t("explorer.addFiles"),
+        filters: importFilters(),
       });
       if (!picked) return;
 
@@ -1031,13 +1057,13 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
   const imageCount = items.length - noteCount;
   const summary =
     status === "loading"
-      ? "cargando…"
+      ? t("common.loading")
       : status === "error"
-        ? "error al leer"
+        ? t("explorer.readError")
         : [
-            `${folders.length} carpeta${folders.length === 1 ? "" : "s"}`,
-            `${noteCount} archivo${noteCount === 1 ? "" : "s"} .md`,
-            imageCount > 0 ? `${imageCount} imagen${imageCount === 1 ? "" : "es"}` : "",
+            t("explorer.folderCount", { count: folders.length }),
+            t("explorer.noteCount", { count: noteCount }),
+            imageCount > 0 ? t("explorer.images", { count: imageCount }) : "",
           ]
             .filter(Boolean)
             .join(" · ");
@@ -1057,8 +1083,8 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
       onClick={() => setTrailMenuOpen((open) => !open)}
       aria-haspopup="menu"
       aria-expanded={trailMenuOpen}
-      aria-label={`Mostrar las ${hiddenParts.length} carpetas ocultas de la ruta`}
-      title="Carpetas anteriores de la ruta"
+      aria-label={t("explorer.hiddenFolders", { count: hiddenParts.length })}
+      title={t("explorer.trailEarlier")}
       className={clsx(
         "shrink-0 rounded px-0.5 py-0.5 transition-colors focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none",
         trailMenuOpen ? "text-gus-accent" : "text-gus-muted hover:text-gus-text",
@@ -1100,8 +1126,78 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
   const menuFile = menu?.kind === "file" ? items.find((f) => f.id === menu.id) : undefined;
   const menuTarget = menuFolder ?? menuFile;
 
+  /** El menú está mostrando el confirm de borrado (la pregunta de la papelera). */
+  const confirmOpen = menu !== null && confirmId === menu.id && menuTarget !== null;
+
+  // Al abrir el confirm el foco cae en «Mover a la papelera»: es la opción que
+  // siempre ha confirmado Supr y por la que parten las flechas.
+  useEffect(() => {
+    if (!confirmOpen) return;
+    confirmTrashRef.current?.focus();
+  }, [confirmOpen]);
+
+  /**
+   * El confirm se recorre con el teclado: las flechas alternan entre las dos
+   * opciones (y devuelven el foco al diálogo si se había ido) e Intro activa lo
+   * marcado. Si el foco está fuera, Intro solo lo vuelve a traer.
+   */
+  useEffect(() => {
+    if (!confirmOpen) return;
+
+    function onKey(event: KeyboardEvent) {
+      const flecha =
+        event.key === "ArrowUp" ||
+        event.key === "ArrowDown" ||
+        event.key === "ArrowLeft" ||
+        event.key === "ArrowRight";
+      if (!flecha && event.key !== "Enter") return;
+      if (event.repeat || event.defaultPrevented) return;
+      // Alt+←/→ es el historial de carpetas y Ctrl/Cmd+Intro otros diálogos.
+      if (event.altKey || event.ctrlKey || event.metaKey) return;
+
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      // Nada de flechas sobre campos de texto ni dentro de otro diálogo (paleta,
+      // tarea nueva…) aunque el confirm siga abierto detrás.
+      if (target.closest("input, textarea, select, [contenteditable], [role='dialog']")) return;
+
+      const trash = confirmTrashRef.current;
+      const cancel = confirmCancelRef.current;
+      if (!trash || !cancel) return;
+
+      const activo = document.activeElement;
+      const dentro = activo === trash || activo === cancel;
+
+      if (flecha) {
+        event.preventDefault();
+        if (!dentro) {
+          // El foco se había ido (p. ej. clic en el texto del diálogo): la
+          // primera flecha entra por la opción que toca según el sentido.
+          if (event.key === "ArrowUp" || event.key === "ArrowLeft") trash.focus();
+          else cancel.focus();
+          return;
+        }
+        // Dos opciones: cualquier flecha pasa a la otra.
+        if (activo === trash) cancel.focus();
+        else trash.focus();
+        return;
+      }
+
+      // Intro: con el foco en el confirm la recoge el propio botón (el clic
+      // nativo); estando fuera, la primera solo devuelve el foco al diálogo.
+      if (!dentro) {
+        event.preventDefault();
+        trash.focus();
+      }
+    }
+
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [confirmOpen]);
+
   return (
     <aside
+      data-tour="explorer"
       style={{ width }}
       className="flex h-full w-60 shrink-0 flex-col gap-3 border-r border-gus-border bg-gus-panel p-3"
     >
@@ -1123,8 +1219,8 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
               type="button"
               onClick={() => void handleImportFiles()}
               disabled={busy}
-              title="Añadir archivos del equipo (imágenes, PDF o .md)"
-              aria-label="Añadir archivos del equipo"
+              title={t("explorer.addFilesHint")}
+              aria-label={t("explorer.addFiles")}
               className="shrink-0 rounded-lg border border-gus-border bg-gus-card p-1.5 text-gus-muted transition-colors hover:border-gus-accent/50 hover:text-gus-accent focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none disabled:opacity-50"
             >
               <ImportIcon className="h-4 w-4" aria-hidden="true" />
@@ -1135,8 +1231,8 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
               type="button"
               onClick={() => void handleNewFolder()}
               disabled={busy}
-              title="Nueva carpeta"
-              aria-label="Nueva carpeta"
+              title={t("explorer.newFolder")}
+              aria-label={t("explorer.newFolder")}
               className="shrink-0 rounded-lg border border-gus-border bg-gus-card p-1.5 text-gus-muted transition-colors hover:border-gus-accent/50 hover:text-gus-accent focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none disabled:opacity-50"
             >
               <FolderPlus className="h-4 w-4" aria-hidden="true" />
@@ -1146,8 +1242,8 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
             type="button"
             onClick={() => void handleNewNote()}
             disabled={busy}
-            title="Nueva nota"
-            aria-label="Nueva nota"
+            title={t("explorer.newNote")}
+            aria-label={t("explorer.newNote")}
             className="shrink-0 rounded-lg border border-gus-border bg-gus-card p-1.5 text-gus-muted transition-colors hover:border-gus-accent/50 hover:text-gus-accent focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none disabled:opacity-50"
           >
             <Plus className="h-4 w-4" aria-hidden="true" />
@@ -1157,7 +1253,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
 
       {!staticMode && trail.length > 0 && (
         <nav
-          aria-label="Carpeta actual"
+          aria-label={t("explorer.currentFolder")}
           data-trail-menu="true"
           className="relative -mt-1 flex items-center gap-1 text-[11px]"
         >
@@ -1166,8 +1262,8 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
               type="button"
               onClick={goBack}
               disabled={nav.past.length === 0}
-              title="Atrás en el historial (Alt+←)"
-              aria-label="Volver a la carpeta anterior"
+              title={t("explorer.backHint", { combo: backCombo })}
+              aria-label={t("explorer.back")}
               className={TRAIL_BUTTON_CLASS}
             >
               <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
@@ -1176,8 +1272,8 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
               type="button"
               onClick={goForward}
               disabled={nav.future.length === 0}
-              title="Adelante en el historial (Alt+→)"
-              aria-label="Avanzar a la carpeta siguiente"
+              title={t("explorer.forwardHint", { combo: forwardCombo })}
+              aria-label={t("explorer.forward")}
               className={TRAIL_BUTTON_CLASS}
             >
               <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
@@ -1201,7 +1297,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
                     if (dragOverPath === part.folder.path) setDragOverPath(null);
                   }}
                   onDrop={(event) => dropOnFolder(event, part.folder)}
-                  title={`${part.folder.path}\nTambién puedes soltar aquí para mover`}
+                  title={t("explorer.trailDropHint", { path: part.folder.path })}
                   aria-current={part.index === trail.length - 1 ? "true" : undefined}
                   className={clsx(
                     TRAIL_SEGMENT_CLASS,
@@ -1228,7 +1324,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
           {trailMenuOpen && hiddenParts.length > 0 && (
             <div
               role="menu"
-              aria-label="Carpetas ocultas de la ruta"
+              aria-label={t("explorer.trailEarlier")}
               className="absolute top-full right-0 left-11 z-30 mt-1 overflow-hidden rounded-lg border border-gus-border bg-gus-card shadow-xl shadow-black/40"
             >
               <ul className="gus-scrollbar max-h-52 overflow-y-auto py-1">
@@ -1243,7 +1339,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
                         if (dragOverPath === part.folder.path) setDragOverPath(null);
                       }}
                       onDrop={(event) => dropOnFolder(event, part.folder)}
-                      title={`${part.folder.path}\nTambién puedes soltar aquí para mover`}
+                      title={t("explorer.trailDropHint", { path: part.folder.path })}
                       className={clsx(
                         menuItemClass,
                         "text-gus-muted hover:bg-gus-panel hover:text-gus-text",
@@ -1279,7 +1375,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
           <button
             type="button"
             onClick={() => setNotice(null)}
-            aria-label="Descartar aviso"
+            aria-label={t("common.close")}
             className={clsx(
               "shrink-0 rounded px-1 transition-opacity hover:opacity-70 focus-visible:ring-2 focus-visible:outline-none",
               noticeOk
@@ -1301,7 +1397,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
           <button
             type="button"
             onClick={() => setActionError(null)}
-            aria-label="Descartar error"
+            aria-label={t("common.close")}
             className="shrink-0 rounded px-1 text-rose-300/70 transition-colors hover:text-rose-200 focus-visible:ring-2 focus-visible:ring-rose-300/60 focus-visible:outline-none"
           >
             ×
@@ -1348,7 +1444,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
               {renamingId === folder.path ? (
                 <RenameField
                   initialValue={safeFileName(folder.name)}
-                  ariaLabel={`Nuevo nombre para ${folder.name}`}
+                  ariaLabel={t("explorer.renameField", { name: folder.name })}
                   onCommit={(value) => void commitFolderRename(folder, value)}
                   onCancel={() => setRenamingId(null)}
                 />
@@ -1356,7 +1452,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
                 <button
                   type="button"
                   onClick={() => enterFolder(folder)}
-                  title={`${folder.path}\nArrastra para mover\nClic derecho: opciones`}
+                  title={t("explorer.folderHint", { path: folder.path })}
                   className="flex min-w-0 flex-1 cursor-grab items-center gap-2 rounded-lg border border-transparent px-2 py-1.5 text-left text-gus-muted transition-colors hover:bg-gus-card hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none active:cursor-grabbing"
                 >
                   <Folder
@@ -1419,7 +1515,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
                     {isRenaming ? (
                       <RenameField
                         initialValue={safeFileName(file.name)}
-                        ariaLabel={`Nuevo nombre para ${file.name}`}
+                        ariaLabel={t("explorer.renameField", { name: file.name })}
                         onCommit={(value) => void commitRename(file, value)}
                         onCancel={() => setRenamingId(null)}
                       />
@@ -1427,7 +1523,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
                       <button
                         type="button"
                         onClick={() => select(file)}
-                        title={`${file.name}\nArrastra para mover\nClic derecho: opciones`}
+                        title={t("explorer.folderHint", { path: file.name })}
                         aria-current={isCurrent ? "true" : undefined}
                         className={clsx(
                           "relative flex min-w-0 flex-1 cursor-grab items-center gap-2 rounded-lg border px-2 py-1.5 text-left outline-none transition-colors active:cursor-grabbing",
@@ -1509,17 +1605,18 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
               className="flex items-center gap-1.5 rounded-md border border-gus-border bg-gus-card px-2 py-1 text-gus-muted transition-colors hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
             >
               <RefreshCw className="h-3 w-3" aria-hidden="true" />
-              Reintentar
+              {t("editor.retry")}
             </button>
           </li>
         )}
 
         {status === "ready" && items.length === 0 && folders.length === 0 && (
           <li className="rounded-lg border border-dashed border-gus-border px-3 py-6 text-center text-xs text-gus-muted">
-            Carpeta vacía. Crea una nota con{" "}
-            <strong className="font-medium text-gus-text">+</strong>, agrupa con{" "}
-            <strong className="font-medium text-gus-text">nueva carpeta</strong> o haz clic
-            derecho en la lista para ver todas las opciones.
+            {t("explorer.emptyHintBefore")}{" "}
+            <strong className="font-medium text-gus-text">+</strong>
+            {t("explorer.emptyHintMid")}{" "}
+            <strong className="font-medium text-gus-text">{t("explorer.newFolder")}</strong>
+            {t("explorer.emptyHintAfter")}
           </li>
         )}
       </ul>
@@ -1527,28 +1624,31 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
       {menu && (menuTarget || menu.kind === "panel") && (
         <div
           role="menu"
-          aria-label={
-            menu.kind === "panel"
-              ? "Opciones de la carpeta actual"
-              : `Opciones de ${menuTarget?.name ?? ""}`
-          }
+          aria-label={t(
+            menu.kind === "panel" ? "explorer.panelOptions" : "explorer.itemOptions",
+            { name: menuTarget?.name ?? "" },
+          )}
           className="fixed z-30 w-52 overflow-hidden rounded-lg border border-gus-border bg-gus-card shadow-xl shadow-black/40"
           style={{ left: menu.x, top: menu.y }}
         >
           {confirmId === menu.id && menuTarget ? (
             <div className="p-3 text-xs">
               <p className="text-gus-text">
-                {menu.kind === "folder" ? "¿Mover la carpeta " : "¿Mover "}
-                <span className="font-mono break-all">{menuTarget.name}</span> a la papelera?
+                {t(menu.kind === "folder" ? "explorer.trashFolderAsk" : "explorer.trashItemAsk", {
+                  name: "",
+                })}
+                <span className="font-mono break-all">{menuTarget.name}</span>
+                {t("explorer.trashToBin")}
               </p>
               <p className="mt-1 text-[11px] text-gus-muted">
                 {menu.kind === "folder"
-                  ? "Se irá con TODO su contenido a ~/gus-vault/.gus-trash; se puede restaurar desde el menú lateral."
-                  : "Se moverá a la papelera de Gus (~/gus-vault/.gus-trash); se puede restaurar desde el menú lateral."}
+                  ? t("explorer.trashFolderBody")
+                  : t("explorer.trashItemBody")}
               </p>
               <div className="mt-2.5 flex gap-2">
                 <button
                   type="button"
+                  ref={confirmTrashRef}
                   onClick={() => {
                     if (menuFolder) void deleteFolder(menuFolder);
                     else if (menuFile) void deleteFile(menuFile);
@@ -1556,29 +1656,30 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
                   disabled={busy}
                   className="rounded-md border border-rose-400/40 bg-rose-400/10 px-2 py-1 text-[11px] text-rose-300 transition-colors hover:bg-rose-400/20 focus-visible:ring-2 focus-visible:ring-rose-300/60 focus-visible:outline-none disabled:opacity-50"
                 >
-                  Mover a la papelera
+                  {t("explorer.moveToTrash")}
                 </button>
                 <button
                   type="button"
+                  ref={confirmCancelRef}
                   onClick={() => setConfirmId(null)}
                   className="rounded-md border border-gus-border px-2 py-1 text-[11px] text-gus-muted transition-colors hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
                 >
-                  Cancelar
+                  {t("common.cancel")}
                 </button>
               </div>
             </div>
           ) : movingId === menu.id && menuTarget ? (
             <div>
               <p className="border-b border-gus-border px-3 py-2 text-[10px] tracking-wider text-gus-muted uppercase">
-                Mover {menu.kind === "folder" ? "carpeta" : "archivo"} a…
+                {t(menu.kind === "folder" ? "explorer.moveFolderTo" : "explorer.moveFileTo")}
               </p>
               <ul className="gus-scrollbar max-h-44 overflow-y-auto py-1">
                 {destinations === null && (
-                  <li className="px-3 py-2 text-[11px] text-gus-muted">Cargando carpetas…</li>
+                  <li className="px-3 py-2 text-[11px] text-gus-muted">{t("common.loading")}</li>
                 )}
                 {destinations?.length === 0 && (
                   <li className="px-3 py-2 text-[11px] text-gus-muted">
-                    No hay carpetas de destino disponibles.
+                    {t("explorer.noDestinations")}
                   </li>
                 )}
                 {destinations?.map((dest) => (
@@ -1632,7 +1733,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
                   "text-gus-muted hover:bg-gus-panel hover:text-gus-text",
                 )}
               >
-                Renombrar
+                {t("common.rename")}
               </button>
               <button
                 type="button"
@@ -1643,7 +1744,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
                   "text-gus-muted hover:bg-gus-panel hover:text-gus-text",
                 )}
               >
-                Mover a…
+                {t("explorer.move")}
               </button>
               <button
                 type="button"
@@ -1654,7 +1755,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
                   "border-t border-gus-border text-rose-300 hover:bg-rose-400/10",
                 )}
               >
-                Eliminar…
+                {t("explorer.deleteEllipsis")}
               </button>
             </div>
           ) : menuFile ? (
@@ -1673,7 +1774,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
                     "text-gus-muted hover:bg-gus-panel hover:text-gus-text",
                   )}
                 >
-                  Exportar a PDF
+                  {t("explorer.export")}
                 </button>
               )}
               <button
@@ -1724,7 +1825,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
                   "text-gus-muted hover:bg-gus-panel hover:text-gus-text",
                 )}
               >
-                Nueva nota
+                {t("explorer.newNote")}
               </button>
               <button
                 type="button"
@@ -1738,7 +1839,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
                   "text-gus-muted hover:bg-gus-panel hover:text-gus-text",
                 )}
               >
-                Nueva carpeta
+                {t("explorer.newFolder")}
               </button>
               <button
                 type="button"
@@ -1752,7 +1853,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
                   "text-gus-muted hover:bg-gus-panel hover:text-gus-text",
                 )}
               >
-                Añadir archivos del PC…
+                {t("explorer.addFromPc")}
               </button>
               <button
                 type="button"
@@ -1766,7 +1867,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
                   "border-t border-gus-border text-gus-muted hover:bg-gus-panel hover:text-gus-text",
                 )}
               >
-                Refrescar
+                {t("explorer.refresh")}
               </button>
             </div>
           ) : null}

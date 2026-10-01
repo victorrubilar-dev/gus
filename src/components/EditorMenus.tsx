@@ -30,12 +30,14 @@ import {
   Copy,
   Rows3,
   TableCellsMerge,
+  TableCellsSplit,
   Trash,
-  SplitSquareHorizontal,
   type LucideIcon,
 } from "lucide-react";
 import type { CaretAnchor } from "../lib/caretPosition";
 import { normalizeWikiText, wikiNoteBaseTitle, wikiNoteFolder, type WikiNote } from "../lib/wikiLink";
+import { t as activeT, useT } from "../lib/i18n";
+import type { MessageKey, TranslateParams } from "../lib/i18n/core";
 
 /** Acciones sobre la tabla del cursor: las del menú contextual y las del «/». */
 export type TableAction =
@@ -44,8 +46,6 @@ export type TableAction =
   | "del-row"
   | "del-col"
   | "del-table"
-  | "merge"
-  | "unmerge"
   | "sort-asc"
   | "sort-desc"
   | "clipboard"
@@ -56,20 +56,21 @@ export type TableAction =
   | "move-down"
   | "dup-up"
   | "dup-down"
-  | "toggle-task";
+  | "toggle-task"
+  | "merge-cells"
+  | "unmerge-cells";
 
 export interface SlashItem {
   id: string;
-  label: string;
-  hint: string;
+  /** Texto del menú y pista lateral, con su clave de traducción. */
+  labelKey: MessageKey;
+  hintKey: MessageKey;
   snippet: string;
   caretOffset: number;
   Icon: LucideIcon;
   /** Acción de tabla: no inserta texto, opera sobre la tabla del cursor. */
   tableAction?: TableAction;
-  /** Al elegirlo el menú cambia a este grupo en vez de insertar. */
-  stage?: "table-size";
-  /** Tamaño (columnas × filas) del grupo de tamaños de tabla. */
+  /** Tamaño (columnas × filas) con el que entra la tabla al elegirlo. */
   size?: { cols: number; rows: number };
   /** Convierte el texto seleccionado en tabla (no inserta un bloque). */
   convertSelection?: boolean;
@@ -78,83 +79,83 @@ export interface SlashItem {
 export const SLASH_ITEMS: SlashItem[] = [
   {
     id: "h1",
-    label: "Título 1",
-    hint: "# Título",
+    labelKey: "menu.h1",
+    hintKey: "menu.hint.h1",
     snippet: "# ",
     caretOffset: "# ".length,
     Icon: Heading1,
   },
   {
     id: "h2",
-    label: "Título 2",
-    hint: "## Título",
+    labelKey: "menu.h2",
+    hintKey: "menu.hint.h2",
     snippet: "## ",
     caretOffset: "## ".length,
     Icon: Heading2,
   },
   {
     id: "h3",
-    label: "Título 3",
-    hint: "### Título",
+    labelKey: "menu.h3",
+    hintKey: "menu.hint.h3",
     snippet: "### ",
     caretOffset: "### ".length,
     Icon: Heading3,
   },
   {
     id: "ul",
-    label: "Lista con viñetas",
-    hint: "- Ítem",
+    labelKey: "menu.bulletList",
+    hintKey: "menu.hint.ul",
     snippet: "- ",
     caretOffset: "- ".length,
     Icon: List,
   },
   {
     id: "ol",
-    label: "Lista numerada",
-    hint: "1. Ítem",
+    labelKey: "menu.numberedList",
+    hintKey: "menu.hint.ol",
     snippet: "1. ",
     caretOffset: "1. ".length,
     Icon: ListOrdered,
   },
   {
     id: "task",
-    label: "Lista de tareas",
-    hint: "- [ ]",
+    labelKey: "menu.taskList",
+    hintKey: "menu.hint.task",
     snippet: "- [ ] ",
     caretOffset: "- [ ] ".length,
     Icon: ListChecks,
   },
   {
     id: "quote",
-    label: "Cita",
-    hint: "> Cita",
+    labelKey: "menu.quote",
+    hintKey: "menu.hint.quote",
     snippet: "> ",
     caretOffset: "> ".length,
     Icon: Quote,
   },
   {
     id: "code",
-    label: "Bloque de código",
-    hint: "```…```",
+    labelKey: "menu.code",
+    hintKey: "menu.hint.code",
     snippet: "```md\n\n```",
     caretOffset: "```md\n".length,
     Icon: Code,
   },
   {
+    // La tabla entra directa, de 3×5: el grupo de tamaños con dos pasos se
+    // quitó porque al elegirlo no siempre caía en la casilla correcta.
     id: "table",
-    label: "Tabla",
-    hint: "elige el tamaño",
-    // Al elegirlo el menú pasa al grupo de tamaños (columnas × filas) en vez de
-    // insertar: así la tabla nace con las medidas que quieres.
-    snippet: "| Columna 1 | Columna 2 |\n| --- | --- |\n|  |  |",
-    caretOffset: "| Columna 1 | Columna 2 |\n| --- | --- |\n|  |  |".length,
+    labelKey: "menu.table",
+    hintKey: "menu.hint.table",
+    snippet: "",
+    caretOffset: 0,
     Icon: Table,
-    stage: "table-size",
+    size: { cols: 3, rows: 5 },
   },
   {
     id: "table-from-text",
-    label: "Tabla desde el texto",
-    hint: "convierte lo seleccionado",
+    labelKey: "table.fromSelection",
+    hintKey: "menu.hint.tableFromText",
     snippet: "",
     caretOffset: 0,
     Icon: Table,
@@ -162,40 +163,40 @@ export const SLASH_ITEMS: SlashItem[] = [
   },
   {
     id: "hr",
-    label: "Separador",
-    hint: "---",
+    labelKey: "menu.hr",
+    hintKey: "menu.hint.hr",
     snippet: "\n---\n",
     caretOffset: "\n---\n".length,
     Icon: Minus,
   },
   {
     id: "image",
-    label: "Imagen",
-    hint: "![alt](ruta)",
+    labelKey: "menu.image",
+    hintKey: "menu.hint.image",
     snippet: "![descripción](ruta/imagen.png)",
     caretOffset: "![descripción](ruta/imagen.png)".length,
     Icon: ImageIcon,
   },
   {
     id: "math",
-    label: "Fórmula (KaTeX)",
-    hint: "$x^2 + y^2 = z^2$",
+    labelKey: "menu.math",
+    hintKey: "menu.hint.math",
     snippet: "$x^2 + y^2 = z^2$",
     caretOffset: "$x^2 + y^2 = z^2$".length,
     Icon: Sigma,
   },
   {
     id: "mathblock",
-    label: "Bloque de fórmulas",
-    hint: "$$…$$",
+    labelKey: "menu.mathblock",
+    hintKey: "menu.hint.mathblock",
     snippet: "$$\n\n$$",
     caretOffset: "$$\n".length,
     Icon: Sigma,
   },
   {
     id: "mermaid",
-    label: "Diagrama (Mermaid)",
-    hint: "```mermaid",
+    labelKey: "menu.mermaid",
+    hintKey: "menu.hint.mermaid",
     snippet: "```mermaid\nflowchart LR\n  A --> B\n```",
     caretOffset: "```mermaid\nflowchart LR".length,
     Icon: Workflow,
@@ -208,52 +209,53 @@ export const SLASH_ITEMS: SlashItem[] = [
  * rechazarían, así que el menú se vuelve de la propia tabla.
  */
 export const TABLE_SLASH_ITEMS: SlashItem[] = [
-  { id: "t-add-row", label: "Agregar fila", hint: "debajo", snippet: "", caretOffset: 0, Icon: Rows3, tableAction: "add-row" },
-  { id: "t-add-col", label: "Agregar columna", hint: "a la derecha", snippet: "", caretOffset: 0, Icon: Columns3, tableAction: "add-col" },
-  { id: "t-del-row", label: "Eliminar fila", hint: "la del cursor", snippet: "", caretOffset: 0, Icon: Trash, tableAction: "del-row" },
-  { id: "t-del-col", label: "Eliminar columna", hint: "la del cursor", snippet: "", caretOffset: 0, Icon: Trash, tableAction: "del-col" },
-  { id: "t-del-table", label: "Eliminar tabla", hint: "solo aquí se quita", snippet: "", caretOffset: 0, Icon: Trash, tableAction: "del-table" },
-  { id: "t-merge", label: "Combinar celdas", hint: "las marcadas", snippet: "", caretOffset: 0, Icon: TableCellsMerge, tableAction: "merge" },
-  { id: "t-unmerge", label: "Descombinar celdas", hint: "vuelve a separarlas", snippet: "", caretOffset: 0, Icon: SplitSquareHorizontal, tableAction: "unmerge" },
-  { id: "t-toggle-task", label: "Marcar / desmarcar", hint: "casilla de tarea", snippet: "", caretOffset: 0, Icon: CheckSquare2, tableAction: "toggle-task" },
-  { id: "t-sort-asc", label: "Ordenar A→Z", hint: "por esta columna", snippet: "", caretOffset: 0, Icon: ArrowDownUp, tableAction: "sort-asc" },
-  { id: "t-sort-desc", label: "Ordenar Z→A", hint: "por esta columna", snippet: "", caretOffset: 0, Icon: ArrowUpDown, tableAction: "sort-desc" },
-  { id: "t-align-left", label: "Alinear a la izquierda", hint: "columna", snippet: "", caretOffset: 0, Icon: AlignLeft, tableAction: "align-left" },
-  { id: "t-align-center", label: "Centrar columna", hint: "columna", snippet: "", caretOffset: 0, Icon: AlignCenter, tableAction: "align-center" },
-  { id: "t-align-right", label: "Alinear a la derecha", hint: "columna", snippet: "", caretOffset: 0, Icon: AlignRight, tableAction: "align-right" },
-  { id: "t-move-up", label: "Subir fila", hint: "Alt+↑", snippet: "", caretOffset: 0, Icon: ArrowUp, tableAction: "move-up" },
-  { id: "t-move-down", label: "Bajar fila", hint: "Alt+↓", snippet: "", caretOffset: 0, Icon: ArrowDown, tableAction: "move-down" },
-  { id: "t-dup-up", label: "Duplicar fila arriba", hint: "Mayús+Alt+↑", snippet: "", caretOffset: 0, Icon: Copy, tableAction: "dup-up" },
-  { id: "t-dup-down", label: "Duplicar fila abajo", hint: "Mayús+Alt+↓", snippet: "", caretOffset: 0, Icon: Copy, tableAction: "dup-down" },
-  { id: "t-clipboard", label: "Copiar celdas", hint: "al portapapeles", snippet: "", caretOffset: 0, Icon: ClipboardCopy, tableAction: "clipboard" },
+  { id: "t-add-row", labelKey: "table.addRow", hintKey: "menu.hint.below", snippet: "", caretOffset: 0, Icon: Rows3, tableAction: "add-row" },
+  { id: "t-add-col", labelKey: "table.addColumn", hintKey: "menu.hint.right", snippet: "", caretOffset: 0, Icon: Columns3, tableAction: "add-col" },
+  { id: "t-del-row", labelKey: "table.deleteRow", hintKey: "menu.hint.cursorRow", snippet: "", caretOffset: 0, Icon: Trash, tableAction: "del-row" },
+  { id: "t-del-col", labelKey: "table.deleteColumn", hintKey: "menu.hint.cursorColumn", snippet: "", caretOffset: 0, Icon: Trash, tableAction: "del-col" },
+  { id: "t-del-table", labelKey: "table.deleteTable", hintKey: "menu.hint.onlyHere", snippet: "", caretOffset: 0, Icon: Trash, tableAction: "del-table" },
+  { id: "t-toggle-task", labelKey: "table.toggleTask", hintKey: "menu.hint.taskBox", snippet: "", caretOffset: 0, Icon: CheckSquare2, tableAction: "toggle-task" },
+  { id: "t-sort-asc", labelKey: "table.sortAsc", hintKey: "menu.hint.thisColumn", snippet: "", caretOffset: 0, Icon: ArrowDownUp, tableAction: "sort-asc" },
+  { id: "t-sort-desc", labelKey: "table.sortDesc", hintKey: "menu.hint.thisColumn", snippet: "", caretOffset: 0, Icon: ArrowUpDown, tableAction: "sort-desc" },
+  { id: "t-align-left", labelKey: "table.alignLeft", hintKey: "menu.hint.column", snippet: "", caretOffset: 0, Icon: AlignLeft, tableAction: "align-left" },
+  { id: "t-align-center", labelKey: "table.alignCenter", hintKey: "menu.hint.column", snippet: "", caretOffset: 0, Icon: AlignCenter, tableAction: "align-center" },
+  { id: "t-align-right", labelKey: "table.alignRight", hintKey: "menu.hint.column", snippet: "", caretOffset: 0, Icon: AlignRight, tableAction: "align-right" },
+  { id: "t-move-up", labelKey: "table.moveRowUp", hintKey: "menu.hint.shortcutUp", snippet: "", caretOffset: 0, Icon: ArrowUp, tableAction: "move-up" },
+  { id: "t-move-down", labelKey: "table.moveRowDown", hintKey: "menu.hint.shortcutDown", snippet: "", caretOffset: 0, Icon: ArrowDown, tableAction: "move-down" },
+  { id: "t-dup-up", labelKey: "table.duplicateRowUp", hintKey: "menu.hint.duplicateUp", snippet: "", caretOffset: 0, Icon: Copy, tableAction: "dup-up" },
+  { id: "t-dup-down", labelKey: "table.duplicateRowDown", hintKey: "menu.hint.duplicateDown", snippet: "", caretOffset: 0, Icon: Copy, tableAction: "dup-down" },
+  { id: "t-merge-cells", labelKey: "table.mergeCells", hintKey: "menu.hint.mergeCells", snippet: "", caretOffset: 0, Icon: TableCellsMerge, tableAction: "merge-cells" },
+  { id: "t-unmerge-cells", labelKey: "table.unmergeCells", hintKey: "menu.hint.unmergeCells", snippet: "", caretOffset: 0, Icon: TableCellsSplit, tableAction: "unmerge-cells" },
+  { id: "t-clipboard", labelKey: "table.copyCells", hintKey: "menu.hint.clipboard", snippet: "", caretOffset: 0, Icon: ClipboardCopy, tableAction: "clipboard" },
 ];
 
-/** Tamaños del grupo al que lleva «Tabla»: columnas × filas. */
-export const TABLE_SIZE_ITEMS: SlashItem[] = [
-  { id: "s-2x2", label: "2 × 2", hint: "pequeña", snippet: "", caretOffset: 0, Icon: Table, size: { cols: 2, rows: 2 } },
-  { id: "s-3x3", label: "3 × 3", hint: "la de siempre", snippet: "", caretOffset: 0, Icon: Table, size: { cols: 3, rows: 3 } },
-  { id: "s-4x3", label: "4 × 3", hint: "ancha", snippet: "", caretOffset: 0, Icon: Table, size: { cols: 4, rows: 3 } },
-  { id: "s-3x5", label: "3 × 5", hint: "alta", snippet: "", caretOffset: 0, Icon: Table, size: { cols: 3, rows: 5 } },
-  { id: "s-5x5", label: "5 × 5", hint: "grande", snippet: "", caretOffset: 0, Icon: Table, size: { cols: 5, rows: 5 } },
-];
+/** Traductor que lee el idioma activo: lo usan funciones que no son componentes. */
+function getTranslator() {
+  return activeT;
+}
+
+type Translator = (key: MessageKey, params?: TranslateParams) => string;
+
+/** Etiqueta de un elemento del menú. */
+export function itemLabel(t: Translator, item: SlashItem): string {
+  return t(item.labelKey);
+}
 
 /**
  * Elementos del menú «/». Dentro de una tabla solo van las acciones de la
- * propia tabla; fuera, los bloques de siempre más el grupo de tamaños.
+ * propia tabla; fuera, los bloques de siempre —la tabla ya entra directa, sin
+ * pantalla de tamaños—.
  */
-export function filterSlashItems(
-  query: string,
-  insideTable = false,
-  stage: "root" | "table-size" = "root",
-): SlashItem[] {
-  const pool = stage === "table-size" ? TABLE_SIZE_ITEMS : insideTable ? TABLE_SLASH_ITEMS : SLASH_ITEMS;
+export function filterSlashItems(query: string, insideTable = false): SlashItem[] {
+  const t = getTranslator();
+  const pool = insideTable ? TABLE_SLASH_ITEMS : SLASH_ITEMS;
   const wanted = normalizeWikiText(query);
   if (!wanted) return pool;
 
   return pool.filter(
     (item) =>
-      normalizeWikiText(item.label).includes(wanted) ||
-      normalizeWikiText(item.hint).includes(wanted),
+      normalizeWikiText(t(item.labelKey)).includes(wanted) ||
+      normalizeWikiText(t(item.hintKey)).includes(wanted),
   );
 }
 
@@ -310,10 +312,20 @@ function MenuShell({
   );
 }
 
-function MenuHints() {
+/**
+ * Pista del pie del menú: a la izquierda, cómo se maneja; a la derecha, el
+ * atajo corto de la tabla, escrito tal cual se teclea.
+ */
+function MenuHints({ corner }: { corner?: string }) {
+  const t = useT();
   return (
-    <p className="mt-1 border-t border-gus-border px-3 pt-1.5 pb-1 text-[10px] text-gus-muted/70">
-      ↑↓ mover · Intro elegir · Esc cerrar
+    <p className="mt-1 flex items-center gap-2 border-t border-gus-border px-3 pt-1.5 pb-1 text-[10px] text-gus-muted/70">
+      <span className="min-w-0 flex-1 truncate">{t("menu.hints")}</span>
+      {corner && (
+        <span className="shrink-0 font-mono text-gus-muted" aria-hidden="true">
+          {corner}
+        </span>
+      )}
     </p>
   );
 }
@@ -321,6 +333,8 @@ function MenuHints() {
 export interface SpellSuggestMenuProps {
   anchor: CaretAnchor;
   suggestions: string[];
+  /** Combinación que aplica la corrección, tal y como se haya configurado. */
+  applyCombo?: string;
   /** Índice recorrido con ↑/↓; -1 mientras nadie ha tocado la lista. */
   index: number;
   onPick: (suggestion: string) => void;
@@ -336,7 +350,9 @@ export function SpellSuggestMenu({
   suggestions,
   index,
   onPick,
+  applyCombo = "Alt+Enter",
 }: SpellSuggestMenuProps) {
+  const t = useT();
   const boxRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
 
@@ -363,7 +379,7 @@ export function SpellSuggestMenu({
     <motion.div
       ref={boxRef}
       role="listbox"
-      aria-label="Correcciones sugeridas"
+      aria-label={t("menu.spellLabel")}
       initial={{ opacity: 0, y: -4 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -4 }}
@@ -395,9 +411,7 @@ export function SpellSuggestMenu({
       ))}
 
       <p className="mt-1 border-t border-gus-border px-3 pt-1.5 pb-1 text-[10px] text-gus-muted/70">
-        {index >= 0
-          ? "↑↓ elegir · Intro o 1-9 aplicar · Esc cerrar"
-          : "Alt+Intro aplicar · ↑↓ para elegir · Esc cerrar"}
+        {t(index >= 0 ? "menu.spellHintPicking" : "menu.spellHintIdle", { combo: applyCombo })}
       </p>
     </motion.div>
   );
@@ -422,19 +436,17 @@ export function WikiLinkMenu({
   onPick,
   onHover,
 }: WikiLinkMenuProps) {
+  const t = useT();
   const active = notes.length > 0 ? Math.min(index, notes.length - 1) : -1;
 
   return (
-    <MenuShell anchor={anchor} label="Notas para enlazar" activeIndex={active}>
+    <MenuShell anchor={anchor} label={t("menu.wikiLabel")} activeIndex={active}>
       {loading && notes.length === 0 && (
-        <p className="px-3 py-2 text-xs text-gus-muted">Buscando notas del vault…</p>
+        <p className="px-3 py-2 text-xs text-gus-muted">{t("menu.wikiSearching")}</p>
       )}
 
       {!loading && notes.length === 0 && (
-        <p className="px-3 py-2 text-xs text-gus-muted">
-          Ninguna nota coincide con «{query}». Pulsa Intro para escribir el
-          enlace a mano.
-        </p>
+        <p className="px-3 py-2 text-xs text-gus-muted">{t("menu.wikiEmpty", { query })}</p>
       )}
 
       {notes.map((note, position) => {
@@ -491,14 +503,16 @@ export function SlashMenu({
   label,
   insideTable = false,
 }: SlashMenuProps) {
+  const t = useT();
   const active = items.length > 0 ? Math.min(index, items.length - 1) : -1;
-  const title = label ?? (insideTable ? "Acciones de la tabla" : "Bloques para insertar");
+  const title =
+    label ?? t(insideTable ? "menu.tableActions" : "menu.blocks");
 
   return (
     <MenuShell anchor={anchor} label={title} activeIndex={active}>
       {items.length === 0 && (
         <p className="px-3 py-2 text-xs text-gus-muted">
-          {insideTable ? "Ninguna acción coincide." : "Ningún bloque coincide."}
+          {t(insideTable ? "menu.tableNoMatch" : "menu.blockNoMatch")}
         </p>
       )}
 
@@ -523,15 +537,15 @@ export function SlashMenu({
             )}
           >
             <Icon className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
-            <span className="min-w-0 flex-1 truncate">{item.label}</span>
+            <span className="min-w-0 flex-1 truncate">{itemLabel(t, item)}</span>
             <span className="max-w-32 shrink-0 truncate font-mono text-[10px] text-gus-muted/70">
-              {item.hint}
+              {t(item.hintKey)}
             </span>
           </button>
         );
       })}
 
-      <MenuHints />
+      <MenuHints corner="/ta" />
     </MenuShell>
   );
 }

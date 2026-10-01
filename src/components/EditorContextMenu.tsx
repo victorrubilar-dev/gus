@@ -1,7 +1,9 @@
 import { useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { toLocalCoord } from "../lib/uiZoom";
-import type { TableCellRect } from "../lib/tableLayout";
 import {
+  AlignCenter,
+  AlignLeft,
+  AlignRight,
   Blocks,
   ArrowDownUp,
   ArrowUpDown,
@@ -22,16 +24,19 @@ import {
   Pilcrow,
   Rows3,
   Scissors,
-  SplitSquareHorizontal,
   SquareDashedMousePointer,
   Strikethrough,
   Table,
   TableCellsMerge,
+  TableCellsSplit,
   Trash,
   Type,
 } from "lucide-react";
 import clsx from "clsx";
-import { SLASH_ITEMS, type SlashItem, type TableAction } from "./EditorMenus";
+import { SLASH_ITEMS, itemLabel, type SlashItem, type TableAction } from "./EditorMenus";
+import { useT } from "../lib/i18n";
+import type { MessageKey } from "../lib/i18n/core";
+import type { TableMenuState } from "../lib/tableLayout";
 
 export type FormatKind = "bold" | "italic" | "strike" | "code" | "link";
 
@@ -39,28 +44,7 @@ export type FormatKind = "bold" | "italic" | "strike" | "code" | "link";
 export type { TableAction };
 
 /** Contexto de la tabla en la que se ha pulsado el clic derecho. */
-export interface TableMenuInfo {
-  block: { start: number; end: number };
-  /** Fila sobre la que se pulsó (nunca la del separador). */
-  line: number;
-  /** Columna sobre la que se pulsó. */
-  col: number;
-  cols: number;
-  /** Filas de cuerpo que abarca la selección (para combinar). */
-  rows: number[];
-  /** Rectángulo de celdas marcadas (para combinarlas en una, como en Excel). */
-  rect: TableCellRect | null;
-  canDeleteRow: boolean;
-  canDeleteCol: boolean;
-  /** Hay una combinación de celdas en pie (para deshacerla). */
-  merged: boolean;
-  /** Con dos filas o más de cuerpo, se puede ordenar. */
-  canSort: boolean;
-  canMoveUp: boolean;
-  canMoveDown: boolean;
-  /** La celda del cursor es una casilla de tarea («- [ ]»). */
-  canToggleTask: boolean;
-}
+export type TableMenuInfo = TableMenuState;
 
 export interface ContextSpell {
   mode: "misspelled" | "personal";
@@ -104,12 +88,12 @@ const TEXT_IDS = new Set(["h1", "h2", "h3", "ul", "ol", "task", "quote"]);
 const INSERT_ITEMS = SLASH_ITEMS.filter((item) => INSERT_IDS.has(item.id));
 const TEXT_ITEMS = SLASH_ITEMS.filter((item) => TEXT_IDS.has(item.id));
 
-const FORMAT_ITEMS: { kind: FormatKind; label: string; Icon: typeof Bold }[] = [
-  { kind: "bold", label: "Negrita", Icon: Bold },
-  { kind: "italic", label: "Cursiva", Icon: Italic },
-  { kind: "strike", label: "Tachado", Icon: Strikethrough },
-  { kind: "code", label: "Código en línea", Icon: Code },
-  { kind: "link", label: "Enlace", Icon: Link },
+const FORMAT_ITEMS: { kind: FormatKind; labelKey: MessageKey; Icon: typeof Bold }[] = [
+  { kind: "bold", labelKey: "menu.bold", Icon: Bold },
+  { kind: "italic", labelKey: "menu.italic", Icon: Italic },
+  { kind: "strike", labelKey: "menu.strikethrough", Icon: Strikethrough },
+  { kind: "code", labelKey: "menu.codeInline", Icon: Code },
+  { kind: "link", labelKey: "menu.link", Icon: Link },
 ];
 
 type Group = "insert" | "text" | "format";
@@ -117,53 +101,54 @@ type Group = "insert" | "text" | "format";
 /** Filas del submenú de tabla, en el orden en que las pide el usuario. */
 const TABLE_ITEMS: {
   action: TableAction;
-  label: string;
+  labelKey: MessageKey;
   Icon: typeof Blocks;
   /** Indica si la opción está disponible en este bloque. */
   enabled: (table: TableMenuInfo) => boolean;
 }[] = [
-  { action: "add-row", label: "Agregar fila", Icon: Rows3, enabled: () => true },
-  { action: "add-col", label: "Agregar columna", Icon: Columns3, enabled: () => true },
+  { action: "add-row", labelKey: "table.addRow", Icon: Rows3, enabled: () => true },
+  { action: "add-col", labelKey: "table.addColumn", Icon: Columns3, enabled: () => true },
   {
     action: "del-row",
-    label: "Eliminar fila",
+    labelKey: "table.deleteRow",
     Icon: Minus,
     enabled: (table) => table.canDeleteRow,
   },
   {
     action: "del-col",
-    label: "Eliminar columna",
+    labelKey: "table.deleteColumn",
     Icon: Minus,
     enabled: (table) => table.canDeleteCol,
   },
-  { action: "del-table", label: "Eliminar tabla", Icon: Trash, enabled: () => true },
   {
-    action: "merge",
-    label: "Combinar celdas",
+    action: "merge-cells",
+    labelKey: "table.mergeCells",
     Icon: TableCellsMerge,
-    // Con un rectángulo marcado se combinan esas celdas; si no, hacen falta dos
-    // filas o más seleccionadas.
-    enabled: (table) => table.rect !== null || table.rows.length >= 2,
+    enabled: (table) => table.canMerge,
   },
   {
-    action: "unmerge",
-    label: "Descombinar celdas",
-    Icon: SplitSquareHorizontal,
-    enabled: (table) => table.merged,
+    action: "unmerge-cells",
+    labelKey: "table.unmergeCells",
+    Icon: TableCellsSplit,
+    enabled: (table) => table.canUnmerge,
   },
+  { action: "del-table", labelKey: "table.deleteTable", Icon: Trash, enabled: () => true },
   {
     action: "sort-asc",
-    label: "Ordenar A→Z",
+    labelKey: "table.sortAsc",
     Icon: ArrowDownUp,
     enabled: (table) => table.canSort,
   },
   {
     action: "sort-desc",
-    label: "Ordenar Z→A",
+    labelKey: "table.sortDesc",
     Icon: ArrowUpDown,
     enabled: (table) => table.canSort,
   },
-  { action: "clipboard", label: "Copiar celdas", Icon: ClipboardCopy, enabled: () => true },
+  { action: "align-left", labelKey: "table.alignLeft", Icon: AlignLeft, enabled: () => true },
+  { action: "align-center", labelKey: "table.alignCenter", Icon: AlignCenter, enabled: () => true },
+  { action: "align-right", labelKey: "table.alignRight", Icon: AlignRight, enabled: () => true },
+  { action: "clipboard", labelKey: "table.copyCells", Icon: ClipboardCopy, enabled: () => true },
 ];
 
 export default function EditorContextMenu({
@@ -186,6 +171,7 @@ export default function EditorContextMenu({
   onClose,
   onReopen,
 }: EditorContextMenuProps) {
+  const t = useT();
   const menuRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ left: x, top: y });
   const [group, setGroup] = useState<Group | null>(null);
@@ -270,7 +256,7 @@ export default function EditorContextMenu({
       <div
         ref={menuRef}
         role="menu"
-        aria-label="Menú del editor"
+        aria-label={t("editor.menu")}
         style={{ left: pos.left, top: pos.top }}
         onMouseDown={holdFocus}
         className="absolute min-w-56 rounded-xl border border-gus-border bg-gus-card py-1 shadow-2xl"
@@ -279,13 +265,10 @@ export default function EditorContextMenu({
           <>
             <div className="flex items-center gap-2 px-3 pt-1.5 pb-1 text-[10px] font-medium uppercase tracking-wide text-gus-muted">
               <Table className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-              Tabla
+              {t("table.menu")}
             </div>
 
-            {TABLE_ITEMS.filter(
-              (item) =>
-                item.action !== "merge" || table.rect !== null || table.rows.length >= 2,
-            ).map((item) => {
+            {TABLE_ITEMS.map((item) => {
               const enabled = item.enabled(table);
               return (
                 <button
@@ -297,7 +280,7 @@ export default function EditorContextMenu({
                   className={clsx(ITEM, "disabled:pointer-events-none disabled:opacity-40")}
                 >
                   <item.Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                  {item.label}
+                  {t(item.labelKey)}
                 </button>
               );
             })}
@@ -310,7 +293,7 @@ export default function EditorContextMenu({
           <>
             {spell.mode === "misspelled" &&
               (spell.suggestions.length === 0 ? (
-                <p className="px-3 py-1.5 text-xs text-gus-muted">Sin sugerencias</p>
+                <p className="px-3 py-1.5 text-xs text-gus-muted">{t("ctx.noSuggestions")}</p>
               ) : (
                 spell.suggestions.map((item) => (
                   <button
@@ -331,17 +314,17 @@ export default function EditorContextMenu({
               <>
                 <button type="button" role="menuitem" onClick={onAdd} className={ITEM}>
                   <BookPlus className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                  Agregar al diccionario
+                  {t("ctx.addToDictionary")}
                 </button>
                 <button type="button" role="menuitem" onClick={onIgnore} className={ITEM}>
                   <EyeOff className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                  Ignorar esta sesión
+                  {t("ctx.ignoreSession")}
                 </button>
               </>
             ) : (
               <button type="button" role="menuitem" onClick={onRemove} className={ITEM}>
                 <BookX className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                Quitar del diccionario
+                {t("ctx.removeFromDict")}
               </button>
             )}
 
@@ -352,12 +335,12 @@ export default function EditorContextMenu({
         <button
           type="button"
           role="menuitem"
-          title={hasSelection ? "Cortar la selección" : "Cortar la línea entera"}
+          title={hasSelection ? t("ctx.cutSelection") : t("ctx.cutLine")}
           onClick={onCut}
           className={ITEM}
         >
           <Scissors className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-          Cortar
+          {t("ctx.cut")}
         </button>
         <button
           type="button"
@@ -367,26 +350,26 @@ export default function EditorContextMenu({
           className={clsx(ITEM, "disabled:pointer-events-none disabled:opacity-40")}
         >
           <Copy className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-          Copiar
+          {t("ctx.copy")}
         </button>
         <button type="button" role="menuitem" onClick={() => onPaste(false)} className={ITEM}>
           <ClipboardPaste className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-          Pegar
+          {t("ctx.paste")}
         </button>
         <button type="button" role="menuitem" onClick={() => onPaste(true)} className={ITEM}>
           <Eraser className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-          Pegar sin formato
+          {t("ctx.pasteText")}
         </button>
         <button type="button" role="menuitem" onClick={onSelectAll} className={ITEM}>
           <SquareDashedMousePointer className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-          Seleccionar todo
+          {t("ctx.selectAll")}
         </button>
 
         <div className="my-1 border-t border-gus-border" />
 
-        {groupRow("insert", "Insertar", Blocks, INSERT_ITEMS.length)}
-        {groupRow("text", "Texto", Type, TEXT_ITEMS.length)}
-        {groupRow("format", "Formato", Pilcrow, FORMAT_ITEMS.length)}
+        {groupRow("insert", t("menu.group.insert"), Blocks, INSERT_ITEMS.length)}
+        {groupRow("text", t("menu.group.text"), Type, TEXT_ITEMS.length)}
+        {groupRow("format", t("menu.group.format"), Pilcrow, FORMAT_ITEMS.length)}
       </div>
 
       {subShell(
@@ -400,7 +383,7 @@ export default function EditorContextMenu({
             className={ITEM}
           >
             <item.Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-            {item.label}
+            {itemLabel(t, item)}
           </button>
         )),
       )}
@@ -416,7 +399,7 @@ export default function EditorContextMenu({
             className={ITEM}
           >
             <item.Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-            {item.label}
+            {itemLabel(t, item)}
           </button>
         )),
       )}
@@ -432,7 +415,7 @@ export default function EditorContextMenu({
             className={ITEM}
           >
             <item.Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-            {item.label}
+            {t(item.labelKey)}
           </button>
         )),
       )}

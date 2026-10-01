@@ -17,6 +17,8 @@ import {
 import { getDocument, GlobalWorkerOptions, type PDFDocumentProxy, type RenderTask } from "pdfjs-dist";
 import workerSrc from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import PdfNotesPanel from "./PdfNotesPanel";
+import { useT } from "../lib/i18n";
+import type { MessageKey } from "../lib/i18n/core";
 import {
   loadPdfDoc,
   loadPdfProgress,
@@ -61,19 +63,19 @@ const ICON_BUTTON_ACTIVE =
 const CHIP_BUTTON =
   "flex items-center gap-1 rounded border border-gus-accent/40 bg-gus-accent/15 px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-gus-accent transition-colors hover:bg-gus-accent/25 focus-visible:outline-2 focus-visible:outline-gus-accent/60";
 
-const TOOLS: { id: Tool; label: string; Icon: typeof Hand }[] = [
-  { id: "mano", label: "Mano", Icon: Hand },
-  { id: "marcador", label: "Marcador", Icon: Highlighter },
-  { id: "lapiz", label: "Lápiz", Icon: Pencil },
-  { id: "borrador", label: "Borrador", Icon: Eraser },
+const TOOLS: { id: Tool; labelKey: MessageKey; Icon: typeof Hand }[] = [
+  { id: "mano", labelKey: "pdf.tool.hand", Icon: Hand },
+  { id: "marcador", labelKey: "pdf.tool.highlight", Icon: Highlighter },
+  { id: "lapiz", labelKey: "pdf.tool.pen", Icon: Pencil },
+  { id: "borrador", labelKey: "pdf.tool.eraser", Icon: Eraser },
 ];
 
 // Filtros del modo lectura: solo afectan a lo que se ve en el visor.
 const FILTER_ORDER: PdfReadFilter[] = ["normal", "sepia", "noche"];
-const FILTER_INFO: Record<PdfReadFilter, { Icon: typeof Sun; label: string }> = {
-  normal: { Icon: Sun, label: "Normal" },
-  sepia: { Icon: Coffee, label: "Sepia" },
-  noche: { Icon: Moon, label: "Noche" },
+const FILTER_INFO: Record<PdfReadFilter, { Icon: typeof Sun; labelKey: MessageKey }> = {
+  normal: { Icon: Sun, labelKey: "pdf.filter.normal" },
+  sepia: { Icon: Coffee, labelKey: "pdf.filter.sepia" },
+  noche: { Icon: Moon, labelKey: "pdf.filter.night" },
 };
 const FILTER_CSS: Record<PdfReadFilter, string | undefined> = {
   normal: undefined,
@@ -190,6 +192,7 @@ export default function PdfViewer({
   title: string;
   path: string;
 }) {
+  const t = useT();
   const [status, setStatus] = useState<ViewerStatus>("loading");
   const [pages, setPages] = useState<PageSize[]>([]);
   const [zoom, setZoom] = useState(1);
@@ -557,7 +560,7 @@ export default function PdfViewer({
     <div
       ref={rootRef}
       role="region"
-      aria-label={`Documento ${title}`}
+      aria-label={t("pdf.viewer.documentAria", { title })}
       className={clsx(
         "gus-pdf-root flex h-full w-full min-h-0 flex-col",
         fallbackFs && "fixed inset-0 z-50 bg-gus-bg",
@@ -569,8 +572,8 @@ export default function PdfViewer({
             type="button"
             onClick={() => changeZoom(-ZOOM_STEP)}
             disabled={zoom <= MIN_ZOOM}
-            aria-label="Alejar"
-            title="Alejar"
+            aria-label={t("pdf.viewer.zoomOut")}
+            title={t("pdf.viewer.zoomOut")}
             className={ICON_BUTTON}
           >
             −
@@ -578,7 +581,7 @@ export default function PdfViewer({
           <button
             type="button"
             onClick={() => setZoom(1)}
-            title="Restablecer al 100 % · Ctrl + rueda para el zoom"
+            title={t("pdf.viewer.zoomResetHint")}
             className="min-w-12 px-1 font-mono tabular-nums transition-colors hover:text-gus-accent focus-visible:outline-2 focus-visible:outline-gus-accent/60"
           >
             {Math.round(zoom * 100)} %
@@ -587,8 +590,8 @@ export default function PdfViewer({
             type="button"
             onClick={() => changeZoom(ZOOM_STEP)}
             disabled={zoom >= MAX_ZOOM}
-            aria-label="Acercar"
-            title="Acercar"
+            aria-label={t("pdf.viewer.zoomIn")}
+            title={t("pdf.viewer.zoomIn")}
             className={ICON_BUTTON}
           >
             +
@@ -597,22 +600,24 @@ export default function PdfViewer({
 
         {pages.length > 0 && (
           <span className="border-l border-gus-border pl-2 font-mono tabular-nums">
-            {currentPage}/{pages.length}
+            {t("pdf.viewer.page", { page: currentPage, total: pages.length })}
             <span className="ml-1.5 text-gus-muted">
-              {pages.length} {pages.length === 1 ? "página" : "páginas"}
+              {t("pdf.viewer.pages", { count: pages.length })}
             </span>
           </span>
         )}
 
         <div className="flex items-center gap-1 border-l border-gus-border pl-2">
-          {TOOLS.map(({ id, label, Icon }) => (
+          {TOOLS.map(({ id, labelKey, Icon }) => (
             <button
               key={id}
               type="button"
               onClick={() => setTool(id)}
-              aria-label={label}
+              aria-label={t(labelKey)}
               aria-pressed={tool === id}
-              title={id === "mano" ? "Mano (leer y desplazar)" : `${label} — Esc vuelve a la mano`}
+              title={t(id === "mano" ? "pdf.tool.handHint" : "pdf.tool.drawingHint", {
+                name: t(labelKey),
+              })}
               className={tool === id ? ICON_BUTTON_ACTIVE : ICON_BUTTON}
             >
               <Icon size={13} />
@@ -628,7 +633,7 @@ export default function PdfViewer({
                 type="button"
                 onClick={() => setPenColor(color)}
                 aria-label={`Color ${color}`}
-                title="Color del trazo"
+                title={t("pdf.viewer.strokeColor")}
                 style={{ backgroundColor: color }}
                 className={clsx(
                   "h-3.5 w-3.5 rounded-full border transition-transform",
@@ -642,14 +647,14 @@ export default function PdfViewer({
         )}
 
         {tool !== "mano" && (
-          <span className="text-gus-accent/80">Dibujando · Esc vuelve a la mano</span>
+          <span className="text-gus-accent/80">{t("pdf.viewer.drawingHint")}</span>
         )}
 
         <button
           type="button"
           onClick={cycleFilter}
-          aria-label={`Modo lectura: ${filterInfo.label}`}
-          title={`Modo lectura: ${filterInfo.label} (clic para cambiar de filtro)`}
+          aria-label={t("pdf.viewer.filterAria", { name: t(filterInfo.labelKey) })}
+          title={t("pdf.viewer.filterHint", { name: t(filterInfo.labelKey) })}
           className={clsx(
             "flex h-6 items-center gap-1 rounded border px-1.5 text-[11px] transition-colors focus-visible:outline-2 focus-visible:outline-gus-accent/60",
             doc.filter === "normal"
@@ -658,7 +663,7 @@ export default function PdfViewer({
           )}
         >
           <filterInfo.Icon size={13} />
-          {filterInfo.label}
+          {t(filterInfo.labelKey)}
         </button>
 
         {doc.bookmark ? (
@@ -666,17 +671,17 @@ export default function PdfViewer({
             <button
               type="button"
               onClick={() => jumpToPage(doc.bookmark!.page)}
-              title={`Ir a la página marcada (${doc.bookmark.page})`}
+              title={t("pdf.viewer.goToBookmark", { page: doc.bookmark.page })}
               className={CHIP_BUTTON}
             >
               <Bookmark size={11} fill="currentColor" />
-              pág. {doc.bookmark.page}
+              {t("pdf.viewer.pageShort", { page: doc.bookmark.page })}
             </button>
             <button
               type="button"
               onClick={() => setDoc((current) => ({ ...current, bookmark: null }))}
-              aria-label="Quitar marcapáginas"
-              title="Quitar marcapáginas"
+              aria-label={t("pdf.viewer.removeBookmark")}
+              title={t("pdf.viewer.removeBookmark")}
               className={clsx(ICON_BUTTON, "h-5 w-5")}
             >
               <X size={11} />
@@ -686,8 +691,8 @@ export default function PdfViewer({
           <button
             type="button"
             onClick={() => setDoc((current) => ({ ...current, bookmark: { page: currentPage } }))}
-            aria-label={`Marcar la página ${currentPage}`}
-            title={`Marcar la página ${currentPage} para no perder el progreso`}
+            aria-label={t("pdf.viewer.markPage", { page: currentPage })}
+            title={t("pdf.viewer.markPageHint", { page: currentPage })}
             className={ICON_BUTTON}
           >
             <Bookmark size={13} />
@@ -698,9 +703,9 @@ export default function PdfViewer({
           <button
             type="button"
             onClick={() => setNotesOpen((current) => !current)}
-            aria-label={notesOpen ? "Ocultar notas del PDF" : "Mostrar notas del PDF"}
+            aria-label={t(notesOpen ? "pdf.viewer.hideNotes" : "pdf.viewer.showNotes")}
             aria-pressed={notesOpen}
-            title="Notas al margen del PDF"
+            title={t("pdf.viewer.notesHint")}
             className={notesOpen ? ICON_BUTTON_ACTIVE : ICON_BUTTON}
           >
             <StickyNote size={13} />
@@ -708,8 +713,8 @@ export default function PdfViewer({
           <button
             type="button"
             onClick={() => void toggleFullscreen()}
-            aria-label={fsActive ? "Salir de pantalla completa" : "Pantalla completa"}
-            title={fsActive ? "Salir de pantalla completa (Esc)" : "Pantalla completa"}
+            aria-label={t(fsActive ? "pdf.viewer.exitFullscreen" : "pdf.viewer.fullscreen")}
+            title={t(fsActive ? "pdf.viewer.exitFullscreenHint" : "pdf.viewer.fullscreen")}
             className={fsActive ? ICON_BUTTON_ACTIVE : ICON_BUTTON}
           >
             {fsActive ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
@@ -722,7 +727,7 @@ export default function PdfViewer({
           {status === "error" && (
             <div className="flex h-full items-center justify-center px-6 text-center">
               <div className="flex max-w-md flex-col gap-2">
-                <p className="text-sm text-gus-muted">No se pudo renderizar el PDF</p>
+                <p className="text-sm text-gus-muted">{t("pdf.viewer.renderError")}</p>
                 {error && <p className="break-words text-xs text-rose-300">{error}</p>}
               </div>
             </div>
@@ -730,7 +735,7 @@ export default function PdfViewer({
 
           {status !== "error" && pages.length === 0 && (
             <div className="flex h-full items-center justify-center">
-              <p className="text-sm text-gus-muted">Cargando documento…</p>
+              <p className="text-sm text-gus-muted">{t("pdf.viewer.loadingDoc")}</p>
             </div>
           )}
 

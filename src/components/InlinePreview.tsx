@@ -4,6 +4,7 @@ import { Check, Copy, Plus } from "lucide-react";
 import type { SpellFn } from "../lib/spellCheck";
 import { codeBlocks } from "../lib/codeBlocks";
 import {
+  computeTableMerges,
   delimiterAlign,
   sourceSegments,
   splitTableCells,
@@ -12,6 +13,7 @@ import {
   type TableCellRect,
   type TableCellSpan,
 } from "../lib/tableLayout";
+import { useT } from "../lib/i18n";
 
 export interface SourceLine {
   text: string;
@@ -340,8 +342,6 @@ interface TableBlockProps {
   rect: TableCellRect | null;
   /** Anchura en píxeles de cada columna (null = la que dé el contenido). */
   widths: number[] | null;
-  /** Rectángulo de celdas combinadas en una sola (estilo Excel). */
-  merge: TableCellRect | null;
   /** Barra «+» de este bloque bajo el ratón (null = ninguna visible). */
   hoveredBar: "side" | "bottom" | null;
   /** Columna cuyo borde derecho se puede arrastrar (null = ninguna). */
@@ -423,20 +423,27 @@ function TableBlock({
   selection,
   rect,
   widths,
-  merge,
   hoveredBar,
   hoverResize,
 }: TableBlockProps) {
+  const t = useT();
   const rows = lines.map((line) => splitTableCells(line.text));
   const aligns = rows[1].map((cell) => delimiterAlign(cell.text));
   const cols = rows.reduce((max, cells) => Math.max(max, cells.length), 1);
   const lastRow = rows.length - 1;
+  // `lines` llega recortada al bloque (índice 0 = cabecera), así que el
+  // cálculo es relativo: pasar el `start` del documento dejaba el mapa vacío
+  // o desplazado y las celdas «>»/«^» se pintaban como texto literal.
+  const merges = useMemo(
+    () => computeTableMerges(lines, 0, rows.length - 1),
+    [lines, rows.length],
+  );
   /** Línea interior de la tabla: solo en el borde derecho y el de abajo de cada
    *  celda, para que el contorno de la tarjeta no se dibuje dos veces. */
   const cellLine = "1px solid color-mix(in oklab, var(--color-gus-border) 70%, transparent)";
-  const cellBorders = (col: number, row: number) => ({
-    borderRight: col < cols - 1 ? cellLine : undefined,
-    borderBottom: row < lastRow ? cellLine : undefined,
+  const cellBorders = (col: number, row: number, colSpan = 1, rowSpan = 1) => ({
+    borderRight: col + colSpan - 1 < cols - 1 ? cellLine : undefined,
+    borderBottom: (row === 0 ? 0 : row) + rowSpan - 1 < lastRow ? cellLine : undefined,
   });
 
   // El rectángulo marcado manda sobre la escalera de texto: se pinta el cuadro
@@ -455,13 +462,6 @@ function TableBlock({
   };
   const boxTop = boxed ? gridRowOf(rect.top) : 0;
   const boxBottom = boxed ? gridEndRowOf(rect.bottom) : 0;
-  // La combinación de celdas vive en la esquina de arriba a la izquierda: las
-  // demás celdas del rectángulo no se dibujan (la combinada las ocupa todas).
-  const mergeHere =
-    merge !== null && merge.top >= start && merge.bottom <= start + lastRow ? merge : null;
-  const mergeTop = mergeHere ? gridRowOf(mergeHere.top) : 0;
-  const mergeBottom = mergeHere ? gridEndRowOf(mergeHere.bottom) : 0;
-
   /**
    * Asa del borde de una columna: al arrastrarla se cambia la anchura de esa
    * columna. El asa invisible es la zona de agarre (7 px junto al borde) y solo
@@ -469,23 +469,16 @@ function TableBlock({
    * inertes, así que MarkdownEditor la encuentra por coordenadas con
    * `data-resize-*`.
    */
-  const resizeHandle = (col: number, leftEdge = false) => (
+  const resizeHandle = (col: number) => (
     <span
       data-resize-block={start}
       data-resize-col={col}
-      {...(leftEdge ? { "data-merge-edge": "" } : {})}
-      style={{
-        top: 0,
-        bottom: 0,
-        ...(leftEdge ? { left: 0, right: "auto" } : { right: 0 }),
-        width: 7,
-      }}
+      style={{ top: 0, bottom: 0, right: 0, width: 7 }}
       className="absolute z-20 cursor-col-resize"
     >
       <span
         className={clsx(
-          "absolute inset-y-0 w-[2px] bg-gus-accent transition-opacity duration-150",
-          leftEdge ? "left-0" : "right-0",
+          "absolute inset-y-0 w-[2px] bg-gus-accent transition-opacity duration-150 right-0",
           hoverResize?.col === col ? "opacity-100" : "opacity-0",
         )}
       />
@@ -546,6 +539,13 @@ function TableBlock({
           while (padded.length < cols) padded.push(null);
 
           return padded.map((span, c) => {
+            const mergeInfo = merges.get(`${i}:${c}`);
+            if (mergeInfo?.isContinuation) {
+              return null;
+            }
+            const colSpan = mergeInfo?.colSpan ?? 1;
+            const rowSpan = mergeInfo?.rowSpan ?? 1;
+
             const active =
               tableCaret !== null && tableCaret.line === line && tableCaret.col === c;
             const cellStart = lineStart + (span?.start ?? lines[i].text.length);
@@ -561,46 +561,6 @@ function TableBlock({
                 ? selection
                 : null;
 
-            // Las celdas de la combinación no se dibujan: la combinada (arriba a
-            // la izquierda) ocupa todo el rectángulo.
-            if (
-              mergeHere !== null &&
-              line >= mergeHere.top &&
-              line <= mergeHere.bottom &&
-              c >= mergeHere.left &&
-              c <= mergeHere.right
-            ) {
-              if (line !== mergeHere.top || c !== mergeHere.left) return null;
-              return (
-                <div
-                  key={`merge-${i}.${c}`}
-                  data-cell=""
-                  data-merge-cell=""
-                  data-line={line}
-                  data-col={c}
-                  style={{
-                    gridRow: `${mergeTop} / ${mergeBottom}`,
-                    gridColumn: `${mergeHere.left + 1} / ${mergeHere.right + 2}`,
-                    ...cellBorders(mergeHere.right, mergeHere.bottom - start + 1),
-                    textAlign: aligns[mergeHere.left] ?? "left",
-                  }}
-                  className={clsx(
-                    "relative px-3",
-                    header ? "bg-gus-card/60 font-semibold text-gus-text" : "text-gus-text",
-                    active && "bg-gus-accent/10 ring-2 ring-inset ring-gus-accent",
-                  )}
-                >
-                  <div className="whitespace-pre-wrap break-words">
-                    {span === null
-                      ? null
-                      : cellNodes(span, cellStart, cellEnd, active, cellSelection, spell)}
-                  </div>
-                  {resizeHandle(mergeHere.right)}
-                  {resizeHandle(mergeHere.left, true)}
-                </div>
-              );
-            }
-
             return (
               <div
                 key={`${i}.${c}`}
@@ -608,9 +568,13 @@ function TableBlock({
                 data-line={line}
                 data-col={c}
                 style={{
-                  gridRow: header ? "1 / span 2" : i + 1,
-                  gridColumn: c + 1,
-                  ...cellBorders(c, i),
+                  gridRow: header
+                    ? "1 / span 2"
+                    : rowSpan > 1
+                      ? `${i + 1} / span ${rowSpan}`
+                      : i + 1,
+                  gridColumn: colSpan > 1 ? `${c + 1} / span ${colSpan}` : c + 1,
+                  ...cellBorders(c, i, colSpan, rowSpan),
                   textAlign: aligns[c] ?? "left",
                 }}
                 className={clsx(
@@ -624,7 +588,7 @@ function TableBlock({
                     ? null
                     : cellNodes(span, cellStart, cellEnd, active, cellSelection, spell)}
                 </div>
-                {resizeHandle(c)}
+                {resizeHandle(c + colSpan - 1)}
               </div>
             );
           });
@@ -650,7 +614,7 @@ function TableBlock({
         data-add-col={cols - 1}
         data-add-block={start}
         data-add-bar="side"
-        title="Agregar columna a la derecha"
+        title={t("table.addColumn")}
         aria-hidden="true"
         style={{
           top: 0,
@@ -669,7 +633,7 @@ function TableBlock({
         data-add-row={start + lastRow}
         data-add-block={start}
         data-add-bar="bottom"
-        title="Agregar fila debajo"
+        title={t("table.addRow")}
         aria-hidden="true"
         style={{
           left: 0,
@@ -741,6 +705,7 @@ const PreviewLine = memo(function PreviewLine({
   caretAt = null,
   marked = null,
 }: PreviewLineProps) {
+  const t = useT();
   if (raw) {
     const marked = spell && !code ? spellNodes(text, spell, "w") : text;
     return (
@@ -764,11 +729,18 @@ const PreviewLine = memo(function PreviewLine({
     const at = caretAt === null ? -1 : Math.max(0, Math.min(caretAt, text.length));
     if (at < 0 && to <= from) return render(text);
 
-    const marks: { at: number; node: ReactNode }[] = [];
-    if (at >= 0) marks.push({ at, node: <span key="caret" className="gus-cell-caret" /> });
+    // `end` marca hasta dónde avanza el flujo tras insertar el nodo: el de la
+    // selección trae ya dentro el texto de su trozo, así que hay que saltarlo
+    // entero (si no, el resto se volvería a pintar desde el principio del
+    // trozo y la línea saldría duplicada «al costado»).
+    const marks: { at: number; end: number; node: ReactNode }[] = [];
+    if (at >= 0) {
+      marks.push({ at, end: at, node: <span key="caret" className="gus-cell-caret" /> });
+    }
     if (to > from) {
       marks.push({
         at: from,
+        end: to,
         node: (
           <span key="mark" className="rounded-[2px] bg-gus-accent/30">
             {render(text.slice(from, to))}
@@ -785,7 +757,7 @@ const PreviewLine = memo(function PreviewLine({
         nodes.push(<span key={`t${cursor}`}>{render(text.slice(cursor, mark.at))}</span>);
       }
       nodes.push(mark.node);
-      cursor = mark.at;
+      cursor = Math.max(cursor, mark.end);
     }
     if (cursor < text.length) {
       nodes.push(<span key={`t${cursor}`}>{render(text.slice(cursor))}</span>);
@@ -814,7 +786,7 @@ const PreviewLine = memo(function PreviewLine({
     block?.first === true ? (
       <span
         data-copy-line={block.start}
-        title="Copiar código"
+        title={t("editor.copyCode")}
         className={clsx(
           "absolute top-1.5 right-1.5 z-10 flex items-center rounded px-2 py-1 font-sans text-xs",
           copied
@@ -905,8 +877,6 @@ export interface InlinePreviewProps {
   hoveredBar?: TableBarHover | null;
   /** Anchura fijada de cada columna por bloque (null = la que dé el contenido). */
   tableWidths?: Map<number, number[]> | null;
-  /** Rectángulo de celdas combinadas en una sola (estilo Excel). */
-  tableMerge?: TableCellRect | null;
   /** Cursor dibujado en el overlay, dentro de la línea del cursor. */
   caretAt?: number | null;
   /** Selección absoluta que el overlay pinta (el textarea la lleva oculta). */
@@ -935,7 +905,6 @@ export default function InlinePreview({
   tableRect = null,
   hoveredBar = null,
   tableWidths = null,
-  tableMerge = null,
   hoverResize = null,
   caretAt = null,
   caretSel = null,
@@ -1010,7 +979,6 @@ export default function InlinePreview({
               selection={tableSelection}
               rect={tableRect}
               widths={tableWidths?.get(segment.start) ?? null}
-              merge={tableMerge}
               hoveredBar={
                 hoveredBar && hoveredBar.block === segment.start ? hoveredBar.part : null
               }

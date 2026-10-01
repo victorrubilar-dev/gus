@@ -1,6 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Command } from "cmdk";
+import { useT } from "../lib/i18n";
+import { comboFor, comboLabel, type ShortcutMap } from "../lib/shortcuts";
 import { invoke } from "@tauri-apps/api/core";
 import { FileText, Loader2, Search } from "lucide-react";
 
@@ -16,6 +18,8 @@ export interface CommandPaletteProps {
   onOpenChange: (open: boolean) => void;
   vaultPath: string | null;
   onSelectNote: (note: { path: string; name: string }) => void;
+  /** Atajos vigentes: la pista de abajo enseña el que se ha configurado. */
+  shortcuts?: ShortcutMap;
 }
 
 type LoadState = "loading" | "ready" | "error";
@@ -34,27 +38,13 @@ export default function CommandPalette({
   onOpenChange,
   vaultPath,
   onSelectNote,
+  shortcuts,
 }: CommandPaletteProps) {
+  const t = useT();
+  const paletteCombo = comboFor(shortcuts, "commandPalette");
   const [notes, setNotes] = useState<VaultNote[]>([]);
   const [status, setStatus] = useState<LoadState>("loading");
   const [error, setError] = useState<string | null>(null);
-
-  const openRef = useRef(open);
-  openRef.current = open;
-
-  useEffect(() => {
-    if (!vaultPath) return;
-
-    function onKeyDown(event: KeyboardEvent) {
-      const combo = (event.ctrlKey || event.metaKey) && (event.key === "k" || event.key === "p");
-      if (!combo) return;
-      event.preventDefault();
-      onOpenChange(!openRef.current);
-    }
-
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [vaultPath, onOpenChange]);
 
   useEffect(() => {
     if (!open) return;
@@ -109,20 +99,20 @@ export default function CommandPalette({
           <motion.div
             role="dialog"
             aria-modal="true"
-            aria-label="Paleta de comandos"
+            aria-label={t("palette.label")}
             initial={{ opacity: 0, y: -14, scale: 0.97 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -10, scale: 0.98 }}
             transition={{ type: "spring", stiffness: 420, damping: 32 }}
             className="w-full max-w-xl overflow-hidden rounded-2xl border border-gus-border bg-gus-panel shadow-2xl shadow-black/40"
           >
-            <Command loop label="Paleta de comandos">
+            <Command loop label={t("palette.label")}>
               <div className="flex items-center gap-2 border-b border-gus-border px-4 py-3">
                 <Search className="h-4 w-4 shrink-0 text-gus-accent" aria-hidden="true" />
                 <Command.Input
                   autoFocus
-                  placeholder="Buscar una nota…"
-                  aria-label="Buscar una nota"
+                  placeholder={t("palette.placeholder")}
+                  aria-label={t("palette.placeholder")}
                   className="min-w-0 flex-1 bg-transparent text-sm text-gus-text outline-none placeholder:text-gus-muted"
                 />
                 <kbd className="shrink-0 rounded border border-gus-border bg-gus-card px-1.5 py-0.5 text-[10px] text-gus-muted">
@@ -134,20 +124,20 @@ export default function CommandPalette({
                 {status === "loading" && (
                   <p className="flex items-center gap-2 px-3 py-6 text-sm text-gus-muted">
                     <Loader2 className="h-4 w-4 animate-spin text-gus-accent" aria-hidden="true" />
-                    Cargando notas…
+                    {t("common.loading")}
                   </p>
                 )}
 
                 {status === "error" && (
                   <p role="alert" className="px-3 py-6 text-sm text-rose-300">
-                    {error ?? "No se pudieron cargar las notas"}
+                    {error ?? t("palette.loadError")}
                   </p>
                 )}
 
                 {status === "ready" && (
                   <>
                     <Command.Group
-                      heading="Notas"
+                      heading={t("app.tab.notes")}
                       className="[&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:pt-2 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:text-[11px] [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:tracking-wider [&_[cmdk-group-heading]]:text-gus-muted [&_[cmdk-group-heading]]:uppercase"
                     >
                       {notes.map((note) => (
@@ -172,7 +162,7 @@ export default function CommandPalette({
 
                     {/* Solo con la lista cargada: durante la carga cmdk contaría «sin coincidencias». */}
                     <Command.Empty className="px-3 py-6 text-center text-sm text-gus-muted">
-                      No hay notas que coincidan
+                      {t("palette.empty")}
                     </Command.Empty>
                   </>
                 )}
@@ -182,13 +172,13 @@ export default function CommandPalette({
                 <span>
                   <kbd className="rounded border border-gus-border bg-gus-card px-1 py-0.5">↑</kbd>{" "}
                   <kbd className="rounded border border-gus-border bg-gus-card px-1 py-0.5">↓</kbd>{" "}
-                  navegar ·{" "}
+                  {t("palette.hintNavigate")} ·{" "}
                   <kbd className="rounded border border-gus-border bg-gus-card px-1 py-0.5">
                     Enter
                   </kbd>{" "}
-                  abrir
+                  {t("palette.hintOpen")}
                 </span>
-                <span className="text-gus-muted/70">Ctrl+K / Ctrl+P</span>
+                <span className="text-gus-muted/70">{comboLabel(paletteCombo) || "Ctrl+K"}</span>
               </div>
             </Command>
           </motion.div>

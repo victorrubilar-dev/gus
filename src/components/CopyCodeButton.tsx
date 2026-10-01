@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import clsx from "clsx";
 import { Check, Copy } from "lucide-react";
 import { copyText } from "../lib/clipboard";
+import { useT } from "../lib/i18n";
 
 interface CopyCodeButtonProps {
   /** Contenido del bloque de código que se lleva al portapapeles. */
@@ -14,6 +15,7 @@ interface CopyCodeButtonProps {
  * encima; al pulsarlo el icono cambia a ✔ durante un segundo.
  */
 export default function CopyCodeButton({ text }: CopyCodeButtonProps) {
+  const t = useT();
   const [copied, setCopied] = useState(false);
   const timerRef = useRef<number | null>(null);
 
@@ -36,8 +38,8 @@ export default function CopyCodeButton({ text }: CopyCodeButtonProps) {
     <button
       type="button"
       onClick={() => void handleClick()}
-      title={copied ? "Copiado" : "Copiar"}
-      aria-label={copied ? "Código copiado" : "Copiar código"}
+      title={copied ? t("common.copied") : t("common.copy")}
+      aria-label={copied ? t("editor.codeCopied") : t("editor.copyCode")}
       className={clsx(
         "absolute top-1.5 right-1.5 z-10 rounded px-2 py-1.5 transition-colors",
         // Invisible hasta que el ratón entra en el bloque (como Obsidian, que

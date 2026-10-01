@@ -1,9 +1,9 @@
 import type { Hunspell } from "hunspell-wasm";
 
-export type SpellLang = "off" | "es" | "en-US" | "en-GB" | "fr" | "de" | "pt-BR" | "it";
+export type SpellLang = "es" | "en-US" | "en-GB" | "fr" | "de" | "pt-BR" | "it";
 
+/** Diccionario que se puede activar. Varios a la vez: basta con que uno reconozca la palabra. */
 export const SPELL_LANGUAGES: readonly { value: SpellLang; label: string }[] = [
-  { value: "off", label: "Desactivado" },
   { value: "es", label: "Español" },
   { value: "en-US", label: "English (US)" },
   { value: "en-GB", label: "English (UK)" },
@@ -12,6 +12,12 @@ export const SPELL_LANGUAGES: readonly { value: SpellLang; label: string }[] = [
   { value: "pt-BR", label: "Português (Brasil)" },
   { value: "it", label: "Italiano" },
 ];
+
+export function isSpellLang(value: unknown): value is SpellLang {
+  return (
+    typeof value === "string" && SPELL_LANGUAGES.some((entry) => entry.value === value)
+  );
+}
 
 export type SpellChecker = (word: string) => boolean;
 
@@ -32,6 +38,12 @@ export interface SpellEngine {
   suggest: (word: string, limit?: number) => string[];
 }
 
+/**
+ * Motores ya compilados, como máximo `MAX_CACHED`. Con dos o tres idiomas
+ * activos se quedan todos Residentes; con muchos se va cayendo el más viejo.
+ */
+const MAX_CACHED = 3;
+
 const instances = new Map<SpellLang, LoadedEngine>();
 
 const pending = new Map<SpellLang, Promise<SpellEngine | null>>();
@@ -39,6 +51,29 @@ const pending = new Map<SpellLang, Promise<SpellEngine | null>>();
 const personalWords = new Set<string>();
 
 const ignoredWords = new Set<string>();
+
+/** Descarta los diccionarios que ya no se usan y libera su memoria. */
+export function releaseSpellEngines(keep: readonly SpellLang[]): void {
+  const wanted = new Set(keep);
+  for (const [lang, loaded] of instances) {
+    if (wanted.has(lang)) continue;
+    loaded.hunspell.dispose();
+    instances.delete(lang);
+  }
+}
+
+export function normalizeSpellLangs(raw: unknown): SpellLang[] {
+  const values = Array.isArray(raw) ? raw : [];
+  const langs: SpellLang[] = [];
+  for (const value of values) {
+    if (!isSpellLang(value) || langs.includes(value)) continue;
+    langs.push(value);
+  }
+  // Sin diccionario el corrector queda apagado, así que se vuelve al de siempre.
+  return langs.length > 0 ? langs : [...DEFAULT_SPELL_LANGS];
+}
+
+export const DEFAULT_SPELL_LANGS: readonly SpellLang[] = ["es"];
 
 export function setPersonalWords(words: readonly string[]): void {
   personalWords.clear();
@@ -68,8 +103,6 @@ export function ignoreWord(word: string): void {
 }
 
 export function loadSpellEngine(lang: SpellLang): Promise<SpellEngine | null> {
-  if (lang === "off") return Promise.resolve(null);
-
   const ready = instances.get(lang);
   if (ready) return Promise.resolve(ready.engine);
 
@@ -79,10 +112,17 @@ export function loadSpellEngine(lang: SpellLang): Promise<SpellEngine | null> {
   const task = buildEngine(lang)
     .then((loaded) => {
       if (loaded) {
-        // Un solo diccionario en memoria: cambiar de idioma libera el anterior.
-        for (const previous of instances.values()) previous.hunspell.dispose();
-        instances.clear();
         instances.set(lang, loaded);
+        // Cada diccionario ocupa unos pocos MB: si se acumulan, se sueltan los
+        // que llevan más tiempo sin usarse (menos los que se acaban de pedir).
+        if (instances.size > MAX_CACHED) {
+          const candidates = [...instances.keys()].filter((key) => !currentLangs.has(key));
+          while (instances.size > MAX_CACHED && candidates.length > 0) {
+            const oldest = candidates.shift() as SpellLang;
+            instances.get(oldest)?.hunspell.dispose();
+            instances.delete(oldest);
+          }
+        }
       }
       return loaded ? loaded.engine : null;
     })
@@ -91,6 +131,50 @@ export function loadSpellEngine(lang: SpellLang): Promise<SpellEngine | null> {
 
   pending.set(lang, task);
   return task;
+}
+
+/** Los idiomas que la app está usando ahora: no se sueltan al hacer hueco. */
+const currentLangs = new Set<SpellLang>();
+
+/**
+ * Motor que reconoce una palabra si la acepta cualquiera de los diccionarios
+ * indicados. Las sugerencias se juntan: primero las del primer idioma (el que
+ * más se usa), quitando repetidas. Los que no se puedan cargar se ignoran, y si
+ * no queda ninguno el corrector simplemente no corrige.
+ */
+export async function loadSpellEngines(langs: readonly SpellLang[]): Promise<SpellEngine | null> {
+  const wanted = langs.filter(isSpellLang);
+  currentLangs.clear();
+  for (const lang of wanted) currentLangs.add(lang);
+
+  releaseSpellEngines(wanted);
+  if (wanted.length === 0) return null;
+
+  const engines = (await Promise.all(wanted.map((lang) => loadSpellEngine(lang)))).filter(
+    (engine): engine is SpellEngine => engine !== null,
+  );
+
+  if (engines.length === 0) return null;
+
+  // Un solo diccionario: se usa tal cual (no hay nada que combinar).
+  if (engines.length === 1) return engines[0];
+
+  return {
+    correct: (word) => engines.some((engine) => engine.correct(word)),
+    suggest: (word, limit = 6) => {
+      const seen = new Set<string>();
+      const out: string[] = [];
+      for (const engine of engines) {
+        for (const item of engine.suggest(word, limit)) {
+          if (seen.has(item)) continue;
+          seen.add(item);
+          out.push(item);
+          if (out.length >= limit) return out;
+        }
+      }
+      return out;
+    },
+  };
 }
 
 async function buildEngine(lang: SpellLang): Promise<LoadedEngine | null> {

@@ -1,4 +1,6 @@
 import {
+  Children,
+  cloneElement,
   isValidElement,
   lazy,
   Suspense,
@@ -10,6 +12,7 @@ import {
   type ClipboardEvent,
   type KeyboardEvent,
   type MouseEvent,
+  type ReactElement,
   type ReactNode,
   type Ref,
 } from "react";
@@ -37,7 +40,7 @@ import {
   getPersonalWords,
   ignoreWord,
   isPersonalWord,
-  loadSpellEngine,
+  loadSpellEngines,
   removePersonalWord,
   spellSegments,
   spellWordAt,
@@ -45,6 +48,8 @@ import {
   type SpellFn,
   type SpellLang,
 } from "../lib/spellCheck";
+import { comboFor, comboLabel, matchesCombo, type ShortcutId, type ShortcutMap } from "../lib/shortcuts";
+import { useT } from "../lib/i18n";
 import { charWidthPx, offsetAtPointer } from "../lib/pointerOffset";
 import { toLocalCoord } from "../lib/uiZoom";
 import {
@@ -54,15 +59,17 @@ import {
   cellRectClipboard,
   cellIndexAtPointer,
   clearTableCells,
+  computeTableMerges,
   duplicateTableRow,
   insertTableColumn,
   insertTableRow,
-  isTableRow,
+  isTableMergePossible,
   isTableTaskCell,
+  isTableUnmergePossible,
   lineIndexOf,
   lineStartOffset,
-  mergeTableRows,
-  mergeTableRect,
+  actionRect,
+  mergeTableCells,
   moveTableRow,
   neighbourColumn,
   planTableDeletion,
@@ -80,9 +87,9 @@ import {
   tableFromDelimited,
   tableIntersects,
   tableRows,
-  tableSelectionRows,
   tableSkeleton,
   toggleTableTask,
+  unmergeTableCells,
   visualLength,
   wordRangeAt,
   type TableCellCaret,
@@ -163,7 +170,10 @@ export interface MarkdownEditorProps {
   autoSave?: (draft: EditorDraft) => void;
   debounceMs?: number;
   fontSize?: number;
-  spellLang?: SpellLang;
+  /** Diccionarios activos del corrector. Vacío o sin definir = apagado. */
+  spellLangs?: SpellLang[];
+  /** Combinaciones de teclado, ya resueltas desde Ajustes → Atajos. */
+  shortcuts?: ShortcutMap;
   spellWords?: string[];
   onSpellWordsChange?: (words: string[]) => void;
   autoSaveEnabled?: boolean;
@@ -218,7 +228,6 @@ interface EditorMenu {
   index: number;
   anchor: CaretAnchor;
   /** Grupo del menú «/»: el normal o el de tamaños de tabla. */
-  stage?: "root" | "table-size";
 }
 
 interface ContextMenuState {
@@ -250,6 +259,30 @@ const FORMAT_MARKERS: Record<Exclude<FormatKind, "link">, [string, string]> = {
 
 /** Los bloques de la vista previa, al estilo Obsidian: fondo de bloque,
  *  esquinas a 4px (--code-radius) y sin borde (--code-border-width: 0px). */
+/* ------------------------------------------------------------------ */
+/* Traza temporal de tablas (se activa con /tmp/gus-tables.log)          */
+/* ------------------------------------------------------------------ */
+function traza(evento: string, datos: Record<string, unknown> = {}) {
+  try {
+    // eslint-disable-next-line no-undef
+    // Se enciende con «pnpm tauri dev -- --traza-tablas» o poniendo
+    // VITE_TRAZA_TABLAS=1; en una build normal no hay traza.
+    const existe =
+      typeof window !== "undefined" &&
+      (window.localStorage.getItem("gus-tables-log") === "1" ||
+        import.meta.env.VITE_TRAZA_TABLAS === "1");
+    if (!existe) return;
+    const linea = JSON.stringify({ evento, ...datos });
+    void fetch("http://127.0.0.1:5198/log", {
+      method: "POST",
+      body: linea,
+      mode: "no-cors",
+    }).catch(() => {});
+  } catch {
+    /* la traza nunca debe romper el editor */
+  }
+}
+
 const PRE_CLASS =
   "gus-scrollbar overflow-x-auto whitespace-pre-wrap rounded bg-gus-card px-4 py-3 text-[13px] leading-relaxed text-gus-text [&_code]:rounded-none [&_code]:bg-transparent [&_code]:px-0 [&_code]:text-inherit";
 
@@ -287,6 +320,94 @@ function readCodeBlock(children: ReactNode): { text: string; mermaid: boolean } 
 
   walk(children);
   return { text: parts.join("").replace(/\n+$/, ""), mermaid };
+}
+
+/** Texto plano de un nodo React: hace falta para leer los marcadores «>» y «^». */
+function plainText(node: ReactNode): string {
+  if (node === null || node === undefined || typeof node === "boolean") return "";
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(plainText).join("");
+  if (isValidElement(node)) {
+    return plainText((node.props as { children?: ReactNode }).children);
+  }
+  return "";
+}
+
+/** Fila React (tr) con forma de línea de tabla markdown, lista para parsearla. */
+function rowToMarkdown(row: ReactElement): string {
+  const cells = Children.toArray((row.props as { children?: ReactNode }).children);
+  const body = cells
+    // Los «|» de la celda se escapan: splitTableCells respeta el escape y el
+    // recuento de columnas no se rompe.
+    .map((cell) => plainText(cell).replace(/\|/g, "\\|"))
+    .map((text) => ` ${text} `)
+    .join("|");
+  return `|${body}|`;
+}
+
+/**
+ * Pinta las celdas combinadas en el modo de visualización: las celdas «>» y «^»
+ * que dejó la fusión desaparecen y la maestra acumula colSpan/rowSpan. El
+ * cálculo es el mismo que usa el modo edición (computeTableMerges), corrido
+ * sobre una rejilla reconstruida aquí, porque react-markdown ya ha convertido
+ * la tabla en filas y ya no trae el separador `|---|`.
+ */
+function applyPreviewMerges(children: ReactNode): ReactNode {
+  const sections = Children.toArray(children);
+
+  // 1. Rejilla de texto: cabecera, separador inventado (el HTML no lo lleva) y cuerpo.
+  const grid: TableLine[] = [];
+  const placements: { section: ReactElement; rows: { row: ReactElement; at: number | null }[] }[] =
+    [];
+  let needsSeparator = true;
+
+  for (const section of sections) {
+    if (!isValidElement(section)) continue;
+    const rows = Children.toArray((section.props as { children?: ReactNode }).children);
+    const placed: { row: ReactElement; at: number | null }[] = [];
+
+    for (const row of rows) {
+      if (!isValidElement(row)) continue;
+      placed.push({ row, at: grid.length });
+      grid.push({ text: rowToMarkdown(row), code: false });
+      if (needsSeparator) {
+        needsSeparator = false;
+        grid.push({ text: "| --- |", code: false });
+      }
+    }
+
+    placements.push({ section, rows: placed });
+  }
+
+  const merges = computeTableMerges(grid, 0, Math.max(0, grid.length - 1));
+
+  // 2. Volver a montar las secciones sin las celdas de continuación, con los
+  //    spans en las maestras (cloneElement conserva los props de react-markdown).
+  return placements.map(({ section, rows }) => {
+    const rebuiltRows = rows.map(({ row, at }) => {
+      const cells = Children.toArray((row.props as { children?: ReactNode }).children);
+      const merged: ReactNode[] = [];
+
+      cells.forEach((cell, c) => {
+        const info = at === null ? undefined : merges.get(`${at}:${c}`);
+        if (info?.isContinuation) return;
+        if (info && (info.colSpan > 1 || info.rowSpan > 1) && isValidElement(cell)) {
+          merged.push(
+            cloneElement(cell as ReactElement<{ colSpan?: number; rowSpan?: number }>, {
+              colSpan: info.colSpan,
+              rowSpan: info.rowSpan,
+            }),
+          );
+        } else {
+          merged.push(cell);
+        }
+      });
+
+      return cloneElement(row, {}, merged);
+    });
+
+    return cloneElement(section, {}, rebuiltRows);
+  });
 }
 
 const MarkdownBody = lazy(async () => {
@@ -400,7 +521,8 @@ export default function MarkdownEditor({
   autoSave,
   debounceMs = DEFAULT_DEBOUNCE,
   fontSize,
-  spellLang,
+  spellLangs,
+  shortcuts,
   spellWords = [],
   onSpellWordsChange,
   autoSaveEnabled = true,
@@ -436,8 +558,6 @@ export default function MarkdownEditor({
   const [tableRect, setTableRect] = useState<TableCellRect | null>(null);
   /** Anchura en píxeles de cada columna por bloque (null = la que dé el texto). */
   const [tableWidths, setTableWidths] = useState<Map<number, number[]> | null>(null);
-  /** Rectángulo de celdas combinadas en una sola (estilo Excel). */
-  const [tableMerge, setTableMerge] = useState<TableCellRect | null>(null);
   /** Cursor y selección absolutos, para que los pinte el overlay. */
   const [caretMark, setCaretMark] = useState<{ at: number; sel: TableSelection } | null>(null);
   /** Alto ganado por cada tabla al envolver sus celdas (por bloque). */
@@ -449,8 +569,6 @@ export default function MarkdownEditor({
   const tableAnchorRef = useRef<{ line: number; col: number } | null>(null);
   /** Espejo de tableWidths para leerlo en los escuchadores del arrastre. */
   const colWidthsRef = useRef<Map<number, number[]>>(new Map());
-  /** Espejo de tableMerge: la combinación sigue en pie mientras la estructura no cambie. */
-  const tableMergeRef = useRef<TableCellRect | null>(null);
   /** Espejo de tableDrift: se lee al hacer scroll y al situar el cursor. */
   const tableDriftRef = useRef<Map<number, TableDrift>>(tableDrift);
   /** Asas de redimensionar del overlay (se buscan por coordenadas). */
@@ -464,7 +582,6 @@ export default function MarkdownEditor({
   // Espejos para los escuchadores: un ref se lee en cualquier momento y no
   // depende del cierre del render.
   colWidthsRef.current = tableWidths ?? new Map();
-  tableMergeRef.current = tableMerge;
   tableDriftRef.current = tableDrift;
   /** Arrastre de columna en curso: bloque, columna, x inicial y anchuras. */
   const resizeDragRef = useRef<{
@@ -473,8 +590,14 @@ export default function MarkdownEditor({
     startX: number;
     widths: number[];
   } | null>(null);
-  /** Selección previa al clic derecho: el motor puede colapsarla al pulsar. */
   const rightClickSelRef = useRef<[number, number] | null>(null);
+  /**
+   * Último rectángulo de celdas que se ha pintado, tal cual. La selección de
+   * texto del motor no sirve para esto: al hacer clic derecho la colapsa, así
+   * que el clic se apoya en este espejo, que solo se actualiza al pintar y se
+   * suelta cuando la persona empieza otra selección (arrastre, clic o teclas).
+   */
+  const markedRectRef = useRef<TableCellRect | null>(null);
   /**
    * Arrastre de selección en marcha: el extremo que quedó fijo en el clic (el
    * desplazamiento en el documento) y la celda de la que salió, que sigue siendo
@@ -489,9 +612,25 @@ export default function MarkdownEditor({
   const [zoomTick, setZoomTick] = useState(0);
   const [composing, setComposing] = useState(false);
   const [scrollbarWidth, setScrollbarWidth] = useState(0);
+  const t = useT();
   const [engine, setEngine] = useState<SpellEngine | null>(null);
+  /** Combinación vigente de «guardar», para la pista de la cabecera. */
+  const saveCombo = comboLabel(comboFor(shortcuts, "saveNote")) || "Ctrl+S";
+  /**
+   * Atajos vigentes. Se leen de un ref para que los escuchadores del editor
+   * (que se enganchan una vez) vean siempre el último valor sin re-suscribirse.
+   */
+  const shortcutsRef = useRef<ShortcutMap | null>(shortcuts ?? null);
+  shortcutsRef.current = shortcuts ?? null;
   const [spellRevision, setSpellRevision] = useState(0);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  /**
+   * Espejo del menú abierto. El estado de React todavía no está aplicado cuando
+   * el navegador mueve el cursor por el clic derecho (pasa *después* de abrirse
+   * el menú), así que para esa comprobación hace falta un ref, que se pone al
+   * instante de abrirlo.
+   */
+  const contextMenuOpenRef = useRef(false);
   const [spellPopup, setSpellPopup] = useState<SpellPopup | null>(null);
   const spellPopupTimerRef = useRef<number | null>(null);
   const spellSuggestCacheRef = useRef<{ word: string; list: string[] } | null>(null);
@@ -504,19 +643,21 @@ export default function MarkdownEditor({
   spellPopupSyncRef.current = syncSpellPopup;
 
   useEffect(() => {
-    if (!spellLang || spellLang === "off") {
+    const langs = spellLangs ?? [];
+    if (langs.length === 0) {
       setEngine(null);
       return;
     }
     let alive = true;
     setEngine(null);
-    void loadSpellEngine(spellLang).then((loaded) => {
+    void loadSpellEngines(langs).then((loaded) => {
       if (alive) setEngine(loaded);
     });
     return () => {
       alive = false;
     };
-  }, [spellLang]);
+    // La lista se compara por contenido: cada cambio real trae un array nuevo.
+  }, [spellLangs?.join(",")]);
 
   const headerMenuRef = useRef<HTMLDivElement>(null);
 
@@ -667,7 +808,6 @@ export default function MarkdownEditor({
       hintLineRef.current = -1;
       setTableCaret(null);
       setTableRect(null);
-      setTableMerge(null);
       closeSpellPopup();
       return;
     }
@@ -795,26 +935,6 @@ export default function MarkdownEditor({
    * Si el cambio viene de un pegado (`paste`), una lista abierta por lo pegado
    * arranca en 1. Devuelve el cuerpo final y la posición corregida del cursor.
    */
-  /**
-   * Suelta la combinación de celdas si la tabla cambió de estructura (entran o
-   * salen filas o columnas, o el bloque se mueve de sitio). El texto combinado
-   * ya vive en la celda de arriba a la izquierda, así que no se pierde nada.
-   */
-  function releaseMergeIfStructureChanged(beforeText: string, afterText: string) {
-    const merge = tableMergeRef.current;
-    if (!merge) return;
-    const before = beforeText.split("\n").map((text) => ({ text, code: false }));
-    const after = afterText.split("\n").map((text) => ({ text, code: false }));
-    const b = tableBlockAt(before, merge.top);
-    const a = tableBlockAt(after, merge.top);
-    let rowsOk = b !== null && a !== null && b.start === a.start && b.end === a.end;
-    for (let line = merge.top; line <= merge.bottom && rowsOk; line += 1) {
-      const text = after[line]?.text;
-      if (text === undefined || !isTableRow(text)) rowsOk = false;
-      else if (splitTableCells(text).length <= merge.right) rowsOk = false;
-    }
-    if (!rowsOk) setTableMerge(null);
-  }
 
   function editBody(
     nextBody: string,
@@ -846,7 +966,6 @@ export default function MarkdownEditor({
       pendingCaretRef.current = [result.caret, result.caret];
     }
 
-    releaseMergeIfStructureChanged(content, finalContent);
     editContent(finalContent);
     return result;
   }
@@ -857,9 +976,6 @@ export default function MarkdownEditor({
     pendingRestoreRef.current = target;
     setMenu(null);
     setContextMenu(null);
-    // Deshacer o rehacer puede dejar la tabla con otra estructura: la
-    // combinación de celdas se suelta (el texto combinado no se pierde).
-    setTableMerge(null);
   }
 
   function applyUndo() {
@@ -897,16 +1013,26 @@ export default function MarkdownEditor({
 
     // Solo hay modo celda si ese bloque se renderiza como tabla (si no cabe en
     // una línea se queda en crudo y el caret responsable es el nativo).
-    const inTable =
-      inlineActive &&
-      tableCols !== null &&
-      sourceSegments(sourceInfo, false, tableCols).some(
-        (segment) => segment.kind === "table" && line >= segment.start && line <= segment.end,
-      );
+    const segments =
+      inlineActive && tableCols !== null ? sourceSegments(sourceInfo, false, tableCols) : [];
+    const inTable = segments.some(
+      (segment) => segment.kind === "table" && line >= segment.start && line <= segment.end,
+    );
+    // Selección que abarca una tabla aunque el cursor esté fuera: la tarjeta
+    // tiene otra geometría que el texto crudo, así que su trozo lo marca el
+    // overlay. Si no, la selección nativa se pinta en las coordenadas crudas
+    // y queda como un fantasma desplazado al lado del texto de la tarjeta (la
+    // sensación de «texto seleccionado duplicado al costado derecho»).
+    const lineEnd = area.value.slice(0, selEnd).split("\n").length - 1;
+    const touchesTable = segments.some(
+      (segment) => segment.kind === "table" && segment.start <= lineEnd && segment.end >= line,
+    );
 
     if (!inTable) {
       setTableCaret(null);
-      setTableSelection(null);
+      setTableSelection(
+        touchesTable && selStart !== selEnd ? { start: selStart, end: selEnd } : null,
+      );
       setTableRect(null);
       tableAnchorRef.current = null;
       prevTableLineRef.current = line;
@@ -946,7 +1072,26 @@ export default function MarkdownEditor({
     // Lo que se marca es el rectángulo entre las dos puntas de la selección,
     // no la escalera de texto que las une: así el cuadro no se lleva por delante
     // filas enteras de celdas que nadie marcó.
-    setTableRect(resolved ? selectionCellRect(area) : null);
+    //
+    // Salvedad: el clic derecho puede colapsar la selección en el motor, y con
+    // ella desaparecería el cuadro justo cuando se va a abrir el menú sobre él.
+    // Mientras haya un clic derecho pendiente, el cuadro se deja como estaba:
+    // sigue siendo lo que la persona tiene seleccionado.
+    // Con el menú abierto el rectángulo se congela: es lo que el menú está
+    // ofreciendo, y recalcularlo aquí lo tiraría por tierra justo cuando se
+    // va a usar. Solo se suelta si el cursor ya no está en una tabla.
+    if (contextMenuOpenRef.current || rightClickSelRef.current) {
+      // Con el menú abierto (o a punto de abrirse) lo pintado no se toca: es lo
+      // que el menú está ofreciendo y recalcularlo aquí lo tiraría por tierra.
+      if (!resolved) setTableRect(null);
+    } else {
+      // El espejo va siempre detrás de lo pintado: si ya no hay celdas
+      // marcadas (el cursor se movió, o el bloque dejó de ser tabla), tampoco
+      // las hay que recordar para un clic derecho.
+      const next = resolved ? selectionCellRect(area) : null;
+      markedRectRef.current = next;
+      setTableRect(next);
+    }
     // Cursor quieto en una celda: esa celda es la ancla de la próxima
     // selección. Aquí se renueva porque Mayús+↑/↓ ni mueve el cursor ni llega
     // por teclado (las selecciones se construyen desde esta ancla).
@@ -1283,33 +1428,22 @@ export default function MarkdownEditor({
     const handles = Array.from(container.querySelectorAll<HTMLElement>("[data-resize-block]"));
     if (handles.length === 0) return null;
 
-    // Derecho de cada columna que tiene asa (la combinada solo tiene una).
+    // Derecho de cada columna: la derecha de su última celda con asa.
     const edges = new Map<number, number>();
     let blockLeft = Infinity;
     for (const handle of handles) {
       const cell = handle.parentElement;
       if (!cell) return null;
       blockLeft = Math.min(blockLeft, cell.offsetLeft);
-      // El asa del borde izquierdo de una combinada no marca el derecho de una
-      // columna: se salta para no pisar el de la columna combinada.
-      if (handle.dataset.mergeEdge !== undefined) continue;
       edges.set(Number(handle.dataset.resizeCol), cell.offsetLeft + cell.offsetWidth);
     }
     const cols = Math.max(...edges.keys()) + 1;
     if (edges.size === 0) return null;
     const stored = colWidthsRef.current.get(blockStart);
-    const merge = tableMergeRef.current;
-    const mergeCell = container.querySelector<HTMLElement>("[data-merge-cell]");
     const widths: number[] = [];
     for (let col = 0; col < cols; col += 1) {
       if (stored && stored[col] !== undefined) {
         widths.push(stored[col]);
-        continue;
-      }
-      const inMerge = merge !== null && mergeCell !== null && col >= merge.left && col <= merge.right;
-      if (inMerge) {
-        // Columna dentro de una combinación: se reparte lo que mida la celda.
-        widths.push(mergeCell.offsetWidth / (merge.right - merge.left + 1));
         continue;
       }
       const right = edges.get(col);
@@ -1421,13 +1555,8 @@ export default function MarkdownEditor({
     clientX: number,
     clientY: number,
   ): { block: number; col: number } | null {
-    // El borde izquierdo de una celda combinada manda sobre el derecho de la
-    // columna de al lado: ocupan el mismo sitio.
     const handles = tableResizeHandlesRef.current;
-    const mergeEdge = handles.find(
-      (handle) => handle.dataset.mergeEdge !== undefined && insideRect(handle, clientX, clientY),
-    );
-    const handle = mergeEdge ?? handles.find((element) => insideRect(element, clientX, clientY));
+    const handle = handles.find((element) => insideRect(element, clientX, clientY));
     if (!handle) return null;
     const block = Number(handle.dataset.resizeBlock);
     const col = Number(handle.dataset.resizeCol);
@@ -1528,6 +1657,10 @@ export default function MarkdownEditor({
       // La celda del clic sigue siendo el ancla: Mayús+flechas y Supr la usan.
       tableAnchorRef.current = { line: drag.line, col: drag.col };
       area.setSelectionRange(Math.min(drag.anchor, at), Math.max(drag.anchor, at));
+      // El recuadro se repinta aquí y no solo al soltar: mientras el motor está
+      // con el arrastre no siempre llega el «select», y sin esto las celdas se
+      // iban marcando de golpe al levantar el ratón, sin poder ver qué se cogía.
+      handleCaretMove();
       // Arrastrando texto no se enseñan ni las barras «+» ni el asa de columna:
       // están cuatro píxeles más allá de donde va la selección.
       return;
@@ -1542,8 +1675,14 @@ export default function MarkdownEditor({
     setHoverBar((prev) =>
       prev && bar && prev.block === bar.block && prev.part === bar.part ? prev : bar,
     );
-    // El borde de una columna se agarra para cambiar su anchura.
-    const resize = resizeHandleAt(event.clientX, event.clientY);
+    // El borde de una columna se agarra para cambiar su anchura. Durante el
+    // arrastre se sigue a la columna que se está moviendo, que el render puede
+    // ir un paso por detrás del puntero: así ni la línea ni el cursor de
+    // redimensionado parpadean.
+    const dragged = resizeDragRef.current;
+    const resize = dragged
+      ? { block: dragged.block, col: dragged.col }
+      : resizeHandleAt(event.clientX, event.clientY);
     setHoverResize((prev) =>
       prev && resize && prev.block === resize.block && prev.col === resize.col ? prev : resize,
     );
@@ -1555,9 +1694,15 @@ export default function MarkdownEditor({
     if (event.button === 2) {
       const area = textareaRef.current;
       rightClickSelRef.current = area ? [area.selectionStart, area.selectionEnd] : null;
+      traza("mousedown-derecho", {
+        seleccion: rightClickSelRef.current,
+        rectPintado: markedRectRef.current,
+      });
       return;
     }
     if (event.button !== 0) return;
+    // Empieza otra selección: lo marcado antes ya no cuenta.
+    markedRectRef.current = null;
 
     // Clic corriente: rompe la ancla de la selección multifila. Con Mayús se
     // conserva, porque el clic es una extensión de esa misma selección.
@@ -1801,9 +1946,20 @@ export default function MarkdownEditor({
     setSpellPopup(null);
   }
 
+  useEffect(() => {
+    contextMenuOpenRef.current = contextMenu !== null;
+  }, [contextMenu]);
+
   function openEditorMenu(clientX: number, clientY: number) {
     const area = textareaRef.current;
     if (!area) return;
+    contextMenuOpenRef.current = true;
+    traza("abre-menu", {
+      picked: rightClickSelRef.current,
+      rectEstado: tableRect,
+      rectEspejo: markedRectRef.current,
+      seleccionActual: area ? [area.selectionStart, area.selectionEnd] : null,
+    });
 
     const selStart = area.selectionStart;
     const selEnd = area.selectionEnd;
@@ -1855,45 +2011,86 @@ export default function MarkdownEditor({
 
   /**
    * Tabla bajo el clic derecho: fila y columna apuntadas (nunca la del
-   * separador) y las filas de cuerpo que abarca la selección, que es lo que
-   * decide si aparece «Combinar celdas».
+   * separador) y el rectángulo de celdas marcadas que trae el menú, para
+   * que las acciones sepan qué celdas tocan («Copiar celdas» lleva lo
+   * marcado, o la celda del cursor si no hay marca).
    */
+  /**
+   * Celda de la tarjeta pintada que hay bajo el puntero. La tarjeta y el texto
+   * crudo no están alineados columna a columna (una celda combinada es mucho
+   * más ancha que su texto), así que para alinear manda lo que se ve: una celda
+   * combinada tapa sus continuaciones, con lo que el rect que se encuentra es
+   * siempre el de su maestra.
+   */
+  function visualCellAt(clientX: number, clientY: number): { line: number; col: number } | null {
+    for (const cell of tableCellsRef.current) {
+      const rect = cell.getBoundingClientRect();
+      if (
+        clientX >= rect.left &&
+        clientX <= rect.right &&
+        clientY >= rect.top &&
+        clientY <= rect.bottom
+      ) {
+        const line = Number(cell.dataset.line);
+        const col = Number(cell.dataset.col);
+        if (Number.isFinite(line) && Number.isFinite(col)) return { line, col };
+      }
+    }
+    return null;
+  }
+
   function tableTargetAt(clientX: number, clientY: number): TableMenuInfo | null {
     const area = textareaRef.current;
     if (!area) return null;
 
     const value = area.value;
     const at = offsetAtPointer(area, clientX, clientY, driftAtPointer(clientY)) ?? area.selectionStart;
-    const resolved = resolveTableCaret(sourceInfo, lineIndexOf(value, at), at, at);
-
     // El motor puede colapsar la selección al pulsar el botón derecho: si lo
     // hizo, se usan las filas que había justo antes del clic.
     const picked = rightClickSelRef.current;
     rightClickSelRef.current = null;
 
+    // Dónde se ha resuelto la celda del clic. Si el puntero no da una celda
+    // (está sobre el margen, o el cálculo se ha quedado corto porque la tabla
+    // ha crecido), se recurre al cursor: si estaba dentro de una tabla, la
+    // sección de tabla del menú debe aparecer igualmente, que si no las
+    // acciones de tabla desaparecen sin explicación.
+    let resolved = resolveTableCaret(sourceInfo, lineIndexOf(value, at), at, at);
+    if (!resolved) {
+      const caretAt = area.selectionStart;
+      resolved = resolveTableCaret(sourceInfo, lineIndexOf(value, caretAt), caretAt, caretAt);
+    }
     if (!resolved) return null;
 
     const block = { start: resolved.blockStart, end: resolved.blockEnd };
     const line = resolved.onDelimiter ? resolved.blockStart : resolved.line;
     const selection = picked ?? [area.selectionStart, area.selectionEnd];
-    const rows = tableSelectionRows(sourceInfo, block, selection[0], selection[1]);
+
+    // El rectángulo se calcula con la selección guardada; si esa ya no vale (el
+    // clic derecho la colapsó y la dejó sin celdas), se cae al que está
+    // pintado, que es lo que la persona ve seleccionado en pantalla.
+    const marked =
+      cellRectBetween(selection[0], selection[1]) ?? tableRect ?? markedRectRef.current;
+
+    traza("info-menu", { rect: marked, line, col: resolved.col });
 
     return {
       block,
       line,
       col: resolved.col,
       cols: resolved.cols,
-      rows,
-      rect: cellRectBetween(selection[0], selection[1]),
+      rect: marked,
+      visual: visualCellAt(clientX, clientY),
       canDeleteRow: line > block.start + 1 && block.end - block.start >= 3,
       canDeleteCol: resolved.cols > 2,
-      merged: tableMerge !== null,
       canSort: block.end - block.start >= 3,
       canMoveUp: line > block.start + 1,
       canMoveDown: line >= block.start + 2 && line < block.end,
       canToggleTask: isTableTaskCell(
         splitTableCells(sourceInfo[line]?.text ?? "")[resolved.col]?.text ?? "",
       ),
+      canMerge: isTableMergePossible(marked),
+      canUnmerge: isTableUnmergePossible(sourceInfo, line, resolved.col, marked),
     };
   }
 
@@ -2157,7 +2354,7 @@ export default function MarkdownEditor({
    */
   function handleCopy(event: ClipboardEvent<HTMLTextAreaElement>) {
     const area = textareaRef.current;
-    const rect = tableRect ?? (area ? selectionCellRect(area) : null);
+    const rect = actionRect(area ? selectionCellRect(area) : null, tableRect);
     if (!rect) return;
     event.preventDefault();
     copyCellRect(rect, event.clipboardData);
@@ -2286,14 +2483,12 @@ export default function MarkdownEditor({
 
   /**
    * Elementos del menú «/». Con el cursor dentro de una tabla solo aparecen las
-   * acciones de esa tabla (allí los bloques no caben), y el grupo de tamaños
-   * sustituye a la lista cuando se ha elegido «Tabla».
+   * acciones de esa tabla: allí los bloques no caben.
    */
   function slashItems(query: string): SlashItem[] {
-    const stage = menu?.kind === "slash" ? (menu.stage ?? "root") : "root";
     const insideTable = tableCaret !== null;
-    const items = filterSlashItems(query, insideTable, stage);
-    if (insideTable || stage === "table-size") return items;
+    const items = filterSlashItems(query, insideTable);
+    if (insideTable) return items;
     // Fuera de una tabla, convertir texto en tabla solo tiene sentido con algo
     // seleccionado: si no, el ítem no se ofrece.
     const area = textareaRef.current;
@@ -2311,7 +2506,7 @@ export default function MarkdownEditor({
 
   /**
    * Cierra el menú «/» borrando su `/consulta` del documento. Se usa en las
-   * acciones que no cambian el texto por sí mismas (copiar, descombinar…), donde
+   * acciones que no cambian el texto por sí mismas (como copiar), donde
    * no hay operación que pueda absorberlo.
    */
   function dropSlashQuery() {
@@ -2365,15 +2560,15 @@ export default function MarkdownEditor({
           line: cell.onDelimiter ? cell.blockStart : cell.line,
           col: cell.col,
           cols: cell.cols,
-          rows: tableSelectionRows(sourceInfo, block, area.selectionStart, area.selectionEnd),
           rect: selectionCellRect(area),
           canDeleteRow: false,
           canDeleteCol: false,
-          merged: tableMerge !== null,
           canSort: false,
           canMoveUp: false,
           canMoveDown: false,
           canToggleTask: false,
+          canMerge: false,
+          canUnmerge: false,
         },
         // El «/consulta» no forma parte de la tabla: se borra en la misma
         // operación, para que deshacer deshaga la acción y no el texto previo.
@@ -2382,26 +2577,13 @@ export default function MarkdownEditor({
       return;
     }
 
-    // «Tabla» no inserta: lleva al grupo de tamaños. Si no hay un menú «/»
-    // abierto (viene del contextual) se inserta directamente la de 3×3.
-    if (item.stage === "table-size") {
-      if (menu?.kind === "slash") {
-        setMenu({ ...menu, stage: item.stage, index: 0 });
-        return;
-      }
-      setMenu(null);
-      area.setSelectionRange(from, from);
-      const basic = tableSkeleton(3, 3);
-      replaceRange(from, basic.text, basic.caret);
-      return;
-    }
-
-    // Tamaño elegido: la tabla nace con esas medidas y el cursor en la primera
-    // celda de datos.
+    // La tabla entra ya con sus medidas (3×5) y el cursor en la primera celda
+    // de datos. Se llama a replaceRange sin mover antes la selección: el rango
+    // va de `from` al cursor, y si el cursor se colapsa en `from` la consulta
+    // «/tabla» se quedaba pegada al final de la tabla.
     if (item.size) {
       const skeleton = tableSkeleton(item.size.cols, item.size.rows);
       setMenu(null);
-      area.setSelectionRange(from, from);
       replaceRange(from, skeleton.text, skeleton.caret);
       return;
     }
@@ -2434,7 +2616,6 @@ export default function MarkdownEditor({
 
     tableAnchorRef.current = null;
     setTableRect(null);
-    setTableMerge(null);
     pendingCaretRef.current = [start + built.caret, start + built.caret];
     editBody(`${area.value.slice(0, start)}${built.lines.join("\n")}${area.value.slice(end)}`);
   }
@@ -2589,6 +2770,12 @@ export default function MarkdownEditor({
     return true;
   }
 
+  /** ¿La pulsación es el atajo indicado? Null = no hay atajo asignado. */
+  function isShortcut(event: KeyboardEvent<HTMLElement>, id: ShortcutId): boolean {
+    const combo = comboFor(shortcutsRef.current, id);
+    return combo !== "" && matchesCombo(event, combo);
+  }
+
   function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
     // Una composición que no recibió `compositionend` (tecla muerta de tilde
     // abandonada) dejaría la renumeración de listas y la edición de tablas
@@ -2632,7 +2819,7 @@ export default function MarkdownEditor({
     }
 
     // Alt+Intro corrige la palabra errónea bajo el cursor, sin usar el ratón.
-    if (event.key === "Enter" && event.altKey && !event.ctrlKey && !event.metaKey) {
+    if (isShortcut(event, "applySuggestion")) {
       const applied = applySpellCorrection();
       if (applied) {
         event.preventDefault();
@@ -2640,7 +2827,7 @@ export default function MarkdownEditor({
       }
     }
 
-    if (event.key.toLowerCase() === "s" && (event.metaKey || event.ctrlKey)) {
+    if (isShortcut(event, "saveNote")) {
       event.preventDefault();
       void persistRef.current();
       return;
@@ -2664,17 +2851,63 @@ export default function MarkdownEditor({
       }
     }
 
-    if (mod && !event.altKey && key === "z") {
+    if (isShortcut(event, "undo") && !event.shiftKey) {
       event.preventDefault();
-      if (event.shiftKey) applyRedo();
-      else applyUndo();
+      applyUndo();
       return;
     }
-    if (mod && !event.altKey && key === "y") {
+    // Mayús con el atajo de deshacer vuelve a hacer, como en cualquier editor.
+    if ((isShortcut(event, "redo") || (isShortcut(event, "undo") && event.shiftKey)) && !event.altKey) {
       event.preventDefault();
       applyRedo();
       return;
     }
+    if (isShortcut(event, "toggleView")) {
+      event.preventDefault();
+      setViewMode(viewMode === "edit" ? "preview" : "edit");
+      return;
+    }
+
+    if (isShortcut(event, "exportPdf")) {
+      event.preventDefault();
+      setHeaderMenu(false);
+      setExportOpen(true);
+      return;
+    }
+
+    // Formato rápido: negrita, cursiva, subrayado, tachado y código en línea.
+    // Solo si el atajo está asignado (siempre lleva Ctrl/Alt: si no, escribiría).
+    if (!event.nativeEvent.isComposing) {
+      const formats: [ShortcutId, FormatKind][] = [
+        ["bold", "bold"],
+        ["italic", "italic"],
+        ["underline", "strike"],
+        ["strikethrough", "strike"],
+        ["inlineCode", "code"],
+      ];
+      for (const [id, kind] of formats) {
+        if (!isShortcut(event, id)) continue;
+        event.preventDefault();
+        applyFormat(kind);
+        return;
+      }
+
+      // En una tabla, los atajos de fila y columna crecen la rejilla en vez de
+      // formatear: allí lo que hace falta es añadir sitio.
+      const tableShortcut: [ShortcutId, TableAction][] = [
+        ["addRow", "add-row"],
+        ["addColumn", "add-col"],
+      ];
+      if (tableCaret) {
+        for (const [id, action] of tableShortcut) {
+          if (!isShortcut(event, id)) continue;
+          event.preventDefault();
+          runTableShortcut(action);
+          return;
+        }
+      }
+    }
+
     if (mod && !event.altKey && (key === "v" || key === "x")) {
       // Pegar o cortar inicia un grupo de deshacer propio.
       forceHistoryRef.current = true;
@@ -2691,19 +2924,18 @@ export default function MarkdownEditor({
       }
     }
 
-    // Alt+↑ / Alt+↓ dentro de una tabla mueve la fila del cursor (y con Mayús
-    // la duplica): mover la línea entera la sacaría del bloque, así que aquí
-    // manda la fila, como en una hoja de cálculo.
+    // Los mismos atajos dentro de una tabla mueven la fila del cursor (y con
+    // Mayús la duplican): mover la línea entera la sacaría del bloque, así que
+    // aquí manda la fila, como en una hoja de cálculo.
+    const movingUp = isShortcut(event, "moveLineUp");
+    const movingDown = isShortcut(event, "moveLineDown");
     if (
       tableCaret &&
-      event.altKey &&
-      !event.ctrlKey &&
-      !event.metaKey &&
-      (event.key === "ArrowUp" || event.key === "ArrowDown") &&
+      (movingUp || movingDown) &&
       !event.nativeEvent.isComposing
     ) {
       const lines = currentLines();
-      const up = event.key === "ArrowUp";
+      const up = movingUp;
       const edit = event.shiftKey
         ? duplicateTableRow(lines, tableCaret.line, tableCaret.col, up ? -1 : 1)
         : moveTableRow(lines, tableCaret.line, tableCaret.col, up ? -1 : 1);
@@ -2714,16 +2946,9 @@ export default function MarkdownEditor({
       }
     }
 
-    // Alt+↑ / Alt+↓ mueve la línea del cursor (o las seleccionadas) una
-    // posición, como en VS Code. Con un menú desplegado manda el menú.
-    if (
-      event.altKey &&
-      !event.ctrlKey &&
-      !event.metaKey &&
-      (event.key === "ArrowUp" || event.key === "ArrowDown") &&
-      !menu &&
-      moveLine(event.key === "ArrowUp" ? -1 : 1)
-    ) {
+    // El atajo mueve la línea del cursor (o las seleccionadas) una posición,
+    // como en VS Code. Con un menú desplegado manda el menú.
+    if ((movingUp || movingDown) && !menu && moveLine(movingUp ? -1 : 1)) {
       event.preventDefault();
       return;
     }
@@ -2820,7 +3045,10 @@ export default function MarkdownEditor({
     if (area.selectionStart !== area.selectionEnd) return;
 
     const edit = listEnterEdit(area.value, area.selectionStart);
-    if (!edit) return;
+    if (!edit) {
+      traza("edicion-descartada", {});
+      return;
+    }
 
     event.preventDefault();
     replaceRange(edit.start, edit.insert, edit.caret - edit.start);
@@ -2878,6 +3106,7 @@ export default function MarkdownEditor({
     const nextBody = edit.lines.join("\n");
     if (nextBody === current) return;
 
+    traza("aplica-edicion", { vacia: edit.lines.length === 0 });
     tableAnchorRef.current = null;
     const caretLines: TableLine[] = edit.lines.map((text) => ({ text, code: false }));
     if (edit.offset !== undefined) {
@@ -2898,23 +3127,39 @@ export default function MarkdownEditor({
   }
 
   /**
+   * Atajo de fila/columna: opera sobre la tabla del cursor sin necesidad del
+   * menú, que es lo único que cambia respecto a elegirlo en el menú «/».
+   */
+  function runTableShortcut(action: TableAction) {
+    const cell = tableCaret;
+    const area = textareaRef.current;
+    if (!cell || !area) return;
+
+    handleTableAction(action, {
+      block: { start: cell.blockStart, end: cell.blockEnd },
+      line: cell.onDelimiter ? cell.blockStart : cell.line,
+      col: cell.col,
+      cols: cell.cols,
+      rect: selectionCellRect(area),
+      canDeleteRow: false,
+      canDeleteCol: false,
+      canSort: false,
+      canMoveUp: false,
+      canMoveDown: false,
+      canToggleTask: false,
+      canMerge: false,
+      canUnmerge: false,
+    });
+  }
+
+  /**
    * Acción de tabla, venga del menú contextual o del menú «/» (que la pasa
-   * como `target` porque no hay clic derecho detrás). «Descombinar» no toca el
-   * texto: la combinación solo vive en la sesión, así que basta con soltarla.
+   * como `target` porque no hay clic derecho detrás).
    */
   function handleTableAction(action: TableAction, explicit?: TableMenuInfo, given?: TableLine[]) {
     const target = explicit ?? contextMenu?.table;
     if (!target) {
       setContextMenu(null);
-      return;
-    }
-
-    if (action === "unmerge") {
-      setContextMenu(null);
-      setMenu(null);
-      dropSlashQuery();
-      if (!tableMerge) return;
-      setTableMerge(null);
       return;
     }
 
@@ -2939,30 +3184,6 @@ export default function MarkdownEditor({
       case "del-table":
         edit = removeTable(lines, block);
         break;
-      case "merge":
-        // Con un rectángulo marcado se combinan esas celdas, como en Excel; sin
-        // él, las filas enteras que abarca la selección.
-        if (tableRect) {
-          edit = mergeTableRect(lines, tableRect);
-          if (edit && tableCols !== null) {
-            // La tabla tiene que seguir cabiendo en la fila: si la combinación
-            // la ensancha demasiado, se deja como estaba.
-            const fits = sourceSegments(
-              edit.lines.map((text) => ({ text, code: false })),
-              false,
-              tableCols,
-            ).some((segment) => segment.kind === "table" && segment.start === block.start);
-            if (!fits) edit = null;
-          }
-          if (edit) {
-            setTableMerge(tableRect);
-            setTableRect(null);
-            tableAnchorRef.current = null;
-          }
-        } else {
-          edit = mergeTableRows(lines, block, target.rows, col);
-        }
-        break;
       case "sort-asc":
         edit = sortTableRows(lines, block, col, false);
         break;
@@ -2970,14 +3191,20 @@ export default function MarkdownEditor({
         edit = sortTableRows(lines, block, col, true);
         break;
       case "align-left":
-        edit = alignTableColumn(lines, block, col, "left");
-        break;
       case "align-center":
-        edit = alignTableColumn(lines, block, col, "center");
+      case "align-right": {
+        // Manda la celda que se ve (el puntero sobre la tarjeta pintada): el
+        // texto crudo está desalineado con ella y un clic a la derecha de una
+        // celda combinada caería en la columna vecina. Si la celda resultante
+        // es una continuación, la que se alinea es su maestra: la alineación
+        // se guarda en la columna del separador.
+        const base = target.visual ?? { line, col };
+        const info = computeTableMerges(lines, block.start, block.end).get(`${base.line}:${base.col}`);
+        const alignCol = info?.isContinuation ? info.masterCol : base.col;
+        const align = action === "align-left" ? "left" : action === "align-center" ? "center" : "right";
+        edit = alignTableColumn(lines, block, alignCol, align);
         break;
-      case "align-right":
-        edit = alignTableColumn(lines, block, col, "right");
-        break;
+      }
       case "move-up":
         edit = moveTableRow(lines, line, col, -1);
         break;
@@ -2993,34 +3220,33 @@ export default function MarkdownEditor({
       case "toggle-task":
         edit = toggleTableTask(lines, line, col);
         break;
+      case "merge-cells": {
+        // Une el rectángulo marcado (el menú ya avisó si abarca una sola celda).
+        const rect = actionRect(target.rect, tableRect);
+        if (rect && isTableMergePossible(rect)) edit = mergeTableCells(lines, rect);
+        break;
+      }
+      case "unmerge-cells":
+        // Con marca separa lo marcado; sin ella, el merge de la celda del cursor.
+        edit = unmergeTableCells(lines, line, col, actionRect(target.rect, tableRect));
+        break;
       case "clipboard": {
         // Al portapapeles va lo marcado: el rectángulo de celdas o, sin él, la
         // celda del cursor (como en una hoja de cálculo).
         setContextMenu(null);
         setMenu(null);
         dropSlashQuery();
-        const rect = tableRect ?? { top: line, bottom: line, left: col, right: col };
+        const rect = actionRect(target.rect, tableRect) ?? {
+          top: line,
+          bottom: line,
+          left: col,
+          right: col,
+        };
         copyCellRect(rect);
         return;
       }
     }
 
-    // La combinación de celdas sobrevive a lo que no cambia la estructura
-    // (alinear, ordenar, marcar…). Si entran o salen filas o columnas, el
-    // rectángulo se quedaría descolocado y se suelta.
-    if (edit) {
-      const before = tableBlockAt(lines, line);
-      const after = tableBlockAt(
-        edit.lines.map((text) => ({ text, code: false })),
-        line,
-      );
-      const sameShape =
-        before !== null &&
-        after !== null &&
-        before.start === after.start &&
-        before.end === after.end;
-      if (!sameShape) setTableMerge(null);
-    }
     applyTableEdit(edit);
   }
 
@@ -3155,7 +3381,8 @@ export default function MarkdownEditor({
     if (!cell || menu || event.nativeEvent.isComposing) return;
 
     // Mayús + ↑/↓: la selección crece fila a fila sin salir del bloque, así
-    // el menú puede ofrecer «Combinar celdas» con varias filas marcadas.
+    // se marcan celdas completas para vaciarlas con Supr o copiarlas con
+    // Ctrl+C / Ctrl+X.
     if (
       event.shiftKey &&
       (event.key === "ArrowUp" || event.key === "ArrowDown") &&
@@ -3468,12 +3695,12 @@ export default function MarkdownEditor({
 
   const statusLabel =
     saveState === "dirty"
-      ? "Editando…"
+      ? t("editor.saving")
       : saveState === "saved"
-        ? "Guardado"
+        ? t("editor.saved")
         : saveState === "error"
-          ? "Error al guardar"
-          : "Sin cambios";
+          ? t("editor.saveFailed")
+          : t("editor.noChanges");
 
   const statusDot =
     saveState === "dirty"
@@ -3598,7 +3825,7 @@ export default function MarkdownEditor({
     }
 
     if (changed) setTableWidths(next);
-  }, [sourceInfo, inlineActive, tableCols, rowPitch, tableMerge]);
+  }, [sourceInfo, inlineActive, tableCols, rowPitch]);
 
   // Alto que gana cada tabla al envolver sus celdas: a partir de su última fila
   // el overlay queda más abajo que el textarea, así que se mide para poder
@@ -3619,12 +3846,18 @@ export default function MarkdownEditor({
       if (extra > 1) next.set(segment.start, { end: segment.end, extra });
     }
     setTableDrift((prev) => (sameDrift(prev, next) ? prev : next));
-  }, [sourceInfo, inlineActive, tableCols, rowPitch, tableWidths, tableMerge]);
+  }, [sourceInfo, inlineActive, tableCols, rowPitch, tableWidths]);
 
   // Con una tabla crecida por encima, el overlay ya no coincide con el textarea:
   // el cursor y la selección los dibuja el overlay (el textarea los pone
   // transparentes) para que no queden descolocados.
-  const overlayMark = !composing && (tableCaret !== null || driftBeforeLine(caretLine) > 0);
+  // Con la selección marcándose desde el overlay, el caret y la selección
+  // nativos se ocultan (clase «gus-mark-edit»): pasa cuando el cursor está en
+  // una tabla, cuando la selección abarca una (la tarjeta manda sobre el texto
+  // crudo) y cuando una tabla de arriba ha crecido y lo dejaría descolocado.
+  const overlayMark =
+    !composing &&
+    (tableCaret !== null || tableSelection !== null || driftBeforeLine(caretLine) > 0);
 
   /** Píxeles que las tablas ya superadas dejan más abajo en el overlay. */
   function driftBeforeLine(line: number): number {
@@ -3680,7 +3913,7 @@ export default function MarkdownEditor({
     tableCellsRef.current = overlay
       ? Array.from(overlay.querySelectorAll<HTMLElement>("[data-cell]"))
       : [];
-  }, [sourceInfo, inlineActive, viewMode, tableCols, tableMerge]);
+  }, [sourceInfo, inlineActive, viewMode, tableCols]);
 
   // El ✔ de «copiado» se apaga solo: al desmontar hay que soltar su reloj.
   useEffect(
@@ -3747,8 +3980,8 @@ export default function MarkdownEditor({
             onClick={() => onOpenWikiLink?.(wikiTarget)}
             title={
               known
-                ? `Abrir «${wikiTarget}»`
-                : `«${wikiTarget}» no existe todavía: se creará al pulsarlo`
+                ? t("editor.wikiOpen", { name: wikiTarget })
+                : t("editor.wikiCreate", { name: wikiTarget })
             }
             className={clsx(
               "inline cursor-pointer rounded text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-gus-accent/60",
@@ -3801,7 +4034,7 @@ export default function MarkdownEditor({
             type="button"
             role="checkbox"
             aria-checked={checked}
-            aria-label={checked ? "Marcar tarea como pendiente" : "Marcar tarea como completada"}
+            aria-label={t(checked ? "editor.taskPending" : "editor.taskDone")}
             onClick={() => toggleTaskAt(sourceLine)}
             className={clsx(
               "mt-1 flex h-4 w-4 shrink-0 items-center justify-center rounded border outline-none transition-colors focus-visible:ring-2 focus-visible:ring-gus-accent/60",
@@ -3874,7 +4107,7 @@ export default function MarkdownEditor({
     },
     table: ({ children }) => (
       <div className="gus-scrollbar my-4 overflow-x-auto rounded-xl border border-gus-border">
-        <table className="w-full text-left text-sm">{children}</table>
+        <table className="w-full text-left text-sm">{applyPreviewMerges(children)}</table>
       </div>
     ),
     thead: ({ children }) => (
@@ -3882,12 +4115,19 @@ export default function MarkdownEditor({
         {children}
       </thead>
     ),
-    th: ({ children }) => (
-      <th className="border-b border-gus-border px-3 py-2 font-semibold text-gus-text">{children}</th>
+    // `style` trae la alineación de la columna (remark-gfm) y colSpan/rowSpan
+    // los suya applyPreviewMerges (celdas combinadas): sin propagarlos aquí
+    // se quedaban en el props y no se pintaban.
+    th: ({ children, colSpan, rowSpan, style }) => (
+      <th colSpan={colSpan} rowSpan={rowSpan} style={style} className="border-b border-gus-border px-3 py-2 font-semibold text-gus-text">
+        {children}
+      </th>
     ),
     tr: ({ children }) => <tr className="odd:bg-gus-card/40">{children}</tr>,
-    td: ({ children }) => (
-      <td className="border-b border-gus-border/60 px-3 py-2 align-top text-gus-text">{children}</td>
+    td: ({ children, colSpan, rowSpan, style }) => (
+      <td colSpan={colSpan} rowSpan={rowSpan} style={style} className="border-b border-gus-border/60 px-3 py-2 align-top text-gus-text">
+        {children}
+      </td>
     ),
     input: () => null,
   };
@@ -3897,16 +4137,14 @@ export default function MarkdownEditor({
       <div
         tabIndex={0}
         onKeyDown={handleKeyDown}
-        aria-label="Vista previa de la nota"
+        aria-label={t("editor.previewPane")}
         className="gus-scrollbar min-h-0 flex-1 overflow-y-auto bg-gus-bg px-6 py-5 focus:outline-none"
       >
         {body.trim() === "" ? (
-          <p className="text-sm text-gus-muted">
-            Esta nota está vacía. Pulsa «Editar» para escribir.
-          </p>
+          <p className="text-sm text-gus-muted">{t("editor.emptyNoteHint")}</p>
         ) : (
           <article className="mx-auto max-w-3xl pb-10">
-            <Suspense fallback={<p className="text-sm text-gus-muted">Cargando vista previa…</p>}>
+            <Suspense fallback={<p className="text-sm text-gus-muted">{t("editor.previewLoading")}</p>}>
               <MarkdownBody components={previewComponents}>{body}</MarkdownBody>
             </Suspense>
           </article>
@@ -3916,14 +4154,14 @@ export default function MarkdownEditor({
   }
 
   return (
-    <div className={clsx("flex h-full min-h-0 flex-col bg-gus-bg", className)}>
+    <div data-tour="editor" className={clsx("flex h-full min-h-0 flex-col bg-gus-bg", className)}>
       <header className="shrink-0 border-b border-gus-border px-6 py-4">
         <div className="flex items-start gap-3">
           <input
             value={title}
             onChange={(event) => editTitle(event.target.value)}
-            placeholder="Sin título"
-            aria-label="Título de la nota"
+            placeholder={t("common.untitled")}
+            aria-label={t("editor.title")}
             className="min-w-0 flex-1 bg-transparent text-xl font-semibold text-gus-text outline-none placeholder:text-gus-muted"
           />
 
@@ -3933,19 +4171,19 @@ export default function MarkdownEditor({
               setMenu(null);
               setViewMode(viewMode === "edit" ? "preview" : "edit");
             }}
-            aria-label={viewMode === "edit" ? "Previsualizar la nota" : "Volver a editar la nota"}
-            title={viewMode === "edit" ? "Previsualizar" : "Editar"}
+            aria-label={t(viewMode === "edit" ? "editor.previewAria" : "editor.editAria")}
+            title={t(viewMode === "edit" ? "editor.preview" : "editor.edit")}
             className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-gus-border bg-gus-card px-3 py-1.5 text-xs text-gus-muted outline-none transition-colors hover:border-gus-accent/50 hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60"
           >
             {viewMode === "edit" ? (
               <>
                 <Eye className="h-4 w-4" aria-hidden="true" />
-                Previsualizar
+                {t("editor.preview")}
               </>
             ) : (
               <>
                 <Pencil className="h-4 w-4" aria-hidden="true" />
-                Editar
+                {t("editor.edit")}
               </>
             )}
           </button>
@@ -3956,8 +4194,8 @@ export default function MarkdownEditor({
               onClick={() => setHeaderMenu((open) => !open)}
               aria-haspopup="menu"
               aria-expanded={headerMenu}
-              aria-label="Más opciones de la nota"
-              title="Más opciones"
+              aria-label={t("editor.moreOptionsAria")}
+              title={t("editor.moreOptions")}
               className="inline-flex h-[30px] items-center rounded-lg border border-gus-border bg-gus-card px-2 text-xs text-gus-muted outline-none transition-colors hover:border-gus-accent/50 hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60"
             >
               <ChevronDown className="h-4 w-4" aria-hidden="true" />
@@ -3978,7 +4216,7 @@ export default function MarkdownEditor({
                   className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-gus-muted transition-colors hover:bg-gus-panel hover:text-gus-text focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-gus-accent/60 focus-visible:outline-none"
                 >
                   <FileDown className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                  Exportar a PDF
+                  {t("editor.exportPdf")}
                 </button>
               </div>
             )}
@@ -3995,7 +4233,7 @@ export default function MarkdownEditor({
               <button
                 type="button"
                 onClick={() => applyNoteTags(noteTags.filter((item) => item !== tag))}
-                aria-label={`Quitar etiqueta ${tag}`}
+                aria-label={t("tasks.removeTag", { tag })}
                 className="-mr-1 rounded-full opacity-70 transition hover:opacity-100 focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
               >
                 <X className="h-3 w-3" aria-hidden="true" />
@@ -4017,8 +4255,8 @@ export default function MarkdownEditor({
                 commitTagInput();
                 setTagMenuOpen(false);
               }}
-              placeholder={noteTags.length > 0 ? "añadir etiqueta…" : "añadir etiqueta (Enter o coma)…"}
-              aria-label="Etiquetas de la nota"
+              placeholder={t(noteTags.length > 0 ? "editor.tagPlaceholder" : "editor.tagPlaceholderLong")}
+              aria-label={t("editor.tags")}
               role="combobox"
               aria-expanded={tagMenuOpen}
               aria-controls="gus-tag-menu"
@@ -4029,14 +4267,14 @@ export default function MarkdownEditor({
               <div
                 id="gus-tag-menu"
                 role="listbox"
-                aria-label="Etiquetas del vault"
+                aria-label={t("editor.vaultTags")}
                 className="absolute left-0 top-full z-30 mt-1 max-h-56 w-64 min-w-full overflow-y-auto rounded-lg border border-gus-border bg-gus-card py-1 shadow-xl"
               >
                 {tagOptionList.length === 0 ? (
                   <p className="px-3 py-1.5 text-[11px] text-gus-muted">
-                    {tagInput
-                      ? `Sin coincidencias · Intro para crear «${tagInput}»`
-                      : "Todavía no hay etiquetas en el vault"}
+                    {t(tagInput ? "editor.tagCreateHint" : "editor.noVaultTags", {
+                      tag: tagInput,
+                    })}
                   </p>
                 ) : (
                   tagOptionList.map((entry, index) => (
@@ -4057,7 +4295,7 @@ export default function MarkdownEditor({
                     >
                       <span className="truncate">{entry.tag}</span>
                       <span className="ml-auto shrink-0 text-[10px] text-gus-muted">
-                        {entry.count} nota{entry.count === 1 ? "" : "s"}
+                        {t("editor.tagUseCount", { count: entry.count })}
                       </span>
                     </button>
                   ))
@@ -4074,11 +4312,10 @@ export default function MarkdownEditor({
           </span>
           <span aria-hidden="true">·</span>
           <span>
-            {words} palabra{words === 1 ? "" : "s"} · {body.length} carácter
-            {body.length === 1 ? "" : "es"}
+            {t("editor.words", { count: words })} · {t("editor.chars", { count: body.length })}
           </span>
           <span aria-hidden="true">·</span>
-          <span className="text-gus-muted/70">Ctrl+S para guardar</span>
+          <span className="text-gus-muted/70">{t("editor.saveHint", { combo: saveCombo })}</span>
         </div>
         {saveError && (
           <p className="mt-2 break-words rounded-md border border-rose-400/30 bg-rose-400/5 px-2 py-1.5 text-[11px] text-rose-300">
@@ -4106,7 +4343,6 @@ export default function MarkdownEditor({
               tableRect={tableRect}
               hoveredBar={hoverBar}
               tableWidths={tableWidths}
-              tableMerge={tableMerge}
               hoverResize={hoverResize}
               caretAt={overlayMark ? (caretMark?.at ?? null) : null}
               caretSel={overlayMark ? (caretMark?.sel ?? null) : null}
@@ -4161,10 +4397,10 @@ export default function MarkdownEditor({
               closeSpellPopup();
             }}
             onContextMenu={handleContextMenu}
-            placeholder="Escribe tu nota en markdown… — [[ enlazar otra nota · / insertar bloques"
-            aria-label="Contenido de la nota"
+            placeholder={t("editor.placeholder")}
+            aria-label={t("editor.body")}
             spellCheck={false}
-            lang={spellLang !== undefined && spellLang !== "off" ? spellLang : undefined}
+            lang={spellLangs && spellLangs.length > 0 ? spellLangs[0] : undefined}
             style={
               fontSize || overlayMark
                 ? {
@@ -4182,6 +4418,10 @@ export default function MarkdownEditor({
               tableCaret && !composing && "gus-cell-edit",
               overlayMark && "gus-mark-edit",
               copyHover !== null && "cursor-pointer",
+              // El puntero cae en el textarea (el overlay no recibe eventos),
+              // así que el cursor de redimensionado lo pone el propio campo
+              // mientras hay un borde de columna justo debajo.
+              hoverResize !== null && "cursor-col-resize",
             )}
           />
 
@@ -4206,13 +4446,7 @@ export default function MarkdownEditor({
                 items={slashItems(menu.query)}
                 index={menu.index}
                 insideTable={tableCaret !== null}
-                label={
-                  menu.stage === "table-size"
-                    ? "Tamaño de la tabla"
-                    : tableCaret !== null
-                      ? "Acciones de la tabla"
-                      : undefined
-                }
+                label={tableCaret !== null ? t("menu.tableActions") : undefined}
                 onPick={insertSlashItem}
                 onHover={(index) => setMenu({ ...menu, index })}
               />
@@ -4226,6 +4460,7 @@ export default function MarkdownEditor({
                 anchor={spellPopup.anchor}
                 suggestions={spellPopup.suggestions}
                 index={spellPopup.index}
+                applyCombo={comboLabel(comboFor(shortcuts, "applySuggestion")) || "Alt+Enter"}
                 onPick={(suggestion) => void applySpellCorrection(suggestion)}
               />
             )}

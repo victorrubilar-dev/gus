@@ -269,14 +269,26 @@ export function tableRows(cell: TableCellCaret): number[] {
 export function adjacentTableCell(
   cell: TableCellCaret,
   delta: 1 | -1,
+  lines?: TableLine[],
 ): { line: number; col: number } | null {
   const rows = tableRows(cell);
   const index = rows.indexOf(cell.line);
   if (index < 0) return null;
-  const flat = index * cell.cols + cell.col + delta;
   const total = rows.length * cell.cols;
-  if (flat < 0 || flat >= total) return null;
-  return { line: rows[Math.floor(flat / cell.cols)], col: flat % cell.cols };
+  let flat = index * cell.cols + cell.col + delta;
+  while (flat >= 0 && flat < total) {
+    const curLine = rows[Math.floor(flat / cell.cols)];
+    const curCol = flat % cell.cols;
+    if (lines) {
+      const text = splitTableCells(lines[curLine]?.text ?? "")[curCol]?.text ?? "";
+      if (isMergeMarker(text)) {
+        flat += delta;
+        continue;
+      }
+    }
+    return { line: curLine, col: curCol };
+  }
+  return null;
 }
 
 /**
@@ -291,9 +303,16 @@ export function neighbourColumn(
   direction: 1 | -1,
 ): number | null {
   const count = splitTableCells(lines[line]?.text ?? "").length;
-  const wanted = col + direction;
-  if (count === 0 || wanted < 0 || wanted >= count) return null;
-  return wanted;
+  let wanted = col + direction;
+  while (wanted >= 0 && wanted < count) {
+    const text = splitTableCells(lines[line]?.text ?? "")[wanted]?.text ?? "";
+    if (isMergeMarker(text)) {
+      wanted += direction;
+      continue;
+    }
+    return wanted;
+  }
+  return null;
 }
 
 /**
@@ -726,55 +745,6 @@ export function removeTable(lines: TableLine[], block: TableBlock): TableEdit {
   return { lines: next, offset: lineStartOffset(flat, block.start) };
 }
 
-/**
- * Une las filas del cuerpo seleccionadas en una: cada columna pasa a ser la
- * concatenación de sus celdas (se omiten las vacías). La cabecera no entra.
- */
-export function mergeTableRows(
-  lines: TableLine[],
-  block: TableBlock,
-  rowLines: number[],
-  col: number,
-): TableEdit | null {
-  const body = [...new Set(rowLines)]
-    .filter((line) => line > block.start + 1 && line <= block.end)
-    .sort((a, b) => a - b);
-  if (body.length < 2) return null;
-
-  const cols = tableColumnCount(lines, block);
-  const merged: string[] = [];
-  for (let c = 0; c < cols; c += 1) {
-    const parts: string[] = [];
-    for (const row of body) {
-      const text = (splitTableCells(lines[row].text)[c]?.text ?? "").trim();
-      if (text !== "") parts.push(text);
-    }
-    merged.push(parts.join(" "));
-  }
-
-  const next = lines.map((entry) => entry.text);
-  next[body[0]] = formatTableRow(merged);
-  for (let i = body.length - 1; i >= 1; i -= 1) next.splice(body[i], 1);
-  return { lines: next, caret: { line: body[0], col: Math.min(Math.max(col, 0), cols - 1) } };
-}
-
-/** Filas de cuerpo cuyo contenido (o salto) toca la selección indicada. */
-export function tableSelectionRows(
-  lines: TableLine[],
-  block: TableBlock,
-  selStart: number,
-  selEnd: number,
-): number[] {
-  const rows: number[] = [];
-  let at = lineStartOffset(lines, block.start);
-  for (let line = block.start; line <= block.end; line += 1) {
-    const end = at + lines[line].text.length;
-    if (selStart < end && selEnd > at) rows.push(line);
-    at = end + 1;
-  }
-  return rows.filter((line) => line > block.start + 1);
-}
-
 /** ¿El rango toca alguna línea de un bloque de tabla? */
 export function tableIntersects(
   lines: TableLine[],
@@ -901,6 +871,50 @@ export interface TableCellRect {
   right: number;
 }
 
+/**
+ * Qué se puede hacer con la selección de una tabla. Vive aquí y no en el menú
+ * para poder comprobarlo: es la puerta por la que la persona llega a las
+ * acciones, y si una transición falla la opción desaparece sin explicación.
+ */
+export interface TableMenuState {
+  block: { start: number; end: number };
+  line: number;
+  col: number;
+  cols: number;
+  rect: TableCellRect | null;
+  /**
+   * Celda bajo el puntero en la tarjeta pintada. La tarjeta y el texto crudo
+   * no están alineados columna a columna (una celda combinada es mucho más
+   * ancha que su texto), así que para alinear manda lo que se ve.
+   */
+  visual?: { line: number; col: number } | null;
+  canDeleteRow: boolean;
+  canDeleteCol: boolean;
+  canSort: boolean;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  canToggleTask: boolean;
+  canMerge: boolean;
+  canUnmerge: boolean;
+}
+
+/**
+ * Rectángulo con el que debe trabajar una acción de tabla (copiar).
+ *
+ * El que llega con el menú manda: al hacer clic derecho el motor puede colapsar
+ * la selección —y con ella el cuadro marcado—, así que el estado ya está vacío
+ * aunque la persona siga viendo lo que había seleccionado. El rectángulo se
+ * calculó al abrir el menú, con la selección a punto de caer, y ese es el
+ * correcto. Solo si el menú no trae ninguno (una acción del menú «/») se usa el
+ * del estado.
+ */
+export function actionRect(
+  fromMenu: TableCellRect | null,
+  fromState: TableCellRect | null,
+): TableCellRect | null {
+  return fromMenu ?? fromState;
+}
+
 /** Une dos celdas (ancla y foco) en el rectángulo que las contiene. */
 export function cellRect(anchor: TableCellRef, focus: TableCellRef): TableCellRect {
   return {
@@ -985,53 +999,325 @@ export function clearTableCells(
   return { text: next.join("\n"), caret };
 }
 
+/* ────────────────────────────────────────────────────────────────────────────
+   Combinación de celdas: detección de marcadores («>», «^»), cálculo de cuadrícula
+   fusionada, combinar selección y separar celdas.
+   ──────────────────────────────────────────────────────────────────────────── */
+
+/** Marcador para combinar con la celda de la izquierda («>»). */
+export function isColSpanMarker(text: string): boolean {
+  return text.trim() === ">";
+}
+
+/** Marcador para combinar con la celda superior («^»). */
+export function isRowSpanMarker(text: string): boolean {
+  return text.trim() === "^";
+}
+
+export function isMergeMarker(text: string): boolean {
+  const trimmed = text.trim();
+  return trimmed === ">" || trimmed === "^";
+}
+
+export interface CellMergeInfo {
+  isContinuation: boolean;
+  masterLine: number;
+  masterCol: number;
+  colSpan: number;
+  rowSpan: number;
+}
+
 /**
- * Combina las celdas del rectángulo en una sola, como en Excel: su contenido se
- * concatena (en orden de lectura, saltando las vacías) en la celda de arriba a la
- * izquierda y las demás se vacían. El rectángulo sigue ocupando su sitio en la
- * rejilla —la tabla no pierde ni una fila ni una columna— y la celda combinada
- * se dibuja ocupando todo ese rectángulo.
+ * Calcula la estructura de celdas combinadas de un bloque de tabla.
+ * Devuelve un Map con clave `${line}:${col}` y su información de fusión.
  */
-export function mergeTableRect(
+export function computeTableMerges(
+  lines: TableLine[],
+  start: number,
+  end?: number,
+): Map<string, CellMergeInfo> {
+  const map = new Map<string, CellMergeInfo>();
+  const lastLine = end ?? lines.length - 1;
+  if (start < 0 || start >= lines.length) return map;
+
+  const headerCells = splitTableCells(lines[start]?.text ?? "");
+  const cols = headerCells.length;
+
+  // 1. Cabecera (combinación horizontal)
+  let c = 0;
+  while (c < cols) {
+    let colSpan = 1;
+    while (c + colSpan < cols && isColSpanMarker(headerCells[c + colSpan]?.text ?? "")) {
+      colSpan += 1;
+    }
+    map.set(`${start}:${c}`, {
+      isContinuation: false,
+      masterLine: start,
+      masterCol: c,
+      colSpan,
+      rowSpan: 1,
+    });
+    for (let k = 1; k < colSpan; k += 1) {
+      map.set(`${start}:${c + k}`, {
+        isContinuation: true,
+        masterLine: start,
+        masterCol: c,
+        colSpan: 1,
+        rowSpan: 1,
+      });
+    }
+    c += colSpan;
+  }
+
+  // 2. Filas de cuerpo (start + 2 hasta lastLine)
+  const bodyLines: number[] = [];
+  for (let l = start + 2; l <= lastLine && l < lines.length; l += 1) {
+    if (!lines[l].code && isTableRow(lines[l].text)) {
+      bodyLines.push(l);
+    }
+  }
+
+  const numBodyRows = bodyLines.length;
+  if (numBodyRows === 0) return map;
+
+  const bodyGrid: TableCellSpan[][] = bodyLines.map((l) => splitTableCells(lines[l].text));
+  const maxCols = Math.max(cols, ...bodyGrid.map((row) => row.length));
+
+  const gridMaster: { r: number; c: number }[][] = Array.from({ length: numBodyRows }, (_, r) =>
+    Array.from({ length: maxCols }, (_, colIdx) => ({ r, c: colIdx })),
+  );
+
+  for (let r = 0; r < numBodyRows; r += 1) {
+    for (let colIdx = 0; colIdx < maxCols; colIdx += 1) {
+      const text = bodyGrid[r][colIdx]?.text ?? "";
+      if (isColSpanMarker(text) && colIdx > 0) {
+        gridMaster[r][colIdx] = gridMaster[r][colIdx - 1];
+      } else if (isRowSpanMarker(text) && r > 0) {
+        gridMaster[r][colIdx] = gridMaster[r - 1][colIdx];
+      }
+    }
+  }
+
+  const groups = new Map<string, { r: number; c: number }[]>();
+  for (let r = 0; r < numBodyRows; r += 1) {
+    for (let colIdx = 0; colIdx < maxCols; colIdx += 1) {
+      const master = gridMaster[r][colIdx];
+      const key = `${master.r}:${master.c}`;
+      let list = groups.get(key);
+      if (!list) {
+        list = [];
+        groups.set(key, list);
+      }
+      list.push({ r, c: colIdx });
+    }
+  }
+
+  groups.forEach((cells, key) => {
+    const [mrStr, mcStr] = key.split(":");
+    const mr = Number(mrStr);
+    const mc = Number(mcStr);
+    const masterLine = bodyLines[mr];
+
+    let maxR = mr;
+    let maxC = mc;
+    for (const cell of cells) {
+      if (cell.r > maxR) maxR = cell.r;
+      if (cell.c > maxC) maxC = cell.c;
+    }
+
+    const rowSpan = maxR - mr + 1;
+    const colSpan = maxC - mc + 1;
+
+    map.set(`${masterLine}:${mc}`, {
+      isContinuation: false,
+      masterLine,
+      masterCol: mc,
+      colSpan,
+      rowSpan,
+    });
+
+    for (const cell of cells) {
+      if (cell.r === mr && cell.c === mc) continue;
+      const curLine = bodyLines[cell.r];
+      map.set(`${curLine}:${cell.c}`, {
+        isContinuation: true,
+        masterLine,
+        masterCol: mc,
+        colSpan: 1,
+        rowSpan: 1,
+      });
+    }
+  });
+
+  return map;
+}
+
+/**
+ * Combina las celdas del rectángulo `rect`.
+ * La celda superior izquierda se convierte en la celda maestra conservando el contenido.
+ * Las celdas restantes de la primera fila se marcan con «>».
+ * Las celdas de las filas inferiores se marcan con «^» o «>».
+ */
+export function mergeTableCells(
   lines: TableLine[],
   rect: TableCellRect,
 ): TableEdit | null {
-  const parts: string[] = [];
-  for (const line of rectRowLines(lines, rect)) {
-    const cells = splitTableCells(lines[line].text);
-    for (let col = rect.left; col <= rect.right && col < cells.length; col += 1) {
-      const text = cells[col].text;
-      if (text !== "") parts.push(text);
+  if (!rectSpansCells(rect)) return null;
+
+  const rows = rectRowLines(lines, rect);
+  if (rows.length === 0) return null;
+
+  const masterLine = rows[0];
+  const masterCol = rect.left;
+  let masterText = "";
+
+  const masterSpans = splitTableCells(lines[masterLine]?.text ?? "");
+  const currentMasterText = masterSpans[masterCol]?.text ?? "";
+  if (currentMasterText !== "" && !isMergeMarker(currentMasterText)) {
+    masterText = currentMasterText;
+  } else {
+    for (const line of rows) {
+      const spans = splitTableCells(lines[line]?.text ?? "");
+      for (let col = rect.left; col <= rect.right; col += 1) {
+        const t = spans[col]?.text ?? "";
+        if (t !== "" && !isMergeMarker(t)) {
+          masterText = t;
+          break;
+        }
+      }
+      if (masterText !== "") break;
     }
   }
-  if (parts.length === 0) return null;
 
-  const joined = parts.join(" ").replace(/\|/g, "\\|");
   const next = lines.map((entry) => entry.text);
-  let touched = false;
 
-  for (const line of rectRowLines(lines, rect)) {
-    const text = lines[line].text;
-    const spans = splitTableCells(text);
-    let rebuilt = text;
-    // De derecha a izquierda: primero se vacían las celdas de la derecha y al
-    // final la de la izquierda recibe el texto combinado (puede ser más largo).
-    for (let col = Math.min(rect.right, spans.length - 1); col >= rect.left; col -= 1) {
-      const span = spans[col];
-      // El texto combinado solo vive en la celda de arriba a la izquierda: las
-      // demás celdas del rectángulo se vacían.
-      const value = line === rect.top && col === rect.left ? joined : "";
-      if (span.start === span.end && value === "") continue;
-      rebuilt = `${rebuilt.slice(0, span.start)}${value}${rebuilt.slice(span.end)}`;
+  for (let rIdx = 0; rIdx < rows.length; rIdx += 1) {
+    const line = rows[rIdx];
+    const spans = splitTableCells(next[line]);
+    const texts = spans.map((s) => s.text);
+    while (texts.length <= rect.right) texts.push("");
+
+    if (rIdx === 0) {
+      texts[masterCol] = masterText;
+      for (let c = rect.left + 1; c <= rect.right; c += 1) {
+        texts[c] = ">";
+      }
+    } else {
+      texts[rect.left] = "^";
+      for (let c = rect.left + 1; c <= rect.right; c += 1) {
+        texts[c] = ">";
+      }
     }
-    if (rebuilt === text || !isTableRow(rebuilt)) continue;
-    next[line] = rebuilt;
-    touched = true;
+
+    next[line] = formatTableRow(texts);
   }
 
-  if (!touched) return null;
-
-  // El cursor se queda en la celda de arriba a la izquierda, que es donde vive
-  // ahora el texto combinado.
-  return { lines: next, caret: { line: rect.top, col: rect.left } };
+  return {
+    lines: next,
+    caret: { line: masterLine, col: masterCol },
+  };
 }
+
+/**
+ * Separa celdas combinadas. Si se pasa un `rect`, separa cualquier fusión dentro del rectángulo.
+ * Si no hay rectángulo, separa la celda en la que está el cursor `(line, col)`.
+ */
+export function unmergeTableCells(
+  lines: TableLine[],
+  line: number,
+  col: number,
+  rect: TableCellRect | null,
+): TableEdit | null {
+  const block = blockAt(lines, line);
+  if (!block) return null;
+
+  const merges = computeTableMerges(lines, block.start, block.end);
+  const rows = rect && rectSpansCells(rect) ? rectRowLines(lines, rect) : [line];
+  const targetCols =
+    rect && rectSpansCells(rect)
+      ? { min: rect.left, max: rect.right }
+      : { min: col, max: col };
+
+  let targets: { line: number; col: number }[] = [];
+
+  if (rect && rectSpansCells(rect)) {
+    for (const r of rows) {
+      for (let c = targetCols.min; c <= targetCols.max; c += 1) {
+        targets.push({ line: r, col: c });
+      }
+    }
+  } else {
+    const curMerge = merges.get(`${line}:${col}`);
+    if (
+      !curMerge ||
+      (!curMerge.isContinuation && curMerge.colSpan === 1 && curMerge.rowSpan === 1)
+    ) {
+      return null;
+    }
+    const mLine = curMerge.masterLine;
+    const mCol = curMerge.masterCol;
+    merges.forEach((info, key) => {
+      if (info.masterLine === mLine && info.masterCol === mCol) {
+        const [lStr, cStr] = key.split(":");
+        targets.push({ line: Number(lStr), col: Number(cStr) });
+      }
+    });
+  }
+
+  if (targets.length === 0) return null;
+
+  const next = lines.map((entry) => entry.text);
+  let changed = false;
+
+  for (const { line: tLine, col: tCol } of targets) {
+    const spans = splitTableCells(next[tLine]);
+    if (tCol >= spans.length) continue;
+    const current = spans[tCol].text;
+    if (isMergeMarker(current)) {
+      const texts = spans.map((s) => s.text);
+      texts[tCol] = "";
+      next[tLine] = formatTableRow(texts);
+      changed = true;
+    }
+  }
+
+  if (!changed) return null;
+
+  return {
+    lines: next,
+    caret: { line, col },
+  };
+}
+
+export function isTableMergePossible(rect: TableCellRect | null): boolean {
+  return rect !== null && rectSpansCells(rect);
+}
+
+export function isTableUnmergePossible(
+  lines: TableLine[],
+  line: number,
+  col: number,
+  rect: TableCellRect | null,
+): boolean {
+  const block = blockAt(lines, line);
+  if (!block) return false;
+  const merges = computeTableMerges(lines, block.start, block.end);
+
+  if (rect && rectSpansCells(rect)) {
+    const rows = rectRowLines(lines, rect);
+    for (const r of rows) {
+      for (let c = rect.left; c <= rect.right; c += 1) {
+        const m = merges.get(`${r}:${c}`);
+        if (m && (m.isContinuation || m.colSpan > 1 || m.rowSpan > 1)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  const cur = merges.get(`${line}:${col}`);
+  return !!cur && (cur.isContinuation || cur.colSpan > 1 || cur.rowSpan > 1);
+}
+
+

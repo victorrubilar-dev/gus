@@ -19,7 +19,11 @@ import clsx from "clsx";
 import type { NoteFile } from "./FileExplorer";
 import { NEW_TASK_EVENT } from "../lib/newTask";
 import { loadTaskStore, type Task } from "../lib/taskStore";
-import { PRIORITY_CLASS, PRIORITY_LABEL, priorityRank } from "../lib/taskPriority";
+import { PRIORITY_CLASS, priorityLabel, priorityRank } from "../lib/taskPriority";
+import { useT } from "../lib/i18n";
+import type { MessageKey, TranslateParams } from "../lib/i18n/core";
+
+type Translator = (key: MessageKey, params?: TranslateParams) => string;
 
 export type DashboardTab = "notes" | "tasks" | "calendar" | "settings";
 
@@ -54,52 +58,54 @@ function shortDate(iso: string): string {
   const date = new Date(`${iso}T00:00:00`);
   if (Number.isNaN(date.getTime())) return iso;
 
-  return date.toLocaleDateString("es-ES", {
+  return date.toLocaleDateString(undefined, {
     day: "numeric",
     month: "short",
     ...(date.getFullYear() === new Date().getFullYear() ? {} : { year: "numeric" }),
   });
 }
 
-function dueChip(due: string): { label: string; title: string; className: string } {
+function dueChip(due: string, t: Translator): { label: string; title: string; className: string } {
   const today = todayIso();
   if (due < today) {
     return {
       label: shortDate(due),
-      title: "Plazo vencido",
+      title: t("tasks.dueOverdue"),
       className: "border-rose-400/40 bg-rose-400/10 text-rose-300",
     };
   }
   if (due === today) {
     return {
-      label: "Hoy",
-      title: "Vence hoy",
+      label: t("common.today"),
+      title: t("tasks.dueToday"),
       className: "border-amber-400/40 bg-amber-400/10 text-amber-300",
     };
   }
   return {
     label: shortDate(due),
-    title: `Plazo: ${shortDate(due)}`,
+    title: `${t("tasks.dueLabel")}: ${shortDate(due)}`,
     className: "border-gus-border bg-gus-panel text-gus-muted",
   };
 }
 
-function relativeTime(ms: number | null): string {
-  if (ms == null) return "sin fecha";
+function relativeTime(ms: number | null, t: Translator): string {
+  if (ms == null) return t("dashboard.noDate");
 
   const diff = Date.now() - ms;
-  if (diff < 60_000) return "ahora";
-  if (diff < 3_600_000) return `hace ${Math.max(1, Math.floor(diff / 60_000))} min`;
-  if (diff < 86_400_000) return `hace ${Math.floor(diff / 3_600_000)} h`;
-  if (diff < 7 * 86_400_000) return `hace ${Math.floor(diff / 86_400_000)} d`;
+  if (diff < 60_000) return t("welcome.time.now");
+  if (diff < 3_600_000) {
+    return t("welcome.time.minutes", { count: Math.max(1, Math.floor(diff / 60_000)) });
+  }
+  if (diff < 86_400_000) return t("welcome.time.hours", { count: Math.floor(diff / 3_600_000) });
+  if (diff < 7 * 86_400_000) return t("welcome.time.days", { count: Math.floor(diff / 86_400_000) });
 
-  return new Date(ms).toLocaleDateString("es-ES", { day: "numeric", month: "short" });
+  return new Date(ms).toLocaleDateString(undefined, { day: "numeric", month: "short" });
 }
 
-function folderOf(relative: string): string {
+function folderOf(relative: string, t: Translator): string {
   const parts = relative.split("/");
   parts.pop();
-  return parts.join("/") || "raíz";
+  return parts.join("/") || t("welcome.vaultRoot");
 }
 
 export default function DashboardView({
@@ -109,6 +115,7 @@ export default function DashboardView({
   onNewTask,
   onOpenNote,
 }: DashboardViewProps) {
+  const t = useT();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [tasksStatus, setTasksStatus] = useState<"loading" | "ready" | "error">("loading");
   const [tasksError, setTasksError] = useState<string | null>(null);
@@ -217,20 +224,23 @@ export default function DashboardView({
   const progress = tasks.length === 0 ? 0 : Math.round((done / tasks.length) * 100);
 
   const stats = [
-    { label: "Pendientes", value: pending.length, className: "text-gus-text", tab: "tasks" as const },
-    { label: "Vencidas", value: overdue.length, className: "text-rose-300", tab: "calendar" as const },
-    { label: "Para hoy", value: dueToday.length, className: "text-amber-300", tab: "calendar" as const },
-    { label: "Completadas", value: done, className: "text-emerald-300", tab: "tasks" as const },
+    { label: t("dashboard.pending"), value: pending.length, className: "text-gus-text", tab: "tasks" as const },
+    { label: t("calendar.overdue"), value: overdue.length, className: "text-rose-300", tab: "calendar" as const },
+    { label: t("calendar.dueToday"), value: dueToday.length, className: "text-amber-300", tab: "calendar" as const },
+    { label: t("dashboard.done"), value: done, className: "text-emerald-300", tab: "tasks" as const },
   ];
 
-  const todayLabel = new Date().toLocaleDateString("es-ES", {
+  const todayLabel = new Date().toLocaleDateString(undefined, {
     weekday: "long",
     day: "numeric",
     month: "long",
   });
 
   return (
-    <section className="gus-scrollbar h-full overflow-y-auto p-6">
+    <section
+      data-tour="dashboard"
+      className="gus-scrollbar h-full overflow-y-auto p-6"
+    >
       <div className="mx-auto flex max-w-6xl flex-col gap-4">
         <header className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -239,7 +249,7 @@ export default function DashboardView({
             </div>
             <div>
               <h2 className="text-sm font-semibold uppercase tracking-wider text-gus-muted">
-                Resumen
+                {t("app.tab.home")}
               </h2>
               <p className="text-xs text-gus-muted first-letter:uppercase">
                 {vaultName} · {todayLabel}
@@ -250,8 +260,8 @@ export default function DashboardView({
           <button
             type="button"
             onClick={() => setReloadKey((key) => key + 1)}
-            title="Actualizar el resumen"
-            aria-label="Actualizar el resumen"
+            title={t("dashboard.reload")}
+            aria-label={t("dashboard.reload")}
             className="flex h-9 w-9 items-center justify-center rounded-lg border border-gus-border bg-gus-card text-gus-muted transition-colors hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
           >
             <RefreshCw className="h-4 w-4" aria-hidden="true" />
@@ -298,7 +308,7 @@ export default function DashboardView({
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <ListTodo className="h-4 w-4 text-gus-accent" strokeWidth={1.75} aria-hidden="true" />
-                  <h3 className="text-sm font-semibold">Próximas tareas</h3>
+                  <h3 className="text-sm font-semibold">{t("dashboard.nextTasks")}</h3>
                   {upcoming.length > 0 && (
                     <span className="rounded-full border border-gus-border bg-gus-panel px-2 py-0.5 text-[10px] text-gus-muted">
                       {upcoming.length}
@@ -311,17 +321,17 @@ export default function DashboardView({
                   onClick={() => onNavigate("tasks")}
                   className="text-xs text-gus-accent underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
                 >
-                  Ver todas
+                  {t("dashboard.openTasks")}
                 </button>
               </div>
 
               {tasksStatus === "loading" && (
-                <p className="py-6 text-center text-xs text-gus-muted">Cargando tareas…</p>
+                <p className="py-6 text-center text-xs text-gus-muted">{t("dashboard.loadingTasks")}</p>
               )}
 
               {tasksStatus === "error" && (
                 <div className="flex flex-col items-center gap-2 py-6 text-center">
-                  <p className="text-xs text-gus-muted">No se pudieron cargar las tareas.</p>
+                  <p className="text-xs text-gus-muted">{t("calendar.loadError")}</p>
                   {tasksError && (
                     <p className="max-w-md break-words text-[11px] text-rose-400/80">{tasksError}</p>
                   )}
@@ -330,7 +340,7 @@ export default function DashboardView({
                     onClick={() => setReloadKey((key) => key + 1)}
                     className="rounded-lg border border-gus-border px-3 py-1.5 text-xs text-gus-muted transition-colors hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
                   >
-                    Reintentar
+                    {t("editor.retry")}
                   </button>
                 </div>
               )}
@@ -339,8 +349,8 @@ export default function DashboardView({
                 <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-gus-border py-8 text-center">
                   <p className="text-xs text-gus-muted">
                     {tasks.length === 0
-                      ? "No hay tareas todavía."
-                      : "¡Todo completado! No queda nada pendiente."}
+                      ? t("dashboard.noTasks")
+                      : t("dashboard.allDone")}
                   </p>
                   <button
                     type="button"
@@ -348,7 +358,7 @@ export default function DashboardView({
                     className="inline-flex items-center gap-1.5 rounded-lg bg-gus-accent px-3 py-1.5 text-xs font-medium text-gus-bg transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
                   >
                     <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-                    Crear una tarea
+                    {t("dashboard.createTask")}
                   </button>
                 </div>
               )}
@@ -356,7 +366,7 @@ export default function DashboardView({
               {tasksStatus === "ready" && upcoming.length > 0 && (
                 <ul className="flex flex-col gap-2">
                   {upcoming.map((task) => {
-                    const chip = task.due ? dueChip(task.due) : null;
+                    const chip = task.due ? dueChip(task.due, t) : null;
 
                     return (
                       <li
@@ -367,7 +377,7 @@ export default function DashboardView({
                           type="button"
                           role="checkbox"
                           aria-checked={task.completes}
-                          aria-label={`Marcar «${task.title}» como completada`}
+                          aria-label={t("calendar.markDone", { title: task.title })}
                           onClick={() => toggle(task.id)}
                           className="mt-px flex h-4 w-4 shrink-0 items-center justify-center rounded border border-gus-muted/60 text-transparent outline-none transition-colors hover:border-gus-accent focus-visible:ring-2 focus-visible:ring-gus-accent/70"
                         >
@@ -377,7 +387,7 @@ export default function DashboardView({
                         <button
                           type="button"
                           onClick={() => onNavigate("tasks")}
-                          title="Ver en la lista de tareas"
+                          title={t("dashboard.seeInTasks")}
                           className="min-w-0 flex-1 truncate text-left text-sm text-gus-text outline-none transition-colors hover:text-gus-accent focus-visible:ring-2 focus-visible:ring-gus-accent/70"
                         >
                           {task.title}
@@ -385,14 +395,14 @@ export default function DashboardView({
 
                         {task.priority && (
                           <span
-                            title={`Prioridad ${PRIORITY_LABEL[task.priority]}`}
+                            title={t("tasks.priorityLabel", { name: priorityLabel(task.priority) })}
                             className={clsx(
                               "flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] capitalize",
                               PRIORITY_CLASS[task.priority],
                             )}
                           >
                             <Flag className="h-2.5 w-2.5" aria-hidden="true" />
-                            {task.priority}
+                            {priorityLabel(task.priority)}
                           </span>
                         )}
 
@@ -418,7 +428,7 @@ export default function DashboardView({
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <StickyNote className="h-4 w-4 text-gus-accent" strokeWidth={1.75} aria-hidden="true" />
-                  <h3 className="text-sm font-semibold">Últimas notas</h3>
+                  <h3 className="text-sm font-semibold">{t("dashboard.recentNotes")}</h3>
                 </div>
 
                 <button
@@ -431,12 +441,12 @@ export default function DashboardView({
               </div>
 
               {notesStatus === "loading" && (
-                <p className="py-6 text-center text-xs text-gus-muted">Cargando notas…</p>
+                <p className="py-6 text-center text-xs text-gus-muted">{t("dashboard.loadingNotes")}</p>
               )}
 
               {notesStatus === "error" && (
                 <div className="flex flex-col items-center gap-2 py-6 text-center">
-                  <p className="text-xs text-gus-muted">No se pudieron cargar las notas.</p>
+                  <p className="text-xs text-gus-muted">{t("dashboard.notesError")}</p>
                   {notesError && (
                     <p className="max-w-md break-words text-[11px] text-rose-400/80">{notesError}</p>
                   )}
@@ -445,13 +455,13 @@ export default function DashboardView({
 
               {notesStatus === "ready" && notes.length === 0 && (
                 <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-gus-border py-8 text-center">
-                  <p className="text-xs text-gus-muted">Todavía no hay notas en este vault.</p>
+                  <p className="text-xs text-gus-muted">{t("dashboard.emptyVault")}</p>
                   <button
                     type="button"
                     onClick={() => onNavigate("notes")}
                     className="rounded-lg border border-gus-border px-3 py-1.5 text-xs text-gus-muted transition-colors hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
                   >
-                    Abrir el explorador
+                    {t("dashboard.openExplorer")}
                   </button>
                 </div>
               )}
@@ -478,11 +488,11 @@ export default function DashboardView({
                             {note.name.replace(/\.md$/i, "")}
                           </span>
                           <span className="block truncate text-[11px] text-gus-muted">
-                            {folderOf(note.relative)}
+                            {folderOf(note.relative, t)}
                           </span>
                         </span>
                         <span className="shrink-0 text-[11px] text-gus-muted">
-                          {relativeTime(note.modified_ms)}
+                          {relativeTime(note.modified_ms, t)}
                         </span>
                       </button>
                     </li>
@@ -494,11 +504,11 @@ export default function DashboardView({
 
           <aside className="flex flex-col gap-4">
             <div className={clsx(CARD, "p-4")}>
-              <h3 className="text-sm font-semibold">Tu progreso</h3>
+              <h3 className="text-sm font-semibold">{t("dashboard.progress")}</h3>
               <p className="mt-1 text-xs text-gus-muted">
                 {tasks.length === 0
-                  ? "Sin tareas registradas."
-                  : `${done} de ${tasks.length} completadas`}
+                  ? t("dashboard.noTasksRegistered")
+                  : t("tasks.doneCount", { done, total: tasks.length })}
               </p>
 
               <div className="mt-3 h-2 overflow-hidden rounded-full bg-gus-panel">
@@ -511,7 +521,7 @@ export default function DashboardView({
             </div>
 
             <div className={clsx(CARD, "flex flex-col gap-2 p-4")}>
-              <h3 className="text-sm font-semibold">Accesos rápidos</h3>
+              <h3 className="text-sm font-semibold">{t("dashboard.quickActions")}</h3>
 
               <button
                 type="button"
@@ -519,15 +529,15 @@ export default function DashboardView({
                 className="mt-1 flex items-center justify-center gap-1.5 rounded-lg bg-gus-accent px-3 py-2 text-sm font-medium text-gus-bg transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
               >
                 <Plus className="h-4 w-4" aria-hidden="true" />
-                Nueva tarea
+                {t("tasks.new")}
               </button>
 
               {(
                 [
-                  { tab: "notes" as const, label: "Notas", Icon: StickyNote },
-                  { tab: "tasks" as const, label: "Todas las tareas", Icon: ListTodo },
-                  { tab: "calendar" as const, label: "Calendario", Icon: CalendarDays },
-                  { tab: "settings" as const, label: "Configuración", Icon: Settings },
+                  { tab: "notes" as const, label: t("app.tab.notes"), Icon: StickyNote },
+                  { tab: "tasks" as const, label: t("dashboard.allTasks"), Icon: ListTodo },
+                  { tab: "calendar" as const, label: t("app.tab.calendar"), Icon: CalendarDays },
+                  { tab: "settings" as const, label: t("app.settings"), Icon: Settings },
                 ]
               ).map(({ tab, label, Icon }) => (
                 <button

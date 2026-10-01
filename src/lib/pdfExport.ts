@@ -7,6 +7,7 @@
  * a la vista previa del diálogo: tablas, fórmulas, diagramas y estilos incluidos.
  */
 import { domToJpeg, waitUntilLoad, type Options } from "modern-screenshot";
+import { t } from "./i18n";
 
 /** Lienzo A4 (210 × 297 mm), en milímetros y en píxeles CSS (96 ppp). */
 export const PDF_PAGE_WIDTH_MM = 210;
@@ -131,7 +132,7 @@ function jpegSize(bytes: Uint8Array): { width: number; height: number } {
     }
     at += 2 + ((bytes[at + 2] << 8) | bytes[at + 3]);
   }
-  throw new Error("La captura de la página no es un JPEG válido");
+  throw new Error(t("pdf.export.badJpeg"));
 }
 
 /** Captura una ventana de página como JPEG listo para el PDF. */
@@ -178,7 +179,7 @@ function pdfString(text: string): string {
  * del PDF son las imágenes: no hay capa de texto seleccionable.
  */
 export function buildPdf(pages: PdfPageImage[], title: string): Uint8Array {
-  if (pages.length === 0) throw new Error("No hay páginas que exportar");
+  if (pages.length === 0) throw new Error(t("pdf.export.noPages"));
 
   const encoder = new TextEncoder();
   const chunks: Uint8Array[] = [];

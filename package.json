@@ -18,7 +18,13 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "bench": "node bench/prueba-editor.mjs",
+    "bench:menu": "node bench/prueba-menu.mjs",
+    "bench:explorer": "node bench/prueba-explorador.mjs",
+    "traza": "node bench/colector.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.0",
@@ -51,9 +57,11 @@
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^6.0.2",
     "autoprefixer": "^10.6.1",
+    "playwright-core": "^1.63.0",
     "postcss": "^8.5.28",
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.3",
-    "vite": "^8.0.16"
+    "vite": "^8.0.16",
+    "vitest": "^5.0.3"
   }
 }
