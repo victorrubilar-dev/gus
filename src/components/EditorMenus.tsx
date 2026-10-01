@@ -17,10 +17,46 @@ import {
   Sigma,
   Table,
   Workflow,
+  AlignCenter,
+  AlignLeft,
+  AlignRight,
+  ArrowDown,
+  ArrowDownUp,
+  ArrowUp,
+  ArrowUpDown,
+  CheckSquare2,
+  ClipboardCopy,
+  Columns3,
+  Copy,
+  Rows3,
+  TableCellsMerge,
+  Trash,
+  SplitSquareHorizontal,
   type LucideIcon,
 } from "lucide-react";
 import type { CaretAnchor } from "../lib/caretPosition";
 import { normalizeWikiText, wikiNoteBaseTitle, wikiNoteFolder, type WikiNote } from "../lib/wikiLink";
+
+/** Acciones sobre la tabla del cursor: las del menú contextual y las del «/». */
+export type TableAction =
+  | "add-row"
+  | "add-col"
+  | "del-row"
+  | "del-col"
+  | "del-table"
+  | "merge"
+  | "unmerge"
+  | "sort-asc"
+  | "sort-desc"
+  | "clipboard"
+  | "align-left"
+  | "align-center"
+  | "align-right"
+  | "move-up"
+  | "move-down"
+  | "dup-up"
+  | "dup-down"
+  | "toggle-task";
 
 export interface SlashItem {
   id: string;
@@ -29,6 +65,14 @@ export interface SlashItem {
   snippet: string;
   caretOffset: number;
   Icon: LucideIcon;
+  /** Acción de tabla: no inserta texto, opera sobre la tabla del cursor. */
+  tableAction?: TableAction;
+  /** Al elegirlo el menú cambia a este grupo en vez de insertar. */
+  stage?: "table-size";
+  /** Tamaño (columnas × filas) del grupo de tamaños de tabla. */
+  size?: { cols: number; rows: number };
+  /** Convierte el texto seleccionado en tabla (no inserta un bloque). */
+  convertSelection?: boolean;
 }
 
 export const SLASH_ITEMS: SlashItem[] = [
@@ -99,10 +143,22 @@ export const SLASH_ITEMS: SlashItem[] = [
   {
     id: "table",
     label: "Tabla",
-    hint: "| a | b |",
+    hint: "elige el tamaño",
+    // Al elegirlo el menú pasa al grupo de tamaños (columnas × filas) en vez de
+    // insertar: así la tabla nace con las medidas que quieres.
     snippet: "| Columna 1 | Columna 2 |\n| --- | --- |\n|  |  |",
     caretOffset: "| Columna 1 | Columna 2 |\n| --- | --- |\n|  |  |".length,
     Icon: Table,
+    stage: "table-size",
+  },
+  {
+    id: "table-from-text",
+    label: "Tabla desde el texto",
+    hint: "convierte lo seleccionado",
+    snippet: "",
+    caretOffset: 0,
+    Icon: Table,
+    convertSelection: true,
   },
   {
     id: "hr",
@@ -146,11 +202,55 @@ export const SLASH_ITEMS: SlashItem[] = [
   },
 ];
 
-export function filterSlashItems(query: string): SlashItem[] {
-  const wanted = normalizeWikiText(query);
-  if (!wanted) return SLASH_ITEMS;
+/**
+ * Acciones de tabla del menú «/». Solo se ofrecen con el cursor dentro de una
+ * tabla: allí los bloques (listas, código, otra tabla…) no caben y se
+ * rechazarían, así que el menú se vuelve de la propia tabla.
+ */
+export const TABLE_SLASH_ITEMS: SlashItem[] = [
+  { id: "t-add-row", label: "Agregar fila", hint: "debajo", snippet: "", caretOffset: 0, Icon: Rows3, tableAction: "add-row" },
+  { id: "t-add-col", label: "Agregar columna", hint: "a la derecha", snippet: "", caretOffset: 0, Icon: Columns3, tableAction: "add-col" },
+  { id: "t-del-row", label: "Eliminar fila", hint: "la del cursor", snippet: "", caretOffset: 0, Icon: Trash, tableAction: "del-row" },
+  { id: "t-del-col", label: "Eliminar columna", hint: "la del cursor", snippet: "", caretOffset: 0, Icon: Trash, tableAction: "del-col" },
+  { id: "t-del-table", label: "Eliminar tabla", hint: "solo aquí se quita", snippet: "", caretOffset: 0, Icon: Trash, tableAction: "del-table" },
+  { id: "t-merge", label: "Combinar celdas", hint: "las marcadas", snippet: "", caretOffset: 0, Icon: TableCellsMerge, tableAction: "merge" },
+  { id: "t-unmerge", label: "Descombinar celdas", hint: "vuelve a separarlas", snippet: "", caretOffset: 0, Icon: SplitSquareHorizontal, tableAction: "unmerge" },
+  { id: "t-toggle-task", label: "Marcar / desmarcar", hint: "casilla de tarea", snippet: "", caretOffset: 0, Icon: CheckSquare2, tableAction: "toggle-task" },
+  { id: "t-sort-asc", label: "Ordenar A→Z", hint: "por esta columna", snippet: "", caretOffset: 0, Icon: ArrowDownUp, tableAction: "sort-asc" },
+  { id: "t-sort-desc", label: "Ordenar Z→A", hint: "por esta columna", snippet: "", caretOffset: 0, Icon: ArrowUpDown, tableAction: "sort-desc" },
+  { id: "t-align-left", label: "Alinear a la izquierda", hint: "columna", snippet: "", caretOffset: 0, Icon: AlignLeft, tableAction: "align-left" },
+  { id: "t-align-center", label: "Centrar columna", hint: "columna", snippet: "", caretOffset: 0, Icon: AlignCenter, tableAction: "align-center" },
+  { id: "t-align-right", label: "Alinear a la derecha", hint: "columna", snippet: "", caretOffset: 0, Icon: AlignRight, tableAction: "align-right" },
+  { id: "t-move-up", label: "Subir fila", hint: "Alt+↑", snippet: "", caretOffset: 0, Icon: ArrowUp, tableAction: "move-up" },
+  { id: "t-move-down", label: "Bajar fila", hint: "Alt+↓", snippet: "", caretOffset: 0, Icon: ArrowDown, tableAction: "move-down" },
+  { id: "t-dup-up", label: "Duplicar fila arriba", hint: "Mayús+Alt+↑", snippet: "", caretOffset: 0, Icon: Copy, tableAction: "dup-up" },
+  { id: "t-dup-down", label: "Duplicar fila abajo", hint: "Mayús+Alt+↓", snippet: "", caretOffset: 0, Icon: Copy, tableAction: "dup-down" },
+  { id: "t-clipboard", label: "Copiar celdas", hint: "al portapapeles", snippet: "", caretOffset: 0, Icon: ClipboardCopy, tableAction: "clipboard" },
+];
 
-  return SLASH_ITEMS.filter(
+/** Tamaños del grupo al que lleva «Tabla»: columnas × filas. */
+export const TABLE_SIZE_ITEMS: SlashItem[] = [
+  { id: "s-2x2", label: "2 × 2", hint: "pequeña", snippet: "", caretOffset: 0, Icon: Table, size: { cols: 2, rows: 2 } },
+  { id: "s-3x3", label: "3 × 3", hint: "la de siempre", snippet: "", caretOffset: 0, Icon: Table, size: { cols: 3, rows: 3 } },
+  { id: "s-4x3", label: "4 × 3", hint: "ancha", snippet: "", caretOffset: 0, Icon: Table, size: { cols: 4, rows: 3 } },
+  { id: "s-3x5", label: "3 × 5", hint: "alta", snippet: "", caretOffset: 0, Icon: Table, size: { cols: 3, rows: 5 } },
+  { id: "s-5x5", label: "5 × 5", hint: "grande", snippet: "", caretOffset: 0, Icon: Table, size: { cols: 5, rows: 5 } },
+];
+
+/**
+ * Elementos del menú «/». Dentro de una tabla solo van las acciones de la
+ * propia tabla; fuera, los bloques de siempre más el grupo de tamaños.
+ */
+export function filterSlashItems(
+  query: string,
+  insideTable = false,
+  stage: "root" | "table-size" = "root",
+): SlashItem[] {
+  const pool = stage === "table-size" ? TABLE_SIZE_ITEMS : insideTable ? TABLE_SLASH_ITEMS : SLASH_ITEMS;
+  const wanted = normalizeWikiText(query);
+  if (!wanted) return pool;
+
+  return pool.filter(
     (item) =>
       normalizeWikiText(item.label).includes(wanted) ||
       normalizeWikiText(item.hint).includes(wanted),
@@ -376,15 +476,30 @@ export interface SlashMenuProps {
   index: number;
   onPick: (item: SlashItem) => void;
   onHover: (index: number) => void;
+  /** Título del grupo: cambia en el de tamaños de tabla. */
+  label?: string;
+  /** Con el cursor en una tabla el menú ofrece acciones, no bloques. */
+  insideTable?: boolean;
 }
 
-export function SlashMenu({ anchor, items, index, onPick, onHover }: SlashMenuProps) {
+export function SlashMenu({
+  anchor,
+  items,
+  index,
+  onPick,
+  onHover,
+  label,
+  insideTable = false,
+}: SlashMenuProps) {
   const active = items.length > 0 ? Math.min(index, items.length - 1) : -1;
+  const title = label ?? (insideTable ? "Acciones de la tabla" : "Bloques para insertar");
 
   return (
-    <MenuShell anchor={anchor} label="Bloques para insertar" activeIndex={active}>
+    <MenuShell anchor={anchor} label={title} activeIndex={active}>
       {items.length === 0 && (
-        <p className="px-3 py-2 text-xs text-gus-muted">Ningún bloque coincide.</p>
+        <p className="px-3 py-2 text-xs text-gus-muted">
+          {insideTable ? "Ninguna acción coincide." : "Ningún bloque coincide."}
+        </p>
       )}
 
       {items.map((item, position) => {

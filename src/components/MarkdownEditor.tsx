@@ -45,15 +45,50 @@ import {
   type SpellFn,
   type SpellLang,
 } from "../lib/spellCheck";
-import { offsetAtPointer } from "../lib/pointerOffset";
+import { charWidthPx, offsetAtPointer } from "../lib/pointerOffset";
 import { toLocalCoord } from "../lib/uiZoom";
 import {
   adjacentTableCell,
+  alignTableColumn,
+  cellRect,
+  cellRectClipboard,
+  cellIndexAtPointer,
+  clearTableCells,
+  duplicateTableRow,
+  insertTableColumn,
+  insertTableRow,
+  isTableRow,
+  isTableTaskCell,
+  lineIndexOf,
+  lineStartOffset,
+  mergeTableRows,
+  mergeTableRect,
+  moveTableRow,
+  neighbourColumn,
+  planTableDeletion,
+  rectSpansCells,
+  removeTable,
+  removeTableColumn,
+  removeTableRow,
   resolveTableCaret,
+  rowJumpAllowed,
+  sortTableRows,
   sourceSegments,
+  splitTableCells,
+  tableBlockAt,
   tableCellRange,
+  tableFromDelimited,
+  tableIntersects,
   tableRows,
+  tableSelectionRows,
+  tableSkeleton,
+  toggleTableTask,
+  visualLength,
+  wordRangeAt,
   type TableCellCaret,
+  type TableCellRect,
+  type TableCellRef,
+  type TableEdit,
   type TableLine,
 } from "../lib/tableLayout";
 import {
@@ -94,9 +129,19 @@ import {
   type SlashItem,
 } from "./EditorMenus";
 import CopyCodeButton from "./CopyCodeButton";
-import InlinePreview, { classifySource } from "./InlinePreview";
+import InlinePreview, {
+  classifySource,
+  type TableBarHover,
+  type TableResizeHover,
+  type TableSelection,
+} from "./InlinePreview";
 import MermaidDiagram from "./MermaidDiagram";
-import EditorContextMenu, { type ContextSpell, type FormatKind } from "./EditorContextMenu";
+import EditorContextMenu, {
+  type ContextSpell,
+  type FormatKind,
+  type TableAction,
+  type TableMenuInfo,
+} from "./EditorContextMenu";
 import PdfExportDialog from "./PdfExportDialog";
 
 export interface EditorDraft {
@@ -143,6 +188,25 @@ const HINT_DELAY_MS = 1500;
 /** Marca persistente: el usuario ya usó el menú «/»; la pista no vuelve. */
 const SLASH_HINT_KEY = "gus-slash-hint-used";
 
+/** Anchura mínima de una columna al redimensionar, y de una que no se pueda
+ *  medir (píxeles): la celda lleva 16 de relleno, así que 24 ya deja texto. */
+const MIN_COL_WIDTH = 24;
+const DEFAULT_COL_WIDTH = 48;
+/** Zona de clic de la casilla de tarea (unos cinco caracteres con el relleno). */
+const TASK_CHECKBOX_PX = 36;
+
+/** Alto que una tabla ha ganado al envolver sus celdas: a partir de su última
+ *  fila el overlay queda más abajo que el textarea, y hay que compensarlo. */
+interface TableDrift {
+  /** Última línea del bloque de tabla. */
+  end: number;
+  /** Píxeles de más que ocupa el bloque. */
+  extra: number;
+}
+
+/** Mapa de alturas vacío reutilizable: evita re-renderizar por un Map nuevo. */
+const EMPTY_DRIFT: Map<number, TableDrift> = new Map();
+
 type SaveState = "idle" | "dirty" | "saved" | "error";
 
 type ViewMode = "edit" | "preview";
@@ -153,11 +217,15 @@ interface EditorMenu {
   query: string;
   index: number;
   anchor: CaretAnchor;
+  /** Grupo del menú «/»: el normal o el de tamaños de tabla. */
+  stage?: "root" | "table-size";
 }
 
 interface ContextMenuState {
   spell: ContextSpell | null;
   hasSelection: boolean;
+  /** Tabla bajo el clic derecho (null si el clic no cayó en una). */
+  table: TableMenuInfo | null;
   x: number;
   y: number;
 }
@@ -313,6 +381,16 @@ function measureTableCols(area: HTMLTextAreaElement | null): number | null {
   return Math.floor(width / char);
 }
 
+/** ¿Dos mapas de alturas de bloque dicen lo mismo? (evita re-renderizar) */
+function sameDrift(a: Map<number, TableDrift>, b: Map<number, TableDrift>): boolean {
+  if (a.size !== b.size) return false;
+  for (const [key, drift] of a) {
+    const other = b.get(key);
+    if (!other || other.end !== drift.end || other.extra !== drift.extra) return false;
+  }
+  return true;
+}
+
 export default function MarkdownEditor({
   path,
   title: initialTitle,
@@ -351,7 +429,61 @@ export default function MarkdownEditor({
   const [caretLine, setCaretLine] = useState(-1);
   const [areaFocused, setAreaFocused] = useState(false);
   const [tableCaret, setTableCaret] = useState<TableCellCaret | null>(null);
+  /** Selección absoluta mientras el cursor está en una tabla (puede ir más allá de la celda). */
+  const [tableSelection, setTableSelection] = useState<TableSelection | null>(null);
+  /** Rectángulo de celdas marcadas (varias): el cuadro que se pinta y lo que
+   *  vacía Supr. Null cuando la selección se queda en una sola celda. */
+  const [tableRect, setTableRect] = useState<TableCellRect | null>(null);
+  /** Anchura en píxeles de cada columna por bloque (null = la que dé el texto). */
+  const [tableWidths, setTableWidths] = useState<Map<number, number[]> | null>(null);
+  /** Rectángulo de celdas combinadas en una sola (estilo Excel). */
+  const [tableMerge, setTableMerge] = useState<TableCellRect | null>(null);
+  /** Cursor y selección absolutos, para que los pinte el overlay. */
+  const [caretMark, setCaretMark] = useState<{ at: number; sel: TableSelection } | null>(null);
+  /** Alto ganado por cada tabla al envolver sus celdas (por bloque). */
+  const [tableDrift, setTableDrift] = useState<Map<number, TableDrift>>(EMPTY_DRIFT);
+  /** Borde de columna bajo el ratón, listo para arrastrar. */
+  const [hoverResize, setHoverResize] = useState<TableResizeHover | null>(null);
   const prevTableLineRef = useRef(-1);
+  /** Celda ancla de la selección: punto fijo de Mayús+flechas / Mayús+clic. */
+  const tableAnchorRef = useRef<{ line: number; col: number } | null>(null);
+  /** Espejo de tableWidths para leerlo en los escuchadores del arrastre. */
+  const colWidthsRef = useRef<Map<number, number[]>>(new Map());
+  /** Espejo de tableMerge: la combinación sigue en pie mientras la estructura no cambie. */
+  const tableMergeRef = useRef<TableCellRect | null>(null);
+  /** Espejo de tableDrift: se lee al hacer scroll y al situar el cursor. */
+  const tableDriftRef = useRef<Map<number, TableDrift>>(tableDrift);
+  /** Asas de redimensionar del overlay (se buscan por coordenadas). */
+  const tableResizeHandlesRef = useRef<HTMLElement[]>([]);
+  /**
+   * Celdas del overlay, en el mismo orden que el DOM. El arrastre del ratón las
+   * busca en cada movimiento: tenerlas en una lista evita recorrer el árbol (y
+   * forzar el layout) en cada evento.
+   */
+  const tableCellsRef = useRef<HTMLElement[]>([]);
+  // Espejos para los escuchadores: un ref se lee en cualquier momento y no
+  // depende del cierre del render.
+  colWidthsRef.current = tableWidths ?? new Map();
+  tableMergeRef.current = tableMerge;
+  tableDriftRef.current = tableDrift;
+  /** Arrastre de columna en curso: bloque, columna, x inicial y anchuras. */
+  const resizeDragRef = useRef<{
+    block: number;
+    col: number;
+    startX: number;
+    widths: number[];
+  } | null>(null);
+  /** Selección previa al clic derecho: el motor puede colapsarla al pulsar. */
+  const rightClickSelRef = useRef<[number, number] | null>(null);
+  /**
+   * Arrastre de selección en marcha: el extremo que quedó fijo en el clic (el
+   * desplazamiento en el documento) y la celda de la que salió, que sigue siendo
+   * el ancla para Mayús+flechas y Supr.
+   */
+  const cellDragRef = useRef<{ anchor: number; line: number; col: number } | null>(null);
+  /** Barra «+» de tabla bajo el ratón: las barras solo se enseñan así. */
+  const [hoverBar, setHoverBar] = useState<TableBarHover | null>(null);
+  const tableBarsRef = useRef<HTMLElement[]>([]);
   const [rowPitch, setRowPitch] = useState(23);
   const [tableCols, setTableCols] = useState<number | null>(null);
   const [zoomTick, setZoomTick] = useState(0);
@@ -534,9 +666,12 @@ export default function MarkdownEditor({
       clearHintTimer();
       hintLineRef.current = -1;
       setTableCaret(null);
+      setTableRect(null);
+      setTableMerge(null);
       closeSpellPopup();
       return;
     }
+
     refreshCaretLine();
     const area = textareaRef.current;
     if (area) syncLineHint(area.value, area.selectionStart);
@@ -660,6 +795,27 @@ export default function MarkdownEditor({
    * Si el cambio viene de un pegado (`paste`), una lista abierta por lo pegado
    * arranca en 1. Devuelve el cuerpo final y la posición corregida del cursor.
    */
+  /**
+   * Suelta la combinación de celdas si la tabla cambió de estructura (entran o
+   * salen filas o columnas, o el bloque se mueve de sitio). El texto combinado
+   * ya vive en la celda de arriba a la izquierda, así que no se pierde nada.
+   */
+  function releaseMergeIfStructureChanged(beforeText: string, afterText: string) {
+    const merge = tableMergeRef.current;
+    if (!merge) return;
+    const before = beforeText.split("\n").map((text) => ({ text, code: false }));
+    const after = afterText.split("\n").map((text) => ({ text, code: false }));
+    const b = tableBlockAt(before, merge.top);
+    const a = tableBlockAt(after, merge.top);
+    let rowsOk = b !== null && a !== null && b.start === a.start && b.end === a.end;
+    for (let line = merge.top; line <= merge.bottom && rowsOk; line += 1) {
+      const text = after[line]?.text;
+      if (text === undefined || !isTableRow(text)) rowsOk = false;
+      else if (splitTableCells(text).length <= merge.right) rowsOk = false;
+    }
+    if (!rowsOk) setTableMerge(null);
+  }
+
   function editBody(
     nextBody: string,
     paste?: PasteRange,
@@ -690,6 +846,7 @@ export default function MarkdownEditor({
       pendingCaretRef.current = [result.caret, result.caret];
     }
 
+    releaseMergeIfStructureChanged(content, finalContent);
     editContent(finalContent);
     return result;
   }
@@ -700,6 +857,9 @@ export default function MarkdownEditor({
     pendingRestoreRef.current = target;
     setMenu(null);
     setContextMenu(null);
+    // Deshacer o rehacer puede dejar la tabla con otra estructura: la
+    // combinación de celdas se suelta (el texto combinado no se pierde).
+    setTableMerge(null);
   }
 
   function applyUndo() {
@@ -710,6 +870,21 @@ export default function MarkdownEditor({
   function applyRedo() {
     const target = redoHistory(historyRef.current, historySnapshot());
     if (target) applyHistoryState(target);
+  }
+
+  /**
+   * Dónde está el cursor (dentro de su línea) y qué texto está seleccionado,
+   * en posiciones absolutas. El overlay lo pinta cuando el textarea no puede:
+   * dentro de una tabla (el cursor nativo va en coordenadas de la fuente) o
+   * cuando una tabla de arriba ha crecido y lo dejaría descolocado.
+   */
+  function caretMarkAt(area: HTMLTextAreaElement) {
+    const start = area.selectionStart;
+    const line = lineIndexOf(area.value, start);
+    return {
+      at: start - lineStartOffset(sourceInfo, line),
+      sel: { start, end: area.selectionEnd },
+    };
   }
 
   function refreshCaretLine() {
@@ -731,7 +906,11 @@ export default function MarkdownEditor({
 
     if (!inTable) {
       setTableCaret(null);
+      setTableSelection(null);
+      setTableRect(null);
+      tableAnchorRef.current = null;
       prevTableLineRef.current = line;
+      setCaretMark(caretMarkAt(area));
       return;
     }
 
@@ -752,8 +931,28 @@ export default function MarkdownEditor({
       }
     }
 
+    // Selección cruda: resalta todas las celdas que abarca, no solo la activa.
+    setTableSelection(
+      resolved
+        ? { start: area.selectionStart, end: area.selectionEnd }
+        : null,
+    );
     setTableCaret(resolved);
     prevTableLineRef.current = resolved ? resolved.line : line;
+    // Con la selección ya asentada (puede haberse reubicado fuera del
+    // separador) se guarda dónde está el cursor: el overlay lo pinta cuando el
+    // textarea no puede hacerlo.
+    setCaretMark(caretMarkAt(area));
+    // Lo que se marca es el rectángulo entre las dos puntas de la selección,
+    // no la escalera de texto que las une: así el cuadro no se lleva por delante
+    // filas enteras de celdas que nadie marcó.
+    setTableRect(resolved ? selectionCellRect(area) : null);
+    // Cursor quieto en una celda: esa celda es la ancla de la próxima
+    // selección. Aquí se renueva porque Mayús+↑/↓ ni mueve el cursor ni llega
+    // por teclado (las selecciones se construyen desde esta ancla).
+    if (resolved && area.selectionStart === area.selectionEnd) {
+      tableAnchorRef.current = { line: resolved.line, col: resolved.col };
+    }
   }
 
   function syncOverlayGeometry() {
@@ -761,7 +960,10 @@ export default function MarkdownEditor({
     if (!area) return;
 
     const overlay = overlayRef.current;
-    if (overlay) overlay.scrollTop = area.scrollTop;
+    // El overlay es más alto que el textarea cuando una tabla ha envuelto sus
+    // celdas: se le suma lo que ya ha pasado por arriba para que siga entrando
+    // por arriba lo que toca.
+    if (overlay) overlay.scrollTop = area.scrollTop + driftBeforeScroll(area.scrollTop);
 
     const width = area.offsetWidth - area.clientWidth;
     setScrollbarWidth((current) => (current === width ? current : width));
@@ -1034,20 +1236,203 @@ export default function MarkdownEditor({
     syncOverlayGeometry();
   }
 
+  /** ¿El punto (x, y) cae dentro del rectángulo del elemento? */
+  function insideRect(element: Element, x: number, y: number): boolean {
+    const rect = element.getBoundingClientRect();
+    return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+  }
+
   /** Botón «copiar» bajo el punto (x, y): devuelve la línea de su bloque. */
   function copyChipAt(clientX: number, clientY: number): number | null {
     for (const chip of copyChipsRef.current) {
-      const rect = chip.getBoundingClientRect();
-      if (
-        clientX >= rect.left &&
-        clientX <= rect.right &&
-        clientY >= rect.top &&
-        clientY <= rect.bottom
-      ) {
-        return Number(chip.dataset.copyLine);
-      }
+      if (insideRect(chip, clientX, clientY)) return Number(chip.dataset.copyLine);
     }
     return null;
+  }
+
+  /** Barra «+» de tabla bajo el punto (x, y), o null si no se pisa ninguna. */
+  function tableBarAtPoint(clientX: number, clientY: number): TableBarHover | null {
+    for (const bar of tableBarsRef.current) {
+      if (!insideRect(bar, clientX, clientY)) continue;
+      return {
+        block: Number(bar.dataset.addBlock),
+        part: bar.dataset.addBar === "bottom" ? "bottom" : "side",
+      };
+    }
+    return null;
+  }
+
+  /** Botón «+» de fila o columna bajo el punto (x, y). */
+  function addBadgeAt(clientX: number, clientY: number): HTMLElement | null {
+    const overlay = overlayRef.current;
+    if (!overlay) return null;
+    return (
+      Array.from(overlay.querySelectorAll<HTMLElement>("[data-add-row],[data-add-col]")).find(
+        (element) => insideRect(element, clientX, clientY),
+      ) ?? null
+    );
+  }
+
+  /** Anchura en píxeles de cada columna del bloque, medida del overlay. Las
+   *  columnas que ya tienen anchura fijada la conservan. */
+  function measureTableColumns(blockStart: number): number[] | null {
+    const overlay = overlayRef.current;
+    if (!overlay) return null;
+    const container = overlay.querySelector<HTMLElement>(`[data-table-block="${blockStart}"]`);
+    if (!container) return null;
+    const handles = Array.from(container.querySelectorAll<HTMLElement>("[data-resize-block]"));
+    if (handles.length === 0) return null;
+
+    // Derecho de cada columna que tiene asa (la combinada solo tiene una).
+    const edges = new Map<number, number>();
+    let blockLeft = Infinity;
+    for (const handle of handles) {
+      const cell = handle.parentElement;
+      if (!cell) return null;
+      blockLeft = Math.min(blockLeft, cell.offsetLeft);
+      // El asa del borde izquierdo de una combinada no marca el derecho de una
+      // columna: se salta para no pisar el de la columna combinada.
+      if (handle.dataset.mergeEdge !== undefined) continue;
+      edges.set(Number(handle.dataset.resizeCol), cell.offsetLeft + cell.offsetWidth);
+    }
+    const cols = Math.max(...edges.keys()) + 1;
+    if (edges.size === 0) return null;
+    const stored = colWidthsRef.current.get(blockStart);
+    const merge = tableMergeRef.current;
+    const mergeCell = container.querySelector<HTMLElement>("[data-merge-cell]");
+    const widths: number[] = [];
+    for (let col = 0; col < cols; col += 1) {
+      if (stored && stored[col] !== undefined) {
+        widths.push(stored[col]);
+        continue;
+      }
+      const inMerge = merge !== null && mergeCell !== null && col >= merge.left && col <= merge.right;
+      if (inMerge) {
+        // Columna dentro de una combinación: se reparte lo que mida la celda.
+        widths.push(mergeCell.offsetWidth / (merge.right - merge.left + 1));
+        continue;
+      }
+      const right = edges.get(col);
+      const left = col === 0 ? blockLeft : edges.get(col - 1);
+      widths.push(right !== undefined && left !== undefined ? right - left : DEFAULT_COL_WIDTH);
+    }
+    return widths;
+  }
+
+  /** Anchura en píxeles que cabe en una fila del textarea (la tabla no se sale). */
+  function tableMaxWidthPx(area: HTMLTextAreaElement | null): number | null {
+    if (!area) return null;
+    const style = getComputedStyle(area);
+    const width =
+      area.clientWidth -
+      parseFloat(style.paddingLeft) -
+      parseFloat(style.paddingRight) -
+      parseFloat(style.borderLeftWidth) -
+      parseFloat(style.borderRightWidth);
+    return width > 0 ? width : null;
+  }
+
+  /**
+   * Arrastre del borde de una columna: se mide la anchura actual de todas y se
+   * sigue el ratón desde la ventana (el puntero puede salir del textarea). La
+   * tabla no se ensancha más de lo que cabe en la fila.
+   */
+  function startColumnResize(block: number, col: number, startX: number, widths: number[]) {
+    // El ancho disponible es el de la fila menos la barra de scroll: el overlay
+    // es más estrecho que el textarea justo en esa medida.
+    const available = tableMaxWidthPx(textareaRef.current);
+    const max = available === null ? null : Math.max(0, available - scrollbarWidth);
+    const onMove = (event: globalThis.MouseEvent) => {
+      const next = [...widths];
+      next[col] = Math.max(MIN_COL_WIDTH, widths[col] + (event.clientX - startX));
+      if (max !== null) {
+        const total = next.reduce((sum, width) => sum + width, 0);
+        if (total > max) next[col] = Math.max(MIN_COL_WIDTH, next[col] - (total - max));
+      }
+      setTableWidths((prev) => {
+        const map = new Map(prev ?? []);
+        map.set(block, next);
+        return map;
+      });
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      resizeDragRef.current = null;
+    };
+    resizeDragRef.current = { block, col, startX, widths };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
+
+  /**
+   * Doble clic sobre el borde de una columna: se ajusta a su contenido, como el
+   * doble clic de Excel sobre el separador de cabeceras. Se mide la celda más
+   * larga de la columna (en una sola línea) y se respeta el ancho disponible.
+   */
+  function autoFitColumn(blockStart: number, col: number) {
+    const area = textareaRef.current;
+    const lines = currentLines();
+    const block = tableBlockAt(lines, blockStart);
+    const widths = measureTableColumns(blockStart);
+    if (!area || !block || !widths) return;
+    const char = charWidthPx(area);
+    if (!char) return;
+
+    let longest = 0;
+    for (let line = block.start; line <= block.end; line += 1) {
+      if (line === block.start + 1) continue; // separador
+      const cell = splitTableCells(lines[line].text)[col];
+      if (cell) longest = Math.max(longest, visualLength(cell.text));
+    }
+    // 24 px son los rellenos laterales de la celda (12 a cada lado).
+    const next = [...widths];
+    next[col] = Math.max(MIN_COL_WIDTH, Math.round(longest * char) + 24);
+    const available = tableMaxWidthPx(area);
+    if (available !== null) {
+      const total = next.reduce((sum, width) => sum + width, 0);
+      const limit = Math.max(0, available - scrollbarWidth);
+      if (total > limit) next[col] = Math.max(MIN_COL_WIDTH, next[col] - (total - limit));
+    }
+    setTableWidths((prev) => {
+      const map = new Map(prev ?? []);
+      map.set(blockStart, next);
+      return map;
+    });
+  }
+
+  /**
+   * Doble clic: sobre el borde de una columna la ajusta al contenido (como el
+   * doble clic de Excel); dentro de una celda, marca la palabra.
+   */
+  function handleOverlayDoubleClick(event: MouseEvent<HTMLTextAreaElement>) {
+    const resize = resizeHandleAt(event.clientX, event.clientY);
+    if (resize) {
+      event.preventDefault();
+      cellDragRef.current = null;
+      autoFitColumn(resize.block, resize.col);
+      return;
+    }
+    handleOverlayCellDoubleClick(event);
+  }
+
+  /** Asa de columna bajo el punto (x, y), o null si no se pisa ninguna. */
+  function resizeHandleAt(
+    clientX: number,
+    clientY: number,
+  ): { block: number; col: number } | null {
+    // El borde izquierdo de una celda combinada manda sobre el derecho de la
+    // columna de al lado: ocupan el mismo sitio.
+    const handles = tableResizeHandlesRef.current;
+    const mergeEdge = handles.find(
+      (handle) => handle.dataset.mergeEdge !== undefined && insideRect(handle, clientX, clientY),
+    );
+    const handle = mergeEdge ?? handles.find((element) => insideRect(element, clientX, clientY));
+    if (!handle) return null;
+    const block = Number(handle.dataset.resizeBlock);
+    const col = Number(handle.dataset.resizeCol);
+    if (Number.isNaN(block) || Number.isNaN(col)) return null;
+    return { block, col };
   }
 
   /** Copia el contenido de un bloque de código y enseña el ✔ un segundo. */
@@ -1067,8 +1452,119 @@ export default function MarkdownEditor({
    * botones «copiar»): el overlay va por debajo del textarea, así que esos
    * elementos se detectan por coordenadas en este evento.
    */
+  /** Celda dibujada bajo el punto (x, y), o null si el punto cae fuera de una. */
+  function cellAt(clientX: number, clientY: number): HTMLElement | null {
+    // La lista se mantiene al día con el overlay; si aun no está (o el overlay
+    // no se ha dibujado), se busca en el DOM.
+    const cells =
+      tableCellsRef.current.length > 0
+        ? tableCellsRef.current
+        : Array.from(
+            overlayRef.current?.querySelectorAll<HTMLElement>("[data-cell]") ?? [],
+          );
+    return cells.find((element) => insideRect(element, clientX, clientY)) ?? null;
+  }
+
+  /**
+   * Desplazamiento del texto bajo el punto cuando cae dentro de una celda. La
+   * celda se mide en pantalla y su ancho se reparte en caracteres, de modo que el
+   * cursor cae donde se ha hecho clic y el arrastre selecciona texto como en
+   * cualquier editor (en vez de quedarse con la celda entera).
+   */
+  function cellOffsetAt(clientX: number, clientY: number): number | null {
+    const cell = cellAt(clientX, clientY);
+    const area = textareaRef.current;
+    if (!cell || !area) return null;
+
+    const line = Number(cell.dataset.line);
+    const col = Number(cell.dataset.col);
+    if (Number.isNaN(line) || Number.isNaN(col)) return null;
+    const range = tableCellRange(sourceInfo, line, col);
+    if (!range) return null;
+
+    const span = splitTableCells(sourceInfo[line]?.text ?? "")[col];
+    const text = span?.text ?? "";
+    const char = charWidthPx(area);
+    if (!char) return null;
+
+    // El div interno es el que lleva el texto: su borde izquierdo cae justo en el
+    // primer carácter de la celda.
+    const inner = (cell.firstElementChild ?? cell) as HTMLElement;
+    const box = inner.getBoundingClientRect();
+    const perLine = Math.max(1, Math.floor(box.width / char));
+    return (
+      range.start +
+      cellIndexAtPointer(
+        text,
+        clientX - box.left,
+        clientY - box.top,
+        char,
+        perLine,
+        rowPitch,
+      )
+    );
+  }
+
+  /**
+   * Ratón en movimiento: resalta el «copiar» del bloque, enseña las barras «+»
+   * y el asa de columna, y —si hay un arrastre en marcha— mueve el extremo de la
+   * selección que sigue al puntero. El otro extremo (el del clic) queda fijo, así
+   * que arrastrar selecciona texto como en cualquier editor. Si el puntero sale
+   * de la tabla se sigue con la cuenta geométrica de siempre y la selección
+   * continúa hacia el texto de alrededor sin saltos.
+   */
+  function handleOverlayMouseMove(event: MouseEvent<HTMLTextAreaElement>) {
+    const drag = cellDragRef.current;
+    if (drag && event.buttons !== 0) {
+      const area = textareaRef.current;
+      if (!area) return;
+      const at =
+        cellOffsetAt(event.clientX, event.clientY) ??
+        offsetAtPointer(area, event.clientX, event.clientY, driftBeforeLine(drag.line));
+      if (at === null) return;
+      if (at === area.selectionStart && area.selectionEnd === drag.anchor) return;
+      if (at === area.selectionEnd && area.selectionStart === drag.anchor) return;
+
+      // La celda del clic sigue siendo el ancla: Mayús+flechas y Supr la usan.
+      tableAnchorRef.current = { line: drag.line, col: drag.col };
+      area.setSelectionRange(Math.min(drag.anchor, at), Math.max(drag.anchor, at));
+      // Arrastrando texto no se enseñan ni las barras «+» ni el asa de columna:
+      // están cuatro píxeles más allá de donde va la selección.
+      return;
+    }
+
+    // Resalta el botón «copiar» del bloque bajo el cursor.
+    const line = copyChipAt(event.clientX, event.clientY);
+    setCopyHover((prev) => (prev === line ? prev : line));
+    // Las barras «+» de las tablas solo se enseñan con el ratón encima de la
+    // barra, no de la tabla.
+    const bar = tableBarAtPoint(event.clientX, event.clientY);
+    setHoverBar((prev) =>
+      prev && bar && prev.block === bar.block && prev.part === bar.part ? prev : bar,
+    );
+    // El borde de una columna se agarra para cambiar su anchura.
+    const resize = resizeHandleAt(event.clientX, event.clientY);
+    setHoverResize((prev) =>
+      prev && resize && prev.block === resize.block && prev.col === resize.col ? prev : resize,
+    );
+  }
+
   function handleOverlayMouseDown(event: MouseEvent<HTMLTextAreaElement>) {
-    if (event.button !== 0 || !inlineActive) return;
+    // El clic derecho puede colapsar la selección en WebKit: se guarda antes
+    // de que el motor la toque, para que el menú sepa qué filas había marcadas.
+    if (event.button === 2) {
+      const area = textareaRef.current;
+      rightClickSelRef.current = area ? [area.selectionStart, area.selectionEnd] : null;
+      return;
+    }
+    if (event.button !== 0) return;
+
+    // Clic corriente: rompe la ancla de la selección multifila. Con Mayús se
+    // conserva, porque el clic es una extensión de esa misma selección.
+    if (!event.shiftKey) tableAnchorRef.current = null;
+    rightClickSelRef.current = null;
+    if (!inlineActive) return;
+
     const overlay = overlayRef.current;
     if (!overlay) return;
 
@@ -1080,18 +1576,36 @@ export default function MarkdownEditor({
       return;
     }
 
-    const cell = Array.from(overlay.querySelectorAll<HTMLElement>("[data-cell]")).find(
-      (element) => {
-        const rect = element.getBoundingClientRect();
-        return (
-          event.clientX >= rect.left &&
-          event.clientX <= rect.right &&
-          event.clientY >= rect.top &&
-          event.clientY <= rect.bottom
-        );
-      },
-    );
-    if (!cell) return;
+    // Los dos «+» del bloque: el del costado añade columna, el de abajo fila.
+    const badge = addBadgeAt(event.clientX, event.clientY);
+    if (badge) {
+      event.preventDefault();
+      textareaRef.current?.focus();
+      const col = badge.dataset.addCol;
+      const blockStart = badge.dataset.addBlock;
+      if (col !== undefined && blockStart !== undefined) {
+        addTableColumnAt(Number(blockStart), Number(col));
+      } else if (badge.dataset.addRow !== undefined) {
+        addTableRowAt(Number(badge.dataset.addRow));
+      }
+      return;
+    }
+
+    // Asa de columna: al arrastrarla se cambia la anchura de esa columna.
+    const resize = resizeHandleAt(event.clientX, event.clientY);
+    if (resize && !resizeDragRef.current) {
+      event.preventDefault();
+      textareaRef.current?.focus();
+      const widths = measureTableColumns(resize.block);
+      if (widths) startColumnResize(resize.block, resize.col, event.clientX, widths);
+      return;
+    }
+
+    const cell = cellAt(event.clientX, event.clientY);
+    if (!cell) {
+      cellDragRef.current = null;
+      return;
+    }
 
     const line = Number(cell.dataset.line);
     const col = Number(cell.dataset.col);
@@ -1101,7 +1615,61 @@ export default function MarkdownEditor({
 
     event.preventDefault();
     area.focus();
-    area.setSelectionRange(range.start, range.end);
+
+    // Clic sobre la casilla de una celda de tarea («- [ ]»): la marca o la
+    // desmarca. Más a la derecha, el cursor entra en el texto como siempre.
+    const cellText = splitTableCells(sourceInfo[line]?.text ?? "")[col]?.text ?? "";
+    if (!event.shiftKey && isTableTaskCell(cellText)) {
+      const box = cell.getBoundingClientRect();
+      if (event.clientX - box.left <= TASK_CHECKBOX_PX) {
+        cellDragRef.current = null;
+        applyTableEdit(toggleTableTask(currentLines(), line, col));
+        return;
+      }
+    }
+
+    if (event.shiftKey) {
+      // Mayús+clic: la selección va desde la celda ancla hasta esta, completas.
+      cellDragRef.current = null;
+      const anchor = selectionAnchorCell(area);
+      if (anchor) selectCellBlock(anchor, { line, col });
+      else area.setSelectionRange(range.start, range.end);
+      handleCaretMove();
+      return;
+    }
+
+    // Clic llano: el cursor cae donde se ha pulsado (como en cualquier editor) y
+    // la celda pasa a ser el ancla de Mayús+flechas. La selección la llevamos
+    // nosotros —el motor pondría el cursor en el crudo, no en la celda— así que
+    // el arrastre se resuelve en handleOverlayMouseMove.
+    const at = cellOffsetAt(event.clientX, event.clientY) ?? range.start;
+    tableAnchorRef.current = { line, col };
+    setTableRect(null);
+    area.setSelectionRange(at, at);
+    cellDragRef.current = { anchor: at, line, col };
+    handleCaretMove();
+  }
+
+  /** Doble clic en una celda: marca la palabra, como en cualquier editor. */
+  function handleOverlayCellDoubleClick(event: MouseEvent<HTMLTextAreaElement>) {
+    const cell = cellAt(event.clientX, event.clientY);
+    const area = textareaRef.current;
+    if (!cell || !area) return;
+
+    const line = Number(cell.dataset.line);
+    const col = Number(cell.dataset.col);
+    const range = tableCellRange(sourceInfo, line, col);
+    if (!range) return;
+
+    const span = splitTableCells(sourceInfo[line]?.text ?? "")[col];
+    const inside = cellOffsetAt(event.clientX, event.clientY);
+    if (!span || inside === null) return;
+
+    const [from, to] = wordRangeAt(span.text, inside - range.start);
+    event.preventDefault();
+    tableAnchorRef.current = { line, col };
+    area.setSelectionRange(range.start + from, range.start + to);
+    cellDragRef.current = null;
     handleCaretMove();
   }
 
@@ -1114,6 +1682,14 @@ export default function MarkdownEditor({
     const area = textareaRef.current;
     const current = area?.value ?? stripFrontmatter(content);
     const cursor = Math.max(area?.selectionEnd ?? current.length, start);
+
+    // No se sustituye nada que toque la estructura de una tabla (fila, fila de
+    // separador o el salto que la une al texto): eso solo lo hace el menú.
+    if (cursor > start && planTableDeletion(sourceInfo, current, start, cursor)) return;
+
+    // Un bloque de varias líneas (una tabla entera, una lista…) no se inserta
+    // dentro de una celda: dejaría el bloque inservible.
+    if (text.includes("\n") && tableIntersects(sourceInfo, current, start, start)) return;
 
     pendingCaretRef.current = [start + caretOffset, start + caretOffset];
     const paste: PasteRange | undefined =
@@ -1136,7 +1712,8 @@ export default function MarkdownEditor({
 
   function insertSlashItem(item: SlashItem) {
     if (!menu) return;
-    replaceRange(menu.start, item.snippet, item.caretOffset);
+    // En el menú «/» lo que se sustituye es el propio `/consulta` del documento.
+    runMenuItem(item, menu.start);
   }
 
   /** Sugerencias de hunspell con caché de un término (se repiten al navegar). */
@@ -1240,7 +1817,7 @@ export default function MarkdownEditor({
           span = spellWordAt(area.value, selStart, engine.correct);
         }
       } else {
-        const offset = offsetAtPointer(area, clientX, clientY) ?? selStart;
+        const offset = offsetAtPointer(area, clientX, clientY, driftAtPointer(clientY)) ?? selStart;
         span = spellWordAt(area.value, offset, engine.correct);
       }
 
@@ -1270,9 +1847,54 @@ export default function MarkdownEditor({
     setContextMenu({
       spell,
       hasSelection: selStart !== selEnd,
+      table: tableTargetAt(clientX, clientY),
       x: toLocalCoord(clientX),
       y: toLocalCoord(clientY),
     });
+  }
+
+  /**
+   * Tabla bajo el clic derecho: fila y columna apuntadas (nunca la del
+   * separador) y las filas de cuerpo que abarca la selección, que es lo que
+   * decide si aparece «Combinar celdas».
+   */
+  function tableTargetAt(clientX: number, clientY: number): TableMenuInfo | null {
+    const area = textareaRef.current;
+    if (!area) return null;
+
+    const value = area.value;
+    const at = offsetAtPointer(area, clientX, clientY, driftAtPointer(clientY)) ?? area.selectionStart;
+    const resolved = resolveTableCaret(sourceInfo, lineIndexOf(value, at), at, at);
+
+    // El motor puede colapsar la selección al pulsar el botón derecho: si lo
+    // hizo, se usan las filas que había justo antes del clic.
+    const picked = rightClickSelRef.current;
+    rightClickSelRef.current = null;
+
+    if (!resolved) return null;
+
+    const block = { start: resolved.blockStart, end: resolved.blockEnd };
+    const line = resolved.onDelimiter ? resolved.blockStart : resolved.line;
+    const selection = picked ?? [area.selectionStart, area.selectionEnd];
+    const rows = tableSelectionRows(sourceInfo, block, selection[0], selection[1]);
+
+    return {
+      block,
+      line,
+      col: resolved.col,
+      cols: resolved.cols,
+      rows,
+      rect: cellRectBetween(selection[0], selection[1]),
+      canDeleteRow: line > block.start + 1 && block.end - block.start >= 3,
+      canDeleteCol: resolved.cols > 2,
+      merged: tableMerge !== null,
+      canSort: block.end - block.start >= 3,
+      canMoveUp: line > block.start + 1,
+      canMoveDown: line >= block.start + 2 && line < block.end,
+      canToggleTask: isTableTaskCell(
+        splitTableCells(sourceInfo[line]?.text ?? "")[resolved.col]?.text ?? "",
+      ),
+    };
   }
 
   function handleContextMenu(event: MouseEvent<HTMLTextAreaElement>) {
@@ -1353,10 +1975,91 @@ export default function MarkdownEditor({
     setSpellRevision((value) => value + 1);
   }
 
+  /**
+   * Celdas del rectángulo marcado al portapapeles (Ctrl+C y «Copiar»): lo que
+   * se ve es lo que se copia, no la escalera de texto que guarda el textarea.
+   */
+  function copyCellRect(rect: TableCellRect, clip?: DataTransfer | null): boolean {
+    const text = cellRectClipboard(sourceInfo, rect);
+    if (!text) return false;
+    clip?.setData("text/plain", text);
+    void copyText(text).catch(() => undefined);
+    return true;
+  }
+
+  /**
+   * Corta el rectángulo marcado: sus celdas pasan al portapapeles y se vacían,
+   * dejando la tabla entera en el documento (igual que Supr, que nunca la
+   * quita: eso solo lo hace «Eliminar tabla»).
+   */
+  function cutCellRect(rect: TableCellRect, clip?: DataTransfer | null) {
+    if (!copyCellRect(rect, clip)) return;
+    const cleared = clearTableCells(sourceInfo, rect);
+    if (!cleared) return;
+    tableAnchorRef.current = null;
+    setTableRect(null);
+    pendingCaretRef.current = [cleared.caret, cleared.caret];
+    editBody(cleared.text);
+  }
+
+  /**
+   * Corte de una selección de texto que abarca varias celdas: al portapapeles
+   * van como tabla (con tabuladores) y el borrado respeta justo lo seleccionado
+   * —celdas vaciadas y «|» en su sitio— en vez de llevarse filas enteras.
+   */
+  function cutCellSelection(
+    area: HTMLTextAreaElement,
+    rect: TableCellRect,
+    clip?: DataTransfer | null,
+  ) {
+    if (!copyCellRect(rect, clip)) return;
+    const plan = planTableDeletion(sourceInfo, area.value, area.selectionStart, area.selectionEnd);
+    if (!plan || plan.text === area.value) return;
+    tableAnchorRef.current = null;
+    setTableRect(null);
+    cellDragRef.current = null;
+    pendingCaretRef.current = [plan.caret, plan.caret];
+    editBody(plan.text);
+  }
+
+  /** Igual, pero desde el menú (el portapapeles se escribe con `writeText`). */
+  async function cutCellSelectionAsync(area: HTMLTextAreaElement, rect: TableCellRect) {
+    const text = cellRectClipboard(sourceInfo, rect);
+    if (!text) return;
+    const copied = await writeText(text)
+      .then(() => true)
+      .catch(() => false);
+    if (!copied) return;
+
+    const plan = planTableDeletion(sourceInfo, area.value, area.selectionStart, area.selectionEnd);
+    if (!plan || plan.text === area.value) return;
+    tableAnchorRef.current = null;
+    setTableRect(null);
+    cellDragRef.current = null;
+    pendingCaretRef.current = [plan.caret, plan.caret];
+    editBody(plan.text);
+  }
+
   async function cutSelection() {
     const area = textareaRef.current;
     setContextMenu(null);
     if (!area) return;
+
+    // Con celdas marcadas se cortan esas celdas y nada más.
+    const rect = tableRect;
+    if (rect) {
+      cutCellRect(rect);
+      return;
+    }
+
+    // Selección arrastrada que abarca varias celdas: se copian como tabla y se
+    // vacía justo lo seleccionado.
+    const span = selectionCellRect(area);
+    if (span) {
+      await cutCellSelectionAsync(area, span);
+      return;
+    }
+
     // Sin selección se corta la línea entera, igual que con Ctrl+X.
     const [start, end] =
       area.selectionEnd > area.selectionStart
@@ -1364,6 +2067,8 @@ export default function MarkdownEditor({
         : lineRangeAt(area.value, area.selectionStart);
     const text = area.value.slice(start, end);
     if (!text) return;
+    // Lo que rompería una tabla no se corta (eso solo lo hace «Eliminar tabla»).
+    if (planTableDeletion(sourceInfo, area.value, start, end)) return;
     const copied = await writeText(text)
       .then(() => true)
       .catch(() => false);
@@ -1385,6 +2090,8 @@ export default function MarkdownEditor({
 
     const [start, end] = lineRangeAt(area.value, area.selectionStart);
     if (end <= start) return false;
+    // La fila de una tabla no se corta: eso rompería el bloque.
+    if (planTableDeletion(sourceInfo, area.value, start, end)) return false;
 
     setContextMenu(null);
     setMenu(null);
@@ -1406,7 +2113,32 @@ export default function MarkdownEditor({
   function handleCut(event: ClipboardEvent<HTMLTextAreaElement>) {
     const area = textareaRef.current;
     if (!area || event.defaultPrevented) return;
-    if (area.selectionEnd > area.selectionStart) return;
+
+    // Rectángulo de celdas marcado: se copian sus celdas y se vacían.
+    const rect = tableRect;
+    if (rect) {
+      event.preventDefault();
+      cutCellRect(rect, event.clipboardData);
+      return;
+    }
+
+    // Selección arrastrada que abarca varias celdas: al portapapeles van como
+    // tabla y el borrado respeta lo seleccionado.
+    const span = selectionCellRect(area);
+    if (span) {
+      event.preventDefault();
+      cutCellSelection(area, span, event.clipboardData);
+      return;
+    }
+
+    if (area.selectionEnd > area.selectionStart) {
+      // Con selección manda el corte nativo, salvo que el rango toque la
+      // estructura de una tabla: entonces no se corta nada.
+      if (planTableDeletion(sourceInfo, area.value, area.selectionStart, area.selectionEnd)) {
+        event.preventDefault();
+      }
+      return;
+    }
 
     const [start, end] = lineRangeAt(area.value, area.selectionStart);
     if (end <= start) return;
@@ -1414,6 +2146,21 @@ export default function MarkdownEditor({
     event.preventDefault();
     forceHistoryRef.current = true;
     cutCurrentLine(event.clipboardData);
+  }
+
+  /**
+   * Ctrl+C con celdas marcadas: al portapapeles va lo que se ve (esas celdas,
+   * con tabuladores de por medio) y no la escalera de texto que el textarea
+   * guarda por debajo, que se llevaría filas de más. También vale para una
+   * selección hecha arrastrando sobre varias celdas: lo que has encerrado son
+   * celdas, así que se copia como tabla y no con los «|» del crudo.
+   */
+  function handleCopy(event: ClipboardEvent<HTMLTextAreaElement>) {
+    const area = textareaRef.current;
+    const rect = tableRect ?? (area ? selectionCellRect(area) : null);
+    if (!rect) return;
+    event.preventDefault();
+    copyCellRect(rect, event.clipboardData);
   }
 
   /**
@@ -1430,6 +2177,9 @@ export default function MarkdownEditor({
     const previous = orderedBlockAt(before, area.selectionStart);
     const edit = moveLines(before, area.selectionStart, area.selectionEnd, direction);
     if (!edit) return false;
+
+    // Las filas de una tabla no se mueven: saldrían del bloque.
+    if (tableIntersects(sourceInfo, before, edit.start, edit.end)) return false;
 
     // El movimiento es un paso de deshacer propio, igual que pegar o cortar.
     forceHistoryRef.current = true;
@@ -1452,8 +2202,12 @@ export default function MarkdownEditor({
 
   async function copySelection() {
     const area = textareaRef.current;
-    const text = area ? area.value.slice(area.selectionStart, area.selectionEnd) : "";
     setContextMenu(null);
+    if (area && tableRect) {
+      copyCellRect(tableRect);
+      return;
+    }
+    const text = area ? area.value.slice(area.selectionStart, area.selectionEnd) : "";
     if (!text) return;
     await writeText(text).catch(() => undefined);
   }
@@ -1483,8 +2237,21 @@ export default function MarkdownEditor({
     // Sin texto que pegar se deja el comportamiento nativo (p. ej. vacío).
     if (!text) return;
 
+    // El pegado nativo queda anulado desde aquí: lo que sigue decide si el
+    // texto puede entrar.
     event.preventDefault();
     setContextMenu(null);
+
+    // No se pega encima de la estructura de una tabla, ni varias líneas
+    // dentro de una celda (una tabla pegada dentro de otra la rompería).
+    if (planTableDeletion(sourceInfo, area.value, area.selectionStart, area.selectionEnd)) return;
+    if (
+      text.includes("\n") &&
+      tableIntersects(sourceInfo, area.value, area.selectionStart, area.selectionEnd)
+    ) {
+      return;
+    }
+
     replaceRange(area.selectionStart, text, text.length, "paste");
   }
 
@@ -1517,13 +2284,309 @@ export default function MarkdownEditor({
     else replaceRange(start, open + close, open.length);
   }
 
+  /**
+   * Elementos del menú «/». Con el cursor dentro de una tabla solo aparecen las
+   * acciones de esa tabla (allí los bloques no caben), y el grupo de tamaños
+   * sustituye a la lista cuando se ha elegido «Tabla».
+   */
+  function slashItems(query: string): SlashItem[] {
+    const stage = menu?.kind === "slash" ? (menu.stage ?? "root") : "root";
+    const insideTable = tableCaret !== null;
+    const items = filterSlashItems(query, insideTable, stage);
+    if (insideTable || stage === "table-size") return items;
+    // Fuera de una tabla, convertir texto en tabla solo tiene sentido con algo
+    // seleccionado: si no, el ítem no se ofrece.
+    const area = textareaRef.current;
+    const hasSelection = area !== null && area.selectionEnd > area.selectionStart;
+    return hasSelection ? items : items.filter((item) => item.id !== "table-from-text");
+  }
+
   function insertFromMenu(item: SlashItem) {
     setContextMenu(null);
     const area = textareaRef.current;
     if (!area) return;
-    const pos = area.selectionStart;
-    area.setSelectionRange(pos, pos);
-    replaceRange(pos, item.snippet, item.caretOffset);
+    // Desde el menú contextual lo que se sustituye es el texto del cursor.
+    runMenuItem(item, area.selectionStart);
+  }
+
+  /**
+   * Cierra el menú «/» borrando su `/consulta` del documento. Se usa en las
+   * acciones que no cambian el texto por sí mismas (copiar, descombinar…), donde
+   * no hay operación que pueda absorberlo.
+   */
+  function dropSlashQuery() {
+    const area = textareaRef.current;
+    if (menu?.kind !== "slash" || !area) return;
+    const from = menu.start;
+    const to = area.selectionEnd;
+    if (to <= from) return;
+    area.setSelectionRange(from, to);
+    replaceRange(from, "", 0);
+  }
+
+  /**
+   * Líneas del documento con el trozo `menu.start..caret` (el `/consulta`)
+   * eliminado de la línea del cursor. Se usa para que las acciones del menú «/»
+   * se apliquen sobre el texto limpio sin generar un segundo paso de deshacer.
+   */
+  function linesWithout(from: number, caret: number): TableLine[] {
+    const area = textareaRef.current;
+    if (!area || caret <= from) return currentLines();
+    const line = lineIndexOf(area.value, caret);
+    const text = area.value;
+    const lineStart = text.lastIndexOf("\n", caret - 1) + 1;
+    const breakAt = text.indexOf("\n", caret);
+    const lineEnd = breakAt === -1 ? text.length : breakAt;
+    const cleaned = text.slice(lineStart, from) + text.slice(caret, lineEnd);
+    return currentLines().map((entry, index) =>
+      index === line ? { ...entry, text: cleaned } : entry,
+    );
+  }
+
+  /**
+   * Lo que hace un elemento del menú, sea del «/» o del contextual: si es una
+   * acción de tabla, opera sobre la del cursor; si lleva a otro grupo, cambia
+   * el grupo; y si trae texto (o un tamaño), lo inserta en `from`.
+   */
+  function runMenuItem(item: SlashItem, from: number) {
+    const area = textareaRef.current;
+    if (!area) return;
+
+    // Acción de tabla: no inserta texto, opera sobre la tabla del cursor.
+    if (item.tableAction) {
+      const cell = tableCaret;
+      if (!cell) return;
+      const block = { start: cell.blockStart, end: cell.blockEnd };
+      setMenu(null);
+      handleTableAction(
+        item.tableAction,
+        {
+          block,
+          line: cell.onDelimiter ? cell.blockStart : cell.line,
+          col: cell.col,
+          cols: cell.cols,
+          rows: tableSelectionRows(sourceInfo, block, area.selectionStart, area.selectionEnd),
+          rect: selectionCellRect(area),
+          canDeleteRow: false,
+          canDeleteCol: false,
+          merged: tableMerge !== null,
+          canSort: false,
+          canMoveUp: false,
+          canMoveDown: false,
+          canToggleTask: false,
+        },
+        // El «/consulta» no forma parte de la tabla: se borra en la misma
+        // operación, para que deshacer deshaga la acción y no el texto previo.
+        menu?.kind === "slash" ? linesWithout(menu.start, area.selectionEnd) : undefined,
+      );
+      return;
+    }
+
+    // «Tabla» no inserta: lleva al grupo de tamaños. Si no hay un menú «/»
+    // abierto (viene del contextual) se inserta directamente la de 3×3.
+    if (item.stage === "table-size") {
+      if (menu?.kind === "slash") {
+        setMenu({ ...menu, stage: item.stage, index: 0 });
+        return;
+      }
+      setMenu(null);
+      area.setSelectionRange(from, from);
+      const basic = tableSkeleton(3, 3);
+      replaceRange(from, basic.text, basic.caret);
+      return;
+    }
+
+    // Tamaño elegido: la tabla nace con esas medidas y el cursor en la primera
+    // celda de datos.
+    if (item.size) {
+      const skeleton = tableSkeleton(item.size.cols, item.size.rows);
+      setMenu(null);
+      area.setSelectionRange(from, from);
+      replaceRange(from, skeleton.text, skeleton.caret);
+      return;
+    }
+
+    if (item.convertSelection) {
+      setMenu(null);
+      convertSelectionToTable();
+      return;
+    }
+
+    area.setSelectionRange(from, from);
+    replaceRange(from, item.snippet, item.caretOffset);
+  }
+
+  /**
+   * Convierte el texto seleccionado en tabla: se separa por tabuladores (o por
+   * comas o «|», según lo que traiga), la primera línea pasa a ser cabecera y
+   * el resto son filas.
+   */
+  function convertSelectionToTable() {
+    const area = textareaRef.current;
+    if (!area) return;
+    const start = area.selectionStart;
+    const end = area.selectionEnd;
+    if (end <= start) return;
+
+    const selected = area.value.slice(start, end);
+    const built = tableFromDelimited(selected, selected.includes("\n"));
+    if (built.lines.length === 0) return;
+
+    tableAnchorRef.current = null;
+    setTableRect(null);
+    setTableMerge(null);
+    pendingCaretRef.current = [start + built.caret, start + built.caret];
+    editBody(`${area.value.slice(0, start)}${built.lines.join("\n")}${area.value.slice(end)}`);
+  }
+
+  /**
+   * Rango que borraría Supr/Backspace. Con Ctrl/Meta se aproxima al borrado
+   * de palabra, que nunca cruza el salto de línea.
+   */
+  function deletionRangeFor(
+    area: HTMLTextAreaElement,
+    backspace: boolean,
+    mod: boolean,
+  ): [number, number] {
+    const start = area.selectionStart;
+    const end = area.selectionEnd;
+    if (end > start) return [start, end];
+
+    const value = area.value;
+    if (backspace) {
+      if (start === 0) return [0, 0];
+      if (!mod) return [start - 1, start];
+      let at = start;
+      while (at > 0 && /\s/.test(value[at - 1]) && value[at - 1] !== "\n") at -= 1;
+      while (at > 0 && !/\s/.test(value[at - 1])) at -= 1;
+      return [at, start];
+    }
+
+    if (start >= value.length) return [start, start];
+    if (!mod) return [start, start + 1];
+    let at = start;
+    while (at < value.length && !/\s/.test(value[at])) at += 1;
+    return [start, at];
+  }
+
+  /**
+   * Posición de cursor segura tras un borrado protegido: si cae justo antes de
+   * la «|» de una fila (o dentro del separador), se mete dentro de la primera
+   * celda para que el siguiente texto no rompa la fila.
+   */
+  function safeTableCaret(text: string, offset: number): number {
+    const rowLines = text.split("\n").map((row) => ({ text: row, code: false }));
+    const line = lineIndexOf(text, offset);
+    const block = tableBlockAt(rowLines, line);
+    if (!block) return offset;
+    if (line !== block.start + 1 && offset > lineStartOffset(rowLines, line)) return offset;
+
+    const target = line === block.start + 1 ? block.start : line;
+    const range = tableCellRange(rowLines, target, 0);
+    return range ? range.start : offset;
+  }
+
+  /**
+   * Supr / Backspace con una tabla de por medio: si el rango toca su
+   * estructura, el borrado se reescribe aquí dejando intactos los «|», la fila
+   * del separador y los saltos que la unen al resto del documento. Así la
+   * tabla nunca desaparece con la tecla de borrar: eso solo lo hace
+   * «Eliminar tabla». Devuelve `true` si la pulsación queda consumida.
+   */
+  function handleTableDeletion(event: KeyboardEvent<HTMLElement>): boolean {
+    const area = event.target instanceof HTMLTextAreaElement ? event.target : null;
+    if (!area) return false;
+
+    // Hay un rectángulo de celdas marcado: Supr vacía esas celdas y solo esas.
+    // La selección de texto de debajo es más ancha (es la escalera que une las
+    // dos puntas), así que no manda aquí.
+    const rect = tableRect;
+    if (rect) {
+      event.preventDefault();
+      const cleared = clearTableCells(sourceInfo, rect);
+      // Todas las celdas ya estaban vacías: no se toca nada (queda la marca).
+      if (!cleared) return true;
+      tableAnchorRef.current = null;
+      setTableRect(null);
+      pendingCaretRef.current = [cleared.caret, cleared.caret];
+      editBody(cleared.text);
+      return true;
+    }
+
+    const backspace = event.key === "Backspace";
+    const [start, end] = deletionRangeFor(area, backspace, event.metaKey || event.ctrlKey);
+    if (end <= start) return false;
+
+    const plan = planTableDeletion(sourceInfo, area.value, start, end);
+    if (!plan) return false;
+
+    event.preventDefault();
+    // Todo lo seleccionado era estructura: no se borra nada.
+    if (plan.text === area.value) return true;
+
+    const caret = safeTableCaret(plan.text, plan.caret);
+    tableAnchorRef.current = null;
+    pendingCaretRef.current = [caret, caret];
+    editBody(plan.text);
+    return true;
+  }
+
+  /**
+   * Escribir encima de una selección que abarca la estructura de una tabla:
+   * el rango se vacía conservando los «|», la fila del separador y los saltos
+   * (como haría Supr) y el carácter tecleado solo entra si puede colocarse sin
+   * romper la fila. Así «escribir por encima» no puede dejar la tabla fuera
+   * del documento. Devuelve `true` si la tecla queda consumida.
+   */
+  function handleTableReplace(event: KeyboardEvent<HTMLElement>): boolean {
+    const area = event.target instanceof HTMLTextAreaElement ? event.target : null;
+    if (!area || area.selectionEnd <= area.selectionStart) return false;
+
+    // Con celdas marcadas se vacían esas celdas —no la escalera de texto que
+    // las une— y el carácter entra en la primera de ellas. Si ya estaban
+    // vacías, se escribe directamente donde está el cursor.
+    const rect = tableRect;
+    const plan =
+      rect !== null
+        ? (clearTableCells(sourceInfo, rect) ?? {
+            text: area.value,
+            caret: area.selectionStart,
+          })
+        : planTableDeletion(sourceInfo, area.value, area.selectionStart, area.selectionEnd);
+    if (!plan) return false;
+
+    event.preventDefault();
+
+    const at = safeTableCaret(plan.text, plan.caret);
+    const rowLines = plan.text.split("\n").map((text) => ({ text, code: false }));
+    const line = lineIndexOf(plan.text, at);
+    const before = tableBlockAt(rowLines, line);
+    let next = plan.text;
+    let typed = false;
+
+    // El carácter se coloca donde estaba el cursor, pero solo si la fila sigue
+    // en pie (nada de escribir delante de la «|» inicial ni en el separador).
+    const candidate = `${plan.text.slice(0, at)}${event.key}${plan.text.slice(at)}`;
+    if (!before) {
+      next = candidate;
+      typed = true;
+    } else {
+      const lines2 = candidate.split("\n").map((text) => ({ text, code: false }));
+      const after = tableBlockAt(lines2, line);
+      if (after && after.start === before.start && after.end === before.end) {
+        next = candidate;
+        typed = true;
+      }
+    }
+
+    if (next === area.value) return true;
+
+    const caret = typed ? at + event.key.length : at;
+    tableAnchorRef.current = null;
+    setTableRect(null);
+    pendingCaretRef.current = [caret, caret];
+    editBody(next);
+    return true;
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
@@ -1532,6 +2595,34 @@ export default function MarkdownEditor({
     // paradas: una tecla que no forme parte de la composición la da por
     // terminada.
     if (composing && !event.nativeEvent.isComposing) setComposing(false);
+
+    // La ancla de la selección multifila solo vive mientras se extiende con
+    // Mayús: cualquier otra tecla la retira.
+    if (!event.shiftKey && !/^(Shift|Control|Meta|Alt)$/.test(event.key)) {
+      tableAnchorRef.current = null;
+    }
+
+    // Supr / Backspace: la estructura de una tabla no se toca con la tecla de
+    // borrar (se conservan separadores, fila «|---|» y saltos de línea).
+    if (
+      (event.key === "Backspace" || event.key === "Delete") &&
+      !event.nativeEvent.isComposing &&
+      handleTableDeletion(event)
+    ) {
+      return;
+    }
+
+    // Igual para escribir encima de una selección que abarca esas filas.
+    if (
+      event.key.length === 1 &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.altKey &&
+      !event.nativeEvent.isComposing &&
+      handleTableReplace(event)
+    ) {
+      return;
+    }
 
     if (event.key === "Escape" && (contextMenu || headerMenu)) {
       event.preventDefault();
@@ -1557,6 +2648,22 @@ export default function MarkdownEditor({
 
     const mod = event.metaKey || event.ctrlKey;
     const key = event.key.toLowerCase();
+
+    // Ctrl+A dentro de una celda: marca todo el texto de esa celda, no el
+    // documento entero.
+    if (mod && !event.altKey && key === "a" && tableCaret) {
+      const cellArea = event.target instanceof HTMLTextAreaElement ? event.target : null;
+      if (cellArea) {
+        event.preventDefault();
+        // La celda queda marcada y a la vez es la ancla: Mayús+flechas siguen
+        // ampliando desde ella.
+        tableAnchorRef.current = { line: tableCaret.line, col: tableCaret.col };
+        cellArea.setSelectionRange(tableCaret.cellStart, tableCaret.cellEnd);
+        handleCaretMove();
+        return;
+      }
+    }
+
     if (mod && !event.altKey && key === "z") {
       event.preventDefault();
       if (event.shiftKey) applyRedo();
@@ -1580,6 +2687,29 @@ export default function MarkdownEditor({
       const area = event.target instanceof HTMLTextAreaElement ? event.target : null;
       if (area && area.selectionStart === area.selectionEnd && cutCurrentLine()) {
         event.preventDefault();
+        return;
+      }
+    }
+
+    // Alt+↑ / Alt+↓ dentro de una tabla mueve la fila del cursor (y con Mayús
+    // la duplica): mover la línea entera la sacaría del bloque, así que aquí
+    // manda la fila, como en una hoja de cálculo.
+    if (
+      tableCaret &&
+      event.altKey &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      (event.key === "ArrowUp" || event.key === "ArrowDown") &&
+      !event.nativeEvent.isComposing
+    ) {
+      const lines = currentLines();
+      const up = event.key === "ArrowUp";
+      const edit = event.shiftKey
+        ? duplicateTableRow(lines, tableCaret.line, tableCaret.col, up ? -1 : 1)
+        : moveTableRow(lines, tableCaret.line, tableCaret.col, up ? -1 : 1);
+      if (edit) {
+        event.preventDefault();
+        applyTableEdit(edit);
         return;
       }
     }
@@ -1727,16 +2857,395 @@ export default function MarkdownEditor({
     editBody(nextBody);
   }
 
-  /** Tab / Shift+Tab y Enter recorren las celdas como en Excel. */
+  /** Líneas actuales del cuerpo con su marca de bloque de código. */
+  function currentLines() {
+    const area = textareaRef.current;
+    return classifySource((area?.value ?? body).split(/\r?\n/));
+  }
+
+  /**
+   * Aplica una operación de tabla: escribe el resultado, recoloca el cursor en
+   * la celda que toque y cierra el menú. La tabla solo puede desaparecer por
+   * aquí («Eliminar tabla»), nunca por teclado.
+   */
+  function applyTableEdit(edit: TableEdit | null) {
+    setContextMenu(null);
+    setMenu(null);
+    if (!edit) return;
+
+    const area = textareaRef.current;
+    const current = area?.value ?? body;
+    const nextBody = edit.lines.join("\n");
+    if (nextBody === current) return;
+
+    tableAnchorRef.current = null;
+    const caretLines: TableLine[] = edit.lines.map((text) => ({ text, code: false }));
+    if (edit.offset !== undefined) {
+      pendingCaretRef.current = [edit.offset, edit.offset];
+    } else if (edit.caret) {
+      const range = tableCellRange(caretLines, edit.caret.line, edit.caret.col);
+      if (range) pendingCaretRef.current = [range.end, range.end];
+    } else if (edit.keepCaret && tableCaret) {
+      // Alinear u ordenar no mueven al usuario de celda: se recoloca en la que
+      // ya estaba, con los offsets recalculados sobre el texto nuevo.
+      const range = tableCellRange(caretLines, tableCaret.line, tableCaret.col);
+      if (range) pendingCaretRef.current = [range.end, range.end];
+    }
+
+    // Cada operación de tabla es un paso de deshacer propio.
+    forceHistoryRef.current = true;
+    editBody(nextBody);
+  }
+
+  /**
+   * Acción de tabla, venga del menú contextual o del menú «/» (que la pasa
+   * como `target` porque no hay clic derecho detrás). «Descombinar» no toca el
+   * texto: la combinación solo vive en la sesión, así que basta con soltarla.
+   */
+  function handleTableAction(action: TableAction, explicit?: TableMenuInfo, given?: TableLine[]) {
+    const target = explicit ?? contextMenu?.table;
+    if (!target) {
+      setContextMenu(null);
+      return;
+    }
+
+    if (action === "unmerge") {
+      setContextMenu(null);
+      setMenu(null);
+      dropSlashQuery();
+      if (!tableMerge) return;
+      setTableMerge(null);
+      return;
+    }
+
+    const lines = given ?? currentLines();
+    const { block, line, col } = target;
+    let edit: TableEdit | null = null;
+
+    switch (action) {
+      case "add-row":
+        // La fila entra debajo de la que se pulsó, con el cursor en su columna.
+        edit = insertTableRow(lines, line, col);
+        break;
+      case "add-col":
+        edit = insertTableColumn(lines, block, col, line);
+        break;
+      case "del-row":
+        edit = removeTableRow(lines, line, col);
+        break;
+      case "del-col":
+        edit = removeTableColumn(lines, block, col, line);
+        break;
+      case "del-table":
+        edit = removeTable(lines, block);
+        break;
+      case "merge":
+        // Con un rectángulo marcado se combinan esas celdas, como en Excel; sin
+        // él, las filas enteras que abarca la selección.
+        if (tableRect) {
+          edit = mergeTableRect(lines, tableRect);
+          if (edit && tableCols !== null) {
+            // La tabla tiene que seguir cabiendo en la fila: si la combinación
+            // la ensancha demasiado, se deja como estaba.
+            const fits = sourceSegments(
+              edit.lines.map((text) => ({ text, code: false })),
+              false,
+              tableCols,
+            ).some((segment) => segment.kind === "table" && segment.start === block.start);
+            if (!fits) edit = null;
+          }
+          if (edit) {
+            setTableMerge(tableRect);
+            setTableRect(null);
+            tableAnchorRef.current = null;
+          }
+        } else {
+          edit = mergeTableRows(lines, block, target.rows, col);
+        }
+        break;
+      case "sort-asc":
+        edit = sortTableRows(lines, block, col, false);
+        break;
+      case "sort-desc":
+        edit = sortTableRows(lines, block, col, true);
+        break;
+      case "align-left":
+        edit = alignTableColumn(lines, block, col, "left");
+        break;
+      case "align-center":
+        edit = alignTableColumn(lines, block, col, "center");
+        break;
+      case "align-right":
+        edit = alignTableColumn(lines, block, col, "right");
+        break;
+      case "move-up":
+        edit = moveTableRow(lines, line, col, -1);
+        break;
+      case "move-down":
+        edit = moveTableRow(lines, line, col, 1);
+        break;
+      case "dup-up":
+        edit = duplicateTableRow(lines, line, col, -1);
+        break;
+      case "dup-down":
+        edit = duplicateTableRow(lines, line, col, 1);
+        break;
+      case "toggle-task":
+        edit = toggleTableTask(lines, line, col);
+        break;
+      case "clipboard": {
+        // Al portapapeles va lo marcado: el rectángulo de celdas o, sin él, la
+        // celda del cursor (como en una hoja de cálculo).
+        setContextMenu(null);
+        setMenu(null);
+        dropSlashQuery();
+        const rect = tableRect ?? { top: line, bottom: line, left: col, right: col };
+        copyCellRect(rect);
+        return;
+      }
+    }
+
+    // La combinación de celdas sobrevive a lo que no cambia la estructura
+    // (alinear, ordenar, marcar…). Si entran o salen filas o columnas, el
+    // rectángulo se quedaría descolocado y se suelta.
+    if (edit) {
+      const before = tableBlockAt(lines, line);
+      const after = tableBlockAt(
+        edit.lines.map((text) => ({ text, code: false })),
+        line,
+      );
+      const sameShape =
+        before !== null &&
+        after !== null &&
+        before.start === after.start &&
+        before.end === after.end;
+      if (!sameShape) setTableMerge(null);
+    }
+    applyTableEdit(edit);
+  }
+
+  /** «+» de abajo: fila nueva por el final, con el cursor en la columna actual. */
+  function addTableRowAt(line: number) {
+    const lines = currentLines();
+    const block = tableBlockAt(lines, line);
+    if (!block) return;
+    const focus = tableCaret && tableCaret.blockStart === block.start ? tableCaret.col : 0;
+    applyTableEdit(insertTableRow(lines, line, focus));
+  }
+
+  /** «+» del costado: columna nueva a la derecha, con el cursor en la fila actual. */
+  function addTableColumnAt(blockStart: number, col: number) {
+    const lines = currentLines();
+    const block = tableBlockAt(lines, blockStart);
+    if (!block) return;
+    const focus =
+      tableCaret && tableCaret.blockStart === blockStart ? tableCaret.line : block.start;
+    applyTableEdit(insertTableColumn(lines, block, col, focus));
+  }
+
+  /**
+   * Cómo está repartido el texto de una celda: en qué renglón visual está el
+   * cursor y cuántos ocupa la celda. No es lo mismo que el número de caracteres,
+   * porque una celda larga se envuelve dentro de su columna.
+   */
+  function cellGeometry(
+    line: number,
+    col: number,
+    local: number,
+  ): { row: number; rows: number } | null {
+    const overlay = overlayRef.current;
+    const area = textareaRef.current;
+    if (!overlay || !area) return null;
+    const span = splitTableCells(sourceInfo[line]?.text ?? "")[col];
+    const char = charWidthPx(area);
+    const element = overlay.querySelector<HTMLElement>(
+      `[data-line="${line}"][data-col="${col}"]`,
+    );
+    if (!span || !char || !element) return null;
+
+    const inner = (element.firstElementChild ?? element) as HTMLElement;
+    const perLine = Math.max(1, Math.floor(inner.getBoundingClientRect().width / char));
+    return {
+      row: Math.floor(Math.max(0, local) / perLine),
+      rows: Math.max(1, Math.ceil(span.text.length / perLine)),
+    };
+  }
+
+  /** Pone el cursor en la celda conservando la posición horizontal dentro. */
+  function focusTableCellAtColumn(line: number, col: number, local: number) {
+    const range = tableCellRange(sourceInfo, line, col);
+    const area = textareaRef.current;
+    if (!range || !area) return;
+    area.focus();
+    const at = range.start + Math.min(Math.max(local, 0), range.end - range.start);
+    tableAnchorRef.current = { line, col };
+    setTableRect(null);
+    area.setSelectionRange(at, at);
+    handleCaretMove();
+  }
+
+  /**
+   * ←/→ en el borde de una celda: salta a la contigua de la misma fila. Dentro
+   * del texto no hace nada (que lo mueva el motor, y con Ctrl de palabra en
+   * palabra): el salto solo ocurre al llegar al final o al principio, donde antes
+   * las flechas se metían entre los «|» del crudo y dejaban el cursor en medio de
+   * la fila de al lado.
+   */
+  function jumpAcrossCells(cell: TableCellCaret, direction: 1 | -1): boolean {
+    const area = textareaRef.current;
+    if (!area) return false;
+    const range = tableCellRange(sourceInfo, cell.line, cell.col);
+    if (!range) return false;
+
+    // Solo en el borde de la celda. Con texto marcado, la flecha se lleva el
+    // cursor al extremo desde el que se está saliendo.
+    const caret = direction === 1 ? area.selectionEnd : area.selectionStart;
+    if (caret !== (direction === 1 ? range.end : range.start)) return false;
+
+    const col = neighbourColumn(sourceInfo, cell.line, cell.col, direction);
+    if (col === null) return false; // borde de la tabla: aquí no hay celda
+    const target = tableCellRange(sourceInfo, cell.line, col);
+    if (!target) return false;
+
+    const at = direction === 1 ? target.start : target.end;
+    tableAnchorRef.current = { line: cell.line, col };
+    setTableRect(null);
+    area.setSelectionRange(at, at);
+    handleCaretMove();
+    return true;
+  }
+
+  /**
+   * ↑/↓: de fila en fila en la misma columna, conservando la posición horizontal
+   * dentro de la celda, como en una hoja de cálculo. Solo salta cuando el cursor
+   * está en el primer o el último renglón visual: si el texto se envuelve en
+   * varias líneas, dentro de él mandan las flechas de siempre.
+   */
+  function jumpAcrossRows(cell: TableCellCaret, direction: 1 | -1): boolean {
+    const area = textareaRef.current;
+    if (!area) return false;
+    const range = tableCellRange(sourceInfo, cell.line, cell.col);
+    if (!range) return false;
+
+    const rows = tableRows(cell);
+    const index = rows.indexOf(cell.line);
+    if (index < 0) return false;
+    const target = rows[index + direction];
+    // En el borde del bloque no se salta de fila: eso es para salir de la tabla
+    // (exitTableCell), que se encarga antes.
+    if (target === undefined) return false;
+
+    const caret = direction === 1 ? area.selectionEnd : area.selectionStart;
+    const local = Math.max(0, caret - range.start);
+    const geometry = cellGeometry(cell.line, cell.col, local);
+    if (geometry && !rowJumpAllowed(geometry.row, geometry.rows, direction)) return false;
+
+    const col = clampCellCol(target, cell.col);
+    if (!tableCellRange(sourceInfo, target, col)) return false;
+    focusTableCellAtColumn(target, col, local);
+    return true;
+  }
+
+  /**
+   * Tab / Shift+Tab y Enter recorren las celdas como en Excel. ↑/↓ sobre el
+   * borde del bloque no dan vueltas dentro: salen de la tabla (exitTableCell).
+   */
   function handleTableNav(event: KeyboardEvent<HTMLElement>) {
     const cell = tableCaret;
     if (!cell || menu || event.nativeEvent.isComposing) return;
+
+    // Mayús + ↑/↓: la selección crece fila a fila sin salir del bloque, así
+    // el menú puede ofrecer «Combinar celdas» con varias filas marcadas.
+    if (
+      event.shiftKey &&
+      (event.key === "ArrowUp" || event.key === "ArrowDown") &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.altKey
+    ) {
+      event.preventDefault();
+      extendTableSelection(cell, event.key === "ArrowDown" ? 1 : -1);
+      return;
+    }
+
+    // Mayús + ←/→: dentro de la fila, la selección salta de celda en celda.
+    // Sin Mayús no se toca nada: el texto dentro de la celda se edita con las
+    // flechas de siempre (y Ctrl+←/→ sigue yendo de palabra en palabra).
+    if (
+      event.shiftKey &&
+      (event.key === "ArrowLeft" || event.key === "ArrowRight") &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.altKey
+    ) {
+      event.preventDefault();
+      extendTableCellColumn(event.key === "ArrowRight" ? 1 : -1);
+      return;
+    }
+
+    // ↑/↓ sin modificar sobre el borde del bloque: el cursor sale de la tabla
+    // en vez de quedarse dentro. Es la única puerta cuando la nota termina (o
+    // empieza) en la tabla: allí no hay línea contigua y Enter solo añade filas.
+    // Con celdas marcadas no se sale: la marca se recoge en la celda del borde,
+    // como al soltar las flechas en el escritorio.
+    if (
+      (event.key === "ArrowUp" || event.key === "ArrowDown") &&
+      !event.shiftKey &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.altKey &&
+      !tableRect
+    ) {
+      const area = textareaRef.current;
+      if (area) {
+        const down = event.key === "ArrowDown";
+        const focus = down ? area.selectionEnd : area.selectionStart;
+        const focusLine = lineIndexOf(area.value, focus);
+        if (focusLine === (down ? cell.blockEnd : cell.blockStart)) {
+          event.preventDefault();
+          exitTableCell(down, focusLine);
+          return;
+        }
+      }
+    }
 
     if (event.key === "Tab") {
       event.preventDefault();
       const target = adjacentTableCell(cell, event.shiftKey ? -1 : 1);
       if (target) focusTableCell(target.line, target.col, false);
       else if (!event.shiftKey) appendTableCellRow(cell);
+      return;
+    }
+
+    // ←/→ sin Mayús: dentro del texto se mueve de carácter (Ctrl, de palabra) y
+    // al llegar al borde de la celda salta a la siguiente, como en una hoja de
+    // cálculo. Antes las flechas seguían por el crudo y el cursor acababa entre
+    // los «|» de la fila de al lado.
+    if (
+      (event.key === "ArrowLeft" || event.key === "ArrowRight") &&
+      !event.shiftKey &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.altKey
+    ) {
+      if (jumpAcrossCells(cell, event.key === "ArrowRight" ? 1 : -1)) {
+        event.preventDefault();
+      }
+      return;
+    }
+
+    // ↑/↓ sin Mayús: de fila en fila en la misma columna (el borde del bloque ya
+    // se ha resuelto antes, saliendo de la tabla).
+    if (
+      (event.key === "ArrowUp" || event.key === "ArrowDown") &&
+      !event.shiftKey &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.altKey
+    ) {
+      if (jumpAcrossRows(cell, event.key === "ArrowDown" ? 1 : -1)) {
+        event.preventDefault();
+      }
       return;
     }
 
@@ -1747,6 +3256,170 @@ export default function MarkdownEditor({
     const target = rows[index + (event.shiftKey ? -1 : 1)];
     if (target !== undefined) focusTableCell(target, cell.col, false);
     else if (!event.shiftKey) appendTableCellRow(cell);
+  }
+
+  /**
+   * ↑/↓ sobre el borde del bloque: el cursor sale de la tabla al texto de
+   * al lado, conservando su columna (acotada al ancho de la línea destino).
+   * Si no hay nada allí —la nota acaba o empieza en la tabla— se abre la
+   * línea que falta y el cursor baja/sube a ella: es la única salida que no
+   * rompe la estructura, ya que Enter y Tab siguen añadiendo filas.
+   */
+  function exitTableCell(down: boolean, focusLine: number) {
+    const area = textareaRef.current;
+    if (!area) return;
+
+    const value = area.value;
+    const lines: TableLine[] = value.split("\n").map((text) => ({ text, code: false }));
+    const focus = down ? area.selectionEnd : area.selectionStart;
+    const col = focus - lineStartOffset(lines, focusLine);
+    const targetLine = down ? focusLine + 1 : focusLine - 1;
+
+    if (targetLine < 0 || targetLine >= lines.length) {
+      const next = down ? `${value}\n` : `\n${value}`;
+      const caret = down ? next.length : 0;
+      pendingCaretRef.current = [caret, caret];
+      editBody(next);
+      return;
+    }
+
+    const caret =
+      lineStartOffset(lines, targetLine) + Math.min(col, lines[targetLine].text.length);
+    area.setSelectionRange(caret, caret);
+    handleCaretMove();
+  }
+
+  /**
+   * Celda que contiene el desplazamiento `offset`. Sobre el separador no hay
+   * celdas, así que cuenta como «ninguna»: la selección sigue al otro extremo.
+   */
+  function cellAtOffset(area: HTMLTextAreaElement, offset: number): TableCellRef | null {
+    const caret = resolveTableCaret(sourceInfo, lineIndexOf(area.value, offset), offset, offset);
+    if (!caret || caret.onDelimiter) return null;
+    return { line: caret.line, col: caret.col };
+  }
+
+  function selectionCellRect(area: HTMLTextAreaElement): TableCellRect | null {
+    if (area.selectionStart === area.selectionEnd) return null;
+    return cellRectBetween(area.selectionStart, area.selectionEnd);
+  }
+
+  /**
+   * Rectángulo que abarca la selección entre dos desplazamientos: las dos puntas
+   * caen en celdas del mismo bloque y lo que se marca es el cuadro que las une,
+   * con celdas completas. Devuelve null con una sola celda marcada o cuando la
+   * selección se sale del bloque (entonces manda el texto).
+   */
+  function cellRectBetween(start: number, end: number): TableCellRect | null {
+    const area = textareaRef.current;
+    if (!area) return null;
+    const from = cellAtOffset(area, start);
+    const to = cellAtOffset(area, end);
+    if (!from || !to) return null;
+    const fromBlock = tableBlockAt(sourceInfo, from.line);
+    const toBlock = tableBlockAt(sourceInfo, to.line);
+    if (!fromBlock || !toBlock || fromBlock.start !== toBlock.start) return null;
+    const rect = cellRect(from, to);
+    return rectSpansCells(rect) ? rect : null;
+  }
+
+  /**
+   * Punta fija de la selección: la celda ancla guardada o, si aún no la hay
+   * (un arrastre de ratón, que no pasa por teclado), el extremo contrario al
+   * que se está moviendo según la dirección nativa de la selección.
+   */
+  function selectionAnchorCell(area: HTMLTextAreaElement): TableCellRef | null {
+    const stored = tableAnchorRef.current;
+    if (stored) return stored;
+    const fixed =
+      area.selectionDirection === "backward" ? area.selectionEnd : area.selectionStart;
+    return cellAtOffset(area, fixed);
+  }
+
+  /**
+   * Celda activa de la selección: la ancla se queda quieta y lo que se mueve
+   * es el otro extremo del rango, el que no cae dentro de la celda ancla.
+   * Se calcula después de guardar el ancla, que es quien señala cuál es.
+   */
+  function selectionFocusCell(area: HTMLTextAreaElement): TableCellRef | null {
+    const anchor = tableAnchorRef.current;
+    const start = cellAtOffset(area, area.selectionStart);
+    const end = cellAtOffset(area, area.selectionEnd);
+    if (anchor && start && start.line === anchor.line && start.col === anchor.col) {
+      return end ?? start;
+    }
+    return start ?? end;
+  }
+
+  /** Columna válida en una fila más corta que el resto del bloque. */
+  function clampCellCol(line: number, col: number) {
+    const text = sourceInfo[line]?.text;
+    if (text === undefined) return col;
+    return Math.max(Math.min(col, splitTableCells(text).length - 1), 0);
+  }
+
+  /**
+   * Marca las celdas completas de la celda ancla a la de `focus`. El rango de
+   * texto que las cubre es la escalera de siempre (filas intermedias enteras),
+   * de modo que Supr vacía justo lo marcado y deja los «|» en su sitio.
+   */
+  function selectCellBlock(anchor: TableCellRef, focus: TableCellRef) {
+    const area = textareaRef.current;
+    const from = tableCellRange(sourceInfo, anchor.line, anchor.col);
+    const to = tableCellRange(sourceInfo, focus.line, clampCellCol(focus.line, focus.col));
+    if (!area || !from || !to) return;
+    // La marca no cruza de bloque: un arrastre que llegue hasta otra tabla no
+    // arrastra la selección fuera de la que se está editando.
+    const aBlock = tableBlockAt(sourceInfo, anchor.line);
+    const bBlock = tableBlockAt(sourceInfo, focus.line);
+    if (!aBlock || !bBlock || aBlock.start !== bBlock.start || aBlock.end !== bBlock.end) return;
+    tableAnchorRef.current = anchor;
+    area.setSelectionRange(Math.min(from.start, to.start), Math.max(from.end, to.end));
+    handleCaretMove();
+  }
+
+  /**
+   * Mayús+↑/↓: la selección crece fila a fila con celdas completas y nunca
+   * sale del bloque (en el borde no ocurre nada). El móvil sube o baja a la
+   * misma columna de la fila contigua; al volver a la celda ancla la marca se
+   * queda en ella, que es donde empezó todo.
+   */
+  function extendTableSelection(cell: TableCellCaret, direction: 1 | -1) {
+    const area = textareaRef.current;
+    if (!area) return;
+
+    const anchor = selectionAnchorCell(area);
+    if (!anchor) return;
+    tableAnchorRef.current = anchor;
+    const focus = selectionFocusCell(area) ?? anchor;
+
+    const rows = tableRows(cell);
+    let index = rows.indexOf(focus.line);
+    if (index < 0) index = rows.indexOf(cell.line);
+    if (index < 0) return;
+
+    const targetRow = rows[index + direction];
+    if (targetRow === undefined) return; // la selección no sale del bloque
+    selectCellBlock(anchor, { line: targetRow, col: focus.col });
+  }
+
+  /**
+   * Mayús+←/→: la selección avanza de celda en celda dentro de la fila. La
+   * fila no se envuelve (el último «|» es un límite, no un pasillo): para
+   * cruzar de fila están ↑/↓, que intercalan las de en medio al completo.
+   */
+  function extendTableCellColumn(direction: 1 | -1) {
+    const area = textareaRef.current;
+    if (!area) return;
+
+    const anchor = selectionAnchorCell(area);
+    if (!anchor) return;
+    tableAnchorRef.current = anchor;
+    const focus = selectionFocusCell(area) ?? anchor;
+
+    const targetCol = focus.col + direction;
+    if (targetCol < 0 || !tableCellRange(sourceInfo, focus.line, targetCol)) return;
+    selectCellBlock(anchor, { line: focus.line, col: targetCol });
   }
 
   function handleMenuKeyDown(event: KeyboardEvent<HTMLElement>) {
@@ -1763,7 +3436,7 @@ export default function MarkdownEditor({
       const size =
         menu.kind === "wiki"
           ? wikiMatches(wikiNotes, menu.query).length
-          : filterSlashItems(menu.query).length;
+          : slashItems(menu.query).length;
       if (size === 0) return;
 
       const current = Math.min(menu.index, size - 1);
@@ -1787,7 +3460,7 @@ export default function MarkdownEditor({
       return;
     }
 
-    const items = filterSlashItems(menu.query);
+    const items = slashItems(menu.query);
     if (items.length === 0) return;
     event.preventDefault();
     insertSlashItem(items[Math.min(menu.index, items.length - 1)]);
@@ -1828,15 +3501,186 @@ export default function MarkdownEditor({
     return map;
   }, [sourceInfo]);
 
+  // Las anchuras fijadas de una tabla que ya no existe no sirven: se quitan.
+  useEffect(() => {
+    setTableWidths((prev) => {
+      if (!prev) return prev;
+      const next = new Map(prev);
+      let changed = false;
+      for (const key of next.keys()) {
+        if (!tableBlockAt(sourceInfo, key)) {
+          next.delete(key);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [sourceInfo]);
+
+  /** ¿Son las dos listas de anchuras la misma? */
+  function sameWidths(a: number[] | undefined, b: number[]): boolean {
+    if (!a || a.length !== b.length) return false;
+    return a.every((width, index) => width === b[index]);
+  }
+
+  /**
+   * Entra en caja una lista de anchuras en el ancho de la fila. Si se pasan, se
+   * encogen **en la misma proporción** (no solo la más ancha): así, al estrechar
+   * la ventana todas las columnas ceden un poco y la tabla sigue leyéndose, en
+   * vez de aplastar unas contra el mínimo y dejar otras enormes. Ninguna baja del
+   * mínimo y, si con eso todavía no cabe, se sale (mandará el resto del texto).
+   */
+  function clampColumnWidths(widths: number[], limit: number): number[] {
+    if (widths.length === 0) return widths;
+    let next = [...widths];
+    for (let round = 0; round < 24; round += 1) {
+      const total = next.reduce((sum, width) => sum + width, 0);
+      if (total <= limit) return next;
+      const ratio = limit / total;
+      let moved = false;
+      next = next.map((width) => {
+        const scaled = Math.max(MIN_COL_WIDTH, Math.round(width * ratio));
+        if (scaled !== width) moved = true;
+        return scaled;
+      });
+      // El redondeo puede dejar el total un par de píxeles por encima (si son
+      // muchas columnas, uno por columna): se corrige de la más ancha.
+      let sum = next.reduce((acc, width) => acc + width, 0);
+      while (sum > limit) {
+        let widest = 0;
+        for (let i = 1; i < next.length; i += 1) if (next[i] > next[widest]) widest = i;
+        if (next[widest] <= MIN_COL_WIDTH) break;
+        next[widest] -= 1;
+        sum -= 1;
+        moved = true;
+      }
+      // Todas están ya en el mínimo: no queda nada que ceder.
+      if (!moved) break;
+    }
+    return next;
+  }
+
+  /**
+   * Anchura de cada columna de cada tabla, medida una vez sobre el overlay y ya
+   * no suelta. Es lo que evita que la tabla «respire» al escribir: si el ancho
+   * fuera automático, teclear ensancharía la columna —y al llegar al borde de la
+   * línea la tabla dejaría de dibujarse como tabla—, así que se congela en la
+   * medida inicial y a partir de ahí manda lo que diga su contenido, que salta
+   * de línea y hace crecer la fila, como en Excel. Solo vuelve a cambiar si el
+   * usuario arrastra un borde, hace doble clic sobre él, cambia la estructura o
+   * la ventana se encoge (entonces solo se recorta lo que sobra).
+   */
+  useEffect(() => {
+    const overlay = overlayRef.current;
+    const area = textareaRef.current;
+    if (!overlay || !area || !inlineActive || tableCols === null) return;
+
+    const available = tableMaxWidthPx(area);
+    const limit = available === null ? Number.POSITIVE_INFINITY : available - scrollbarWidth;
+    const before = colWidthsRef.current;
+    const next = new Map(before);
+    let changed = false;
+
+    for (const segment of sourceSegments(sourceInfo, false, tableCols)) {
+      if (segment.kind !== "table") continue;
+      // Al medir se mezclan las anchuras ya guardadas con las de las columnas
+      // nuevas (una columna recién añadida se mide con las demás en `auto`).
+      const measured = measureTableColumns(segment.start);
+      if (!measured) continue;
+      const stored = before.get(segment.start);
+      // Ya fijada y con el mismo número de columnas: solo hay que mantenerla
+      // dentro de la fila (si la ventana se ha encogido, ceden todas un poco).
+      const wanted = stored && stored.length === measured.length ? stored : measured;
+      const clamped = clampColumnWidths(wanted, limit);
+      if (stored && sameWidths(stored, clamped)) continue;
+      next.set(segment.start, clamped);
+      changed = true;
+    }
+
+    if (changed) setTableWidths(next);
+  }, [sourceInfo, inlineActive, tableCols, rowPitch, tableMerge]);
+
+  // Alto que gana cada tabla al envolver sus celdas: a partir de su última fila
+  // el overlay queda más abajo que el textarea, así que se mide para poder
+  // compensarlo (scroll, clic y cursor).
+  useEffect(() => {
+    const overlay = overlayRef.current;
+    if (!overlay || !inlineActive || tableCols === null) {
+      setTableDrift(EMPTY_DRIFT);
+      return;
+    }
+    const next = new Map<number, TableDrift>();
+    for (const segment of sourceSegments(sourceInfo, false, tableCols)) {
+      if (segment.kind !== "table") continue;
+      const element = overlay.querySelector<HTMLElement>(`[data-table-block="${segment.start}"]`);
+      if (!element) continue;
+      const extra = element.offsetHeight - (segment.end - segment.start + 1) * rowPitch;
+      // offsetHeight viene entero: se ignoran los restos de subpíxel.
+      if (extra > 1) next.set(segment.start, { end: segment.end, extra });
+    }
+    setTableDrift((prev) => (sameDrift(prev, next) ? prev : next));
+  }, [sourceInfo, inlineActive, tableCols, rowPitch, tableWidths, tableMerge]);
+
+  // Con una tabla crecida por encima, el overlay ya no coincide con el textarea:
+  // el cursor y la selección los dibuja el overlay (el textarea los pone
+  // transparentes) para que no queden descolocados.
+  const overlayMark = !composing && (tableCaret !== null || driftBeforeLine(caretLine) > 0);
+
+  /** Píxeles que las tablas ya superadas dejan más abajo en el overlay. */
+  function driftBeforeLine(line: number): number {
+    let extra = 0;
+    for (const drift of tableDriftRef.current.values()) {
+      if (drift.end < line) extra += drift.extra;
+    }
+    return extra;
+  }
+
+  /** Igual, pero medido sobre el overlay: sirve para compensar el scroll. */
+  function driftBeforeScroll(scrollTop: number): number {
+    const overlay = overlayRef.current;
+    if (!overlay || tableDriftRef.current.size === 0) return 0;
+    let extra = 0;
+    for (const [block, drift] of tableDriftRef.current) {
+      const element = overlay.querySelector<HTMLElement>(`[data-table-block="${block}"]`);
+      if (element && element.offsetTop + element.offsetHeight <= scrollTop) extra += drift.extra;
+    }
+    return extra;
+  }
+
+  /**
+   * Desplazamiento que las tablas crecidas añaden a un punto del ratón. El
+   * textarea no lo sabe, así que se lo pasamos al cálculo geométrico del offset
+   * (el nativo ya acierta por su cuenta).
+   */
+  function driftAtPointer(clientY: number): number {
+    const area = textareaRef.current;
+    if (!area || tableDriftRef.current.size === 0) return 0;
+    const rect = area.getBoundingClientRect();
+    const padTop = Number.parseFloat(getComputedStyle(area).paddingTop) || 0;
+    const y = toLocalCoord(clientY) - toLocalCoord(rect.top) - padTop + area.scrollTop;
+    return driftBeforeScroll(y);
+  }
+
   // Los botones «copiar» se cachean: viven dentro del overlay (que va debajo
   // del textarea) y se detectan por coordenadas en cada movimiento del ratón,
-  // así que no se quiere recorrer el árbol del documento en cada evento.
+  // así que no se quiere recorrer el árbol del documento en cada evento. Lo
+  // mismo vale para las barras «+» de cada tabla, que solo se enseñan cuando
+  // el ratón se posa sobre ellas.
   useEffect(() => {
     const overlay = overlayRef.current;
     copyChipsRef.current = overlay
       ? Array.from(overlay.querySelectorAll<HTMLElement>("[data-copy-line]"))
       : [];
-  }, [sourceInfo, inlineActive, viewMode]);
+    tableBarsRef.current = overlay
+      ? Array.from(overlay.querySelectorAll<HTMLElement>("[data-add-bar]"))
+      : [];
+    tableResizeHandlesRef.current = overlay
+      ? Array.from(overlay.querySelectorAll<HTMLElement>("[data-resize-block]"))
+      : [];
+    tableCellsRef.current = overlay
+      ? Array.from(overlay.querySelectorAll<HTMLElement>("[data-cell]"))
+      : [];
+  }, [sourceInfo, inlineActive, viewMode, tableCols, tableMerge]);
 
   // El ✔ de «copiado» se apaga solo: al desmontar hay que soltar su reloj.
   useEffect(
@@ -1845,6 +3689,21 @@ export default function MarkdownEditor({
     },
     [],
   );
+
+  // El arrastre de selección se suelta al levantar el botón aunque el puntero se
+  // haya ido de la ventana (o al perder el foco): si no, el siguiente movimiento
+  // del ratón seguiría Selectionando.
+  useEffect(() => {
+    const stop = () => {
+      cellDragRef.current = null;
+    };
+    window.addEventListener("mouseup", stop);
+    window.addEventListener("blur", stop);
+    return () => {
+      window.removeEventListener("mouseup", stop);
+      window.removeEventListener("blur", stop);
+    };
+  }, []);
   const noteTags = parseNoteTags(content);
   const tagOptionList = tagOptions(vaultTags, tagInput, noteTags);
 
@@ -2243,6 +4102,14 @@ export default function MarkdownEditor({
               slashHint={lineHint && !menu && !slashHintUsed}
               tableCols={tableCols}
               tableCaret={tableCaret}
+              tableSelection={tableSelection}
+              tableRect={tableRect}
+              hoveredBar={hoverBar}
+              tableWidths={tableWidths}
+              tableMerge={tableMerge}
+              hoverResize={hoverResize}
+              caretAt={overlayMark ? (caretMark?.at ?? null) : null}
+              caretSel={overlayMark ? (caretMark?.sel ?? null) : null}
               copiedLine={copyDone}
               hoverLine={copyHover}
             />
@@ -2260,16 +4127,23 @@ export default function MarkdownEditor({
             }}
             onKeyDown={handleKeyDown}
             onCut={handleCut}
+            onCopy={handleCopy}
             onPaste={handlePaste}
             onMouseDown={handleOverlayMouseDown}
+            onDoubleClick={handleOverlayDoubleClick}
             onSelect={handleCaretMove}
             onScroll={handleScroll}
-            onMouseMove={(event) => {
-              // Resalta el botón «copiar» del bloque bajo el cursor.
-              const line = copyChipAt(event.clientX, event.clientY);
-              setCopyHover((prev) => (prev === line ? prev : line));
+            onMouseMove={handleOverlayMouseMove}
+            onMouseUp={() => {
+              // El arrastre de selección termina aquí (también si el puntero se
+              // va de la ventana: en ese caso lo suelta el escuchador global).
+              cellDragRef.current = null;
             }}
-            onMouseLeave={() => setCopyHover(null)}
+            onMouseLeave={() => {
+              setCopyHover(null);
+              setHoverBar(null);
+              setHoverResize(null);
+            }}
             // Mientras WebKit compone una tilde (tecla muerta) el textarea se
             // queda transparente y manda el overlay: allí se ve lo renderizado
             // (títulos, divisores, subrayados) y también la tilde pendiente,
@@ -2292,10 +4166,10 @@ export default function MarkdownEditor({
             spellCheck={false}
             lang={spellLang !== undefined && spellLang !== "off" ? spellLang : undefined}
             style={
-              fontSize || tableCaret
+              fontSize || overlayMark
                 ? {
                     ...(fontSize ? { fontSize: `${fontSize}px` } : {}),
-                    ...(tableCaret && !composing ? { caretColor: "transparent" } : {}),
+                    ...(overlayMark ? { caretColor: "transparent" } : {}),
                   }
                 : undefined
             }
@@ -2306,6 +4180,7 @@ export default function MarkdownEditor({
               "gus-scrollbar relative h-full w-full resize-none whitespace-break-spaces px-10 py-4 font-mono text-sm leading-[23px] text-gus-text outline-none placeholder:text-gus-muted focus:outline-none",
               inlineActive && "gus-source-area",
               tableCaret && !composing && "gus-cell-edit",
+              overlayMark && "gus-mark-edit",
               copyHover !== null && "cursor-pointer",
             )}
           />
@@ -2328,8 +4203,16 @@ export default function MarkdownEditor({
               <SlashMenu
                 key="slash"
                 anchor={menu.anchor}
-                items={filterSlashItems(menu.query)}
+                items={slashItems(menu.query)}
                 index={menu.index}
+                insideTable={tableCaret !== null}
+                label={
+                  menu.stage === "table-size"
+                    ? "Tamaño de la tabla"
+                    : tableCaret !== null
+                      ? "Acciones de la tabla"
+                      : undefined
+                }
                 onPick={insertSlashItem}
                 onHover={(index) => setMenu({ ...menu, index })}
               />
@@ -2354,6 +4237,8 @@ export default function MarkdownEditor({
               y={contextMenu.y}
               spell={contextMenu.spell}
               hasSelection={contextMenu.hasSelection}
+              table={contextMenu.table}
+              onTableAction={handleTableAction}
               onPick={applySpellReplacement}
               onAdd={addSpellWord}
               onIgnore={ignoreSpellWord}

@@ -31,6 +31,12 @@ export interface TableCellCaret {
   onDelimiter: boolean;
 }
 
+/** Celda por línea y columna: punto de una selección de celdas. */
+export interface TableCellRef {
+  line: number;
+  col: number;
+}
+
 export type SourceSegment =
   | { kind: "line"; index: number }
   | { kind: "table"; start: number; end: number };
@@ -97,11 +103,33 @@ export function delimiterAlign(cell: string): "left" | "center" | "right" {
   return "left";
 }
 
+/** ¿En `index` empieza un bloque de tabla (fila + separador + fila)? */
+function isTableStart(lines: TableLine[], index: number): boolean {
+  return (
+    !lines[index].code &&
+    isTableRow(lines[index].text) &&
+    index + 2 < lines.length &&
+    !lines[index + 1].code &&
+    isTableDelimiter(lines[index + 1].text) &&
+    !lines[index + 2].code &&
+    isTableRow(lines[index + 2].text)
+  );
+}
+
+/**
+ * Caracteres que ocupa como poco una columna: su ancho mínimo (24 px, unas tres
+ * letras con la fuente del editor) más el relleno de la celda. Debe ir en
+ * consonancia con `MIN_COL_WIDTH` del editor: es lo que decide si una tabla con
+ * muchas columnas todavía se puede dibujar en la ventana.
+ */
+const MIN_TABLE_COL_CHARS = 6;
+
 /**
  * Agrupa las tablas en bloques para renderizarlas como en la vista previa.
- * Si alguna fila no cabe en una sola línea del textarea (se wrapearía y
- * rompería la alineación 1:1 del overlay) o aún no se midió el ancho, la
- * tabla se deja en líneas normales con su crudo de siempre.
+ * Una tabla se dibuja siempre que su rejilla quepa en una línea del textarea (el
+ * texto que no cabe se envuelve dentro de su celda); si son demasiadas columnas
+ * para el ancho de la ventana, se deja en líneas normales con su crudo de
+ * siempre, porque el overlay tiene que seguir encajando línea a línea.
  */
 export function sourceSegments(
   lines: TableLine[],
@@ -116,16 +144,7 @@ export function sourceSegments(
   let i = 0;
 
   while (i < lines.length) {
-    const tableStart =
-      !lines[i].code &&
-      isTableRow(lines[i].text) &&
-      i + 2 < lines.length &&
-      !lines[i + 1].code &&
-      isTableDelimiter(lines[i + 1].text) &&
-      !lines[i + 2].code &&
-      isTableRow(lines[i + 2].text);
-
-    if (!tableStart) {
+    if (!isTableStart(lines, i)) {
       segments.push({ kind: "line", index: i });
       i += 1;
       continue;
@@ -136,19 +155,15 @@ export function sourceSegments(
     end -= 1;
 
     const cellRows = lines.slice(i, end + 1).map((line) => splitTableCells(line.text));
-    const colMax: number[] = [];
-    for (const cells of cellRows) {
-      cells.forEach((cell, c) => {
-        const width = visualLength(cell.text);
-        if (width > (colMax[c] ?? 0)) colMax[c] = width;
-      });
-    }
     const widest = cellRows.reduce((max, cells) => Math.max(max, cells.length), 1);
-    const fits =
-      colMax.reduce((sum, width) => sum + width, 0) + 2 * widest <= cols &&
-      cellRows.every(
-        (cells, k) => visualLength(lines[i + k].text) + 2 * cells.length <= cols,
-      );
+    // La tabla se dibuja siempre que su esqueleto quepa en la línea. El texto
+    // largo ya no la invalida: cada celda tiene su columna, el texto se envuelve
+    // dentro (como en Excel) y la fila crece, alto que MarkdownEditor mide y
+    // compensa. Antes se exigía que el crudo entero cabiera en una sola línea, y
+    // al escribir mucho la tabla desaparecía de golpe y se veía el markdown en
+    // crudo, que es lo que pasaba al teclear. Solo si ni el esqueleto cabe
+    // (demasiadas columnas para el ancho de la ventana) se deja el crudo.
+    const fits = MIN_TABLE_COL_CHARS * widest <= cols;
 
     if (fits) {
       segments.push({ kind: "table", start: i, end });
@@ -204,7 +219,10 @@ export function resolveTableCaret(
 
   const spans = splitTableCells(line.text);
   const lineStart = lineStartOffset(lines, caretLine);
-  const local = selEnd - lineStart;
+  // La celda que manda es la del inicio de la selección (el ancla): con una
+  // selección que abarca varias filas, `selEnd` caería en otra línea y la
+  // columna resultante sería la última de esta.
+  const local = selStart - lineStart;
 
   let col = spans.length - 1;
   for (let i = 0; i < spans.length; i += 1) {
@@ -259,4 +277,761 @@ export function adjacentTableCell(
   const total = rows.length * cell.cols;
   if (flat < 0 || flat >= total) return null;
   return { line: rows[Math.floor(flat / cell.cols)], col: flat % cell.cols };
+}
+
+/**
+ * Columna a la que salta ←/→ al llegar al borde del texto de una celda, o null
+ * si no hay celda contigua (última columna de la fila, o una fila descuadrada con
+ * menos celdas de las que se esperan).
+ */
+export function neighbourColumn(
+  lines: TableLine[],
+  line: number,
+  col: number,
+  direction: 1 | -1,
+): number | null {
+  const count = splitTableCells(lines[line]?.text ?? "").length;
+  const wanted = col + direction;
+  if (count === 0 || wanted < 0 || wanted >= count) return null;
+  return wanted;
+}
+
+/**
+ * Si una celda cuyo texto ocupa `rows` renglones visuales, con el cursor en el
+ * renglón `row`, debe saltar a la fila contigua con ↑/↓. Solo desde el primer o
+ * el último renglón: en medio manda el motor, que recorre el texto de la celda
+ * línea a línea (si no, no se podría editar una celda larga con las flechas).
+ */
+export function rowJumpAllowed(row: number, rows: number, direction: 1 | -1): boolean {
+  return direction === 1 ? row >= Math.max(0, rows - 1) : row <= 0;
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   Acciones que usa el menú y el teclado: alinear, ordenar, mover, duplicar,
+   marcar tarea y construir tablas nuevas.
+   ──────────────────────────────────────────────────────────────────────────── */
+
+/** Alineación de una columna: markdown la guarda en la fila del separador. */
+export type TableAlign = "left" | "center" | "right";
+
+const ALIGN_MARKS: Record<TableAlign, string> = {
+  left: ":---",
+  center: ":---:",
+  right: "---:",
+};
+
+export function alignTableColumn(
+  lines: TableLine[],
+  block: TableBlock,
+  col: number,
+  align: TableAlign,
+): TableEdit | null {
+  const delimiter = lines[block.start + 1]?.text;
+  if (delimiter === undefined) return null;
+  const span = splitTableCells(delimiter)[col];
+  if (!span) return null;
+
+  const next = lines.map((entry) => entry.text);
+  next[block.start + 1] =
+    delimiter.slice(0, span.start) + ALIGN_MARKS[align] + delimiter.slice(span.end);
+  return { lines: next, keepCaret: true };
+}
+
+/** Número de la celda, para ordenar como número (acepta coma decimal). */
+function cellNumber(text: string): number | null {
+  const value = Number(text.replace(/\s/g, "").replace(",", "."));
+  return text !== "" && Number.isFinite(value) ? value : null;
+}
+
+/** Ordena las filas del cuerpo por la columna `col` (números si se puede). */
+export function sortTableRows(
+  lines: TableLine[],
+  block: TableBlock,
+  col: number,
+  desc: boolean,
+): TableEdit | null {
+  const body: number[] = [];
+  for (let line = block.start + 2; line <= block.end; line += 1) body.push(line);
+  if (body.length < 2) return null;
+
+  const rows = body.map((line) => ({
+    line,
+    text: splitTableCells(lines[line].text)[col]?.text ?? "",
+  }));
+  const asNumber = rows.every((row) => cellNumber(row.text) !== null);
+  rows.sort((a, b) => {
+    const cmp = asNumber
+      ? cellNumber(a.text)! - cellNumber(b.text)!
+      : a.text.localeCompare(b.text, "es", { numeric: true });
+    // A igualdad se respeta el orden previo: así «ordenar» no barre de sitio
+    // dos celdas con el mismo valor.
+    return (desc ? -cmp : cmp) || a.line - b.line;
+  });
+
+  const next = lines.map((entry) => entry.text);
+  rows.forEach((row, index) => {
+    next[body[index]] = lines[row.line].text;
+  });
+  return { lines: next, keepCaret: true };
+}
+
+/** Mueve la fila `line` una posición dentro del cuerpo (sin salir del bloque). */
+export function moveTableRow(
+  lines: TableLine[],
+  line: number,
+  col: number,
+  direction: 1 | -1,
+): TableEdit | null {
+  const block = blockAt(lines, line);
+  if (!block || line < block.start + 2) return null;
+  const target = line + direction;
+  if (target < block.start + 2 || target > block.end) return null;
+
+  const next = lines.map((entry) => entry.text);
+  const moved = next[line];
+  next[line] = next[target];
+  next[target] = moved;
+  return { lines: next, caret: { line: target, col } };
+}
+
+/** Copia la fila `line` justo encima (direction -1) o debajo (+1). */
+export function duplicateTableRow(
+  lines: TableLine[],
+  line: number,
+  col: number,
+  direction: 1 | -1,
+): TableEdit | null {
+  const block = blockAt(lines, line);
+  if (!block || line < block.start + 2) return null;
+  const at = Math.min(Math.max(line + direction, block.start + 2), block.end + 1);
+
+  const next = lines.map((entry) => entry.text);
+  next.splice(at, 0, lines[line].text);
+  return { lines: next, caret: { line: at, col } };
+}
+
+/** Marca o desmarca la casilla de una celda de tipo tarea («- [ ]»). */
+export function toggleTableTask(
+  lines: TableLine[],
+  line: number,
+  col: number,
+): TableEdit | null {
+  const text = lines[line]?.text;
+  if (text === undefined) return null;
+  const span = splitTableCells(text)[col];
+  if (!span) return null;
+  const task = /^- \[( |x|X)\]/.exec(span.text);
+  if (!task) return null;
+
+  const mark = task[1] === " " ? "x" : " ";
+  const next = lines.map((entry) => entry.text);
+  const before = text.slice(0, span.start);
+  const after = text.slice(span.start);
+  next[line] = `${before}- [${mark}]${after.slice(task[0].length)}`;
+  return { lines: next, caret: { line, col } };
+}
+
+/** ¿La celda es una casilla de tarea? (para pintarla como lista de tareas) */
+export function isTableTaskCell(text: string): boolean {
+  return /^- \[( |x|X)\]/.test(text.trimStart());
+}
+
+/**
+ * Palabra (o racha de espacios) alrededor de `index`, como la que marca un doble
+ * clic en cualquier editor. Los signos de puntuación cuentan como palabra de un
+ * solo carácter: así «(Ana)» marca «Ana» al pinchar en medio.
+ */
+export function wordRangeAt(text: string, index: number): [number, number] {
+  if (text === "") return [index, index];
+  const isWord = (char: string) => /[\p{L}\p{N}_]/u.test(char);
+  const at = Math.min(Math.max(index, 0), Math.max(0, text.length - 1));
+  const same = isWord(text[at]);
+  let start = at;
+  let end = at;
+  while (start > 0 && isWord(text[start - 1]) === same) start -= 1;
+  while (end < text.length && isWord(text[end]) === same) end += 1;
+  return [start, end];
+}
+
+/**
+ * Carácter al que apunta el ratón dentro de una celda. La celda se mide en
+ * pantalla y su ancho se reparte en caracteres: así el cursor cae donde se ha
+ * hecho clic, como en cualquier editor, y el arrastre selecciona texto.
+ *
+ * `x`/`y` son píxeles desde la esquina del texto de la celda, `charWidth` el
+ * ancho de un carácter, `perLine` cuántos caben en un renglón y `pitch` el alto
+ * de un renglón (para el texto que se envuelve en varios).
+ */
+export function cellIndexAtPointer(
+  text: string,
+  x: number,
+  y: number,
+  charWidth: number,
+  perLine: number,
+  pitch: number,
+): number {
+  if (charWidth <= 0 || perLine <= 0 || pitch <= 0) return 0;
+  const row = Math.max(0, Math.floor(y / pitch));
+  const column = Math.round(x / charWidth);
+  // Pinchar a la derecha de un renglón lleva a su fin, no al principio del
+  // siguiente (y nunca más allá del texto).
+  const rowEnd = Math.min(text.length, (row + 1) * perLine);
+  if (column >= rowEnd) return rowEnd;
+  return Math.min(Math.max(column, row * perLine), rowEnd);
+}
+
+/**
+ * Tabla nueva de `cols` columnas y `rows` de cuerpo, con el cursor en la
+ * primera celda de datos. Es lo que inserta el menú «/».
+ */
+export function tableSkeleton(
+  cols: number,
+  rows: number,
+): { text: string; caret: number } {
+  const width = Math.max(1, Math.min(Math.round(cols) || 1, 12));
+  const height = Math.max(1, Math.min(Math.round(rows) || 1, 12));
+  const header = formatTableRow(
+    Array.from({ length: width }, (_, i) => `Columna ${i + 1}`),
+  );
+  const rule = formatTableRow(Array.from({ length: width }, () => "---"));
+  const row = formatTableRow(Array.from({ length: width }, () => ""));
+  const lines = [header, rule, ...Array.from({ length: height }, () => row)];
+  const flat: TableLine[] = lines.map((text) => ({ text, code: false }));
+  return { text: lines.join("\n"), caret: lineStartOffset(flat, 2) + 2 };
+}
+
+/**
+ * Convierte texto en filas de tabla: separa por tabuladores (o por comas si no
+ * hay tabs) y, si ya venía con «|», los quita. `firstIsHeader` decide si la
+ * primera línea es la cabecera; si no, se genera una con nombres genéricos.
+ */
+export function tableFromDelimited(
+  text: string,
+  firstIsHeader: boolean,
+): { lines: string[]; caret: number } {
+  const rows = text
+    .split("\n")
+    .map((row) => row.trim())
+    .filter((row, index, all) => row !== "" || (index > 0 && index < all.length - 1));
+  if (rows.length === 0) return { lines: [], caret: 0 };
+
+  const piped = rows.every((row) => /^\s*\|.*\|\s*$/.test(row));
+  const tabbed = rows.some((row) => row.includes("\t"));
+  const split = (row: string): string[] =>
+    row
+      .trim()
+      .replace(/^\|/, "")
+      .replace(/\|$/, "")
+      .split(tabbed ? "\t" : piped ? "|" : ",")
+      // Los «|» de las celdas los escapa formatTableRow al montar la fila.
+      .map((cell) => cell.trim());
+
+  const cells = rows.map(split);
+  const width = Math.max(2, ...cells.map((row) => row.length));
+  const pad = (row: string[]) => [
+    ...row,
+    ...Array.from({ length: width - row.length }, () => ""),
+  ];
+
+  const header = firstIsHeader
+    ? pad(cells[0])
+    : Array.from({ length: width }, (_, i) => `Columna ${i + 1}`);
+  const body = (firstIsHeader ? cells.slice(1) : cells).map(pad);
+  // Una tabla necesita al menos una fila de cuerpo: si solo venía la cabecera
+  // se añade una vacía.
+  if (body.length === 0) body.push(Array.from({ length: width }, () => ""));
+
+  const lines = [
+    formatTableRow(header),
+    formatTableRow(Array.from({ length: width }, () => "---")),
+    ...body.map(formatTableRow),
+  ];
+  const flat: TableLine[] = lines.map((line) => ({ text: line, code: false }));
+  return { lines, caret: lineStartOffset(flat, 2) + 2 };
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   Bloques fijos: operaciones de fila/columna y protección de la estructura.
+   ──────────────────────────────────────────────────────────────────────────── */
+
+export interface TableBlock {
+  start: number;
+  end: number;
+}
+
+/** Bloque de tabla que contiene a la línea `line`; null si no está en uno. */
+export function tableBlockAt(lines: TableLine[], line: number): TableBlock | null {
+  return blockAt(lines, line);
+}
+
+/**
+ * Localizador de bloques con caché: recorrer un rango carácter a carácter no
+ * vuelve a caminar el bloque (ni a reanalizar la fila) en cada comprobación,
+ * y las líneas que ya se sabe que no son tabla tampoco se reanalizan.
+ */
+function blockFinder(lines: TableLine[]): (line: number) => TableBlock | null {
+  let block: TableBlock | null = null;
+  let emptyLine = -1;
+  return (line: number) => {
+    if (line < 0 || line >= lines.length) return null;
+    if (block && line >= block.start && line <= block.end) return block;
+    if (line === emptyLine) return null;
+    const found = blockAt(lines, line);
+    block = found;
+    emptyLine = found ? -1 : line;
+    return found;
+  };
+}
+
+/** Línea (0-based) que contiene el desplazamiento absoluto `offset`. */
+export function lineIndexOf(value: string, offset: number): number {
+  const at = Math.max(0, Math.min(offset, value.length));
+  let line = 0;
+  for (let i = 0; i < at; i += 1) if (value.charCodeAt(i) === 10) line += 1;
+  return line;
+}
+
+/** Columnas del bloque (la fila más ancha manda). */
+export function tableColumnCount(lines: TableLine[], block: TableBlock): number {
+  let cols = 0;
+  for (let i = block.start; i <= block.end; i += 1) {
+    cols = Math.max(cols, splitTableCells(lines[i].text).length);
+  }
+  return cols;
+}
+
+/** Fila reconstruida con el formato «| a | b |» (los «|» de la celda se escapan). */
+function formatTableRow(cells: string[]): string {
+  return `|${cells.map((cell) => ` ${cell.replace(/\|/g, "\\|")} `).join("|")}|`;
+}
+
+/** Celda de separador con la misma alineación que su vecina. */
+function delimiterText(cell: string): string {
+  const align = delimiterAlign(cell);
+  return align === "center" ? ":---:" : align === "right" ? "---:" : "---";
+}
+
+export interface TableEdit {
+  /** Líneas nuevas del documento (solo el cuerpo, sin frontmatter). */
+  lines: string[];
+  /** Celda donde debe quedarse el cursor dentro de `lines`. */
+  caret?: { line: number; col: number };
+  /** Posición absoluta alternativa del cursor (p. ej. al eliminar la tabla). */
+  offset?: number;
+  /** El cursor se queda en la celda en la que está (la operación no lo mueve:
+   *  alinear una columna, ordenarla… el usuario sigue donde estaba). */
+  keepCaret?: boolean;
+}
+
+function clampCol(text: string, col: number): number {
+  const cols = splitTableCells(text).length;
+  return Math.max(0, Math.min(col, cols - 1));
+}
+
+/**
+ * Nueva fila vacía por debajo de la fila `line`, con el cursor en la columna
+ * `col` (la que se pulsó en el borde inferior). La cabecera y el separador
+ * insertan al inicio del cuerpo: la fila del separador no admite filas dentro.
+ */
+export function insertTableRow(
+  lines: TableLine[],
+  line: number,
+  col = 0,
+): TableEdit | null {
+  const block = blockAt(lines, line);
+  if (!block) return null;
+
+  const cols = tableColumnCount(lines, block);
+  const at = line <= block.start + 1 ? block.start + 2 : line + 1;
+  if (at > block.end + 1) return null;
+
+  const next = lines.map((entry) => entry.text);
+  next.splice(at, 0, `|${"  |".repeat(cols)}`);
+  return { lines: next, caret: { line: at, col: Math.min(Math.max(col, 0), cols - 1) } };
+}
+
+/** Columna nueva a la derecha de `afterCol` en todas las filas del bloque. */
+export function insertTableColumn(
+  lines: TableLine[],
+  block: TableBlock,
+  afterCol: number,
+  focusLine: number,
+): TableEdit | null {
+  const cols = tableColumnCount(lines, block);
+  if (afterCol < 0 || afterCol >= cols) return null;
+
+  const next = lines.map((entry, index) => {
+    if (index < block.start || index > block.end) return entry.text;
+    const cells = splitTableCells(entry.text);
+    const texts = cells.map((cell) => cell.text);
+    const filler = index === block.start + 1 ? delimiterText(cells[afterCol]?.text ?? "") : "";
+    texts.splice(afterCol + 1, 0, filler);
+    return formatTableRow(texts);
+  });
+
+  const inBody = focusLine >= block.start && focusLine <= block.end && focusLine !== block.start + 1;
+  return {
+    lines: next,
+    caret: { line: inBody ? focusLine : block.start, col: afterCol + 1 },
+  };
+}
+
+/**
+ * Quita la fila `line`. No toca la cabecera ni el separador y se niega si la
+ * tabla se quedaría sin filas de cuerpo (dejaría de ser una tabla).
+ */
+export function removeTableRow(
+  lines: TableLine[],
+  line: number,
+  col: number,
+): TableEdit | null {
+  const block = blockAt(lines, line);
+  if (!block) return null;
+  if (line <= block.start + 1) return null;
+  if (block.end - block.start < 3) return null;
+
+  const next = lines.map((entry) => entry.text);
+  next.splice(line, 1);
+  const caretLine = Math.min(line, block.end - 1);
+  return { lines: next, caret: { line: caretLine, col: clampCol(next[caretLine] ?? "", col) } };
+}
+
+/** Quita la columna `col`; con menos de dos columnas dejaría de ser tabla. */
+export function removeTableColumn(
+  lines: TableLine[],
+  block: TableBlock,
+  col: number,
+  focusLine: number,
+): TableEdit | null {
+  const cols = tableColumnCount(lines, block);
+  if (cols <= 2 || col < 0 || col >= cols) return null;
+
+  const next = lines.map((entry, index) => {
+    if (index < block.start || index > block.end) return entry.text;
+    const texts = splitTableCells(entry.text).map((cell) => cell.text);
+    texts.splice(col, 1);
+    return formatTableRow(texts);
+  });
+
+  const inBody = focusLine >= block.start && focusLine <= block.end && focusLine !== block.start + 1;
+  const caretLine = inBody ? focusLine : block.start;
+  return { lines: next, caret: { line: caretLine, col: clampCol(next[caretLine] ?? "", col) } };
+}
+
+/** Borra el bloque entero y deja el cursor donde estaba la tabla. */
+export function removeTable(lines: TableLine[], block: TableBlock): TableEdit {
+  const next = lines.map((entry) => entry.text);
+  next.splice(block.start, block.end - block.start + 1);
+  const flat: TableLine[] = next.map((text) => ({ text, code: false }));
+  return { lines: next, offset: lineStartOffset(flat, block.start) };
+}
+
+/**
+ * Une las filas del cuerpo seleccionadas en una: cada columna pasa a ser la
+ * concatenación de sus celdas (se omiten las vacías). La cabecera no entra.
+ */
+export function mergeTableRows(
+  lines: TableLine[],
+  block: TableBlock,
+  rowLines: number[],
+  col: number,
+): TableEdit | null {
+  const body = [...new Set(rowLines)]
+    .filter((line) => line > block.start + 1 && line <= block.end)
+    .sort((a, b) => a - b);
+  if (body.length < 2) return null;
+
+  const cols = tableColumnCount(lines, block);
+  const merged: string[] = [];
+  for (let c = 0; c < cols; c += 1) {
+    const parts: string[] = [];
+    for (const row of body) {
+      const text = (splitTableCells(lines[row].text)[c]?.text ?? "").trim();
+      if (text !== "") parts.push(text);
+    }
+    merged.push(parts.join(" "));
+  }
+
+  const next = lines.map((entry) => entry.text);
+  next[body[0]] = formatTableRow(merged);
+  for (let i = body.length - 1; i >= 1; i -= 1) next.splice(body[i], 1);
+  return { lines: next, caret: { line: body[0], col: Math.min(Math.max(col, 0), cols - 1) } };
+}
+
+/** Filas de cuerpo cuyo contenido (o salto) toca la selección indicada. */
+export function tableSelectionRows(
+  lines: TableLine[],
+  block: TableBlock,
+  selStart: number,
+  selEnd: number,
+): number[] {
+  const rows: number[] = [];
+  let at = lineStartOffset(lines, block.start);
+  for (let line = block.start; line <= block.end; line += 1) {
+    const end = at + lines[line].text.length;
+    if (selStart < end && selEnd > at) rows.push(line);
+    at = end + 1;
+  }
+  return rows.filter((line) => line > block.start + 1);
+}
+
+/** ¿El rango toca alguna línea de un bloque de tabla? */
+export function tableIntersects(
+  lines: TableLine[],
+  value: string,
+  start: number,
+  end: number,
+): boolean {
+  const find = blockFinder(lines);
+  const first = lineIndexOf(value, start);
+  const last = lineIndexOf(value, Math.max(start, end - 1));
+  for (let line = first; line <= last; line += 1) if (find(line)) return true;
+  return false;
+}
+
+export interface TableDeletionPlan {
+  /** Texto final: el rango borrado menos los caracteres estructurales. */
+  text: string;
+  /** Posición del cursor tras el borrado. */
+  caret: number;
+}
+
+/**
+ * Prepara el borrado de `[start, end)` sin romper ninguna tabla. Se conservan
+ * siempre los «|» que separan las celdas, los saltos de línea que unen la
+ * tabla con su entorno (y los de su interior) y la fila del separador: así la
+ * tabla nunca desaparece con Supr/Backspace ni se queda suelta en el texto.
+ * Devuelve `null` cuando no hay ninguna tabla implicada (borrado nativo).
+ */
+export function planTableDeletion(
+  lines: TableLine[],
+  value: string,
+  start: number,
+  end: number,
+): TableDeletionPlan | null {
+  if (end <= start || !value.includes("|")) return null;
+
+  const find = blockFinder(lines);
+  const keep: boolean[] = new Array(end - start).fill(false);
+  let line = lineIndexOf(value, start);
+  let touched = false;
+
+  for (let at = start; at < end; at += 1) {
+    const char = value[at];
+    let save = false;
+
+    if (char === "\n") {
+      // El salto se mantiene si une la tabla con la línea de arriba o la de abajo.
+      save = find(line) !== null || find(line + 1) !== null;
+      line += 1;
+    } else {
+      const block = find(line);
+      if (block) {
+        if (line === block.start + 1) save = true; // fila del separador: intacta
+        else if (char === "|" && value[at - 1] !== "\\") save = true;
+      }
+    }
+
+    keep[at - start] = save;
+    if (save) touched = true;
+  }
+
+  if (!touched) return null;
+
+  // Un «|» conservado arrastra sus espacios: así la fila sigue leyéndose como
+  // «|  |  |» (celdas vacías) en vez de apretarse en «||».
+  for (let at = start; at < end; at += 1) {
+    if (!keep[at - start] || value[at] !== "|") continue;
+    if (at - 1 >= start && value[at - 1] === " ") keep[at - 1 - start] = true;
+    if (at + 1 < end && value[at + 1] === " ") keep[at + 1 - start] = true;
+  }
+
+  // Último control: cualquier fila del bloque que toque el rango tiene que
+  // seguir siendo una fila con sus celdas. Si el recorte la dejaría con menos
+  // de dos (filas sin «|» final, muy apretadas), se conserva entera.
+  const firstLine = lineIndexOf(value, start);
+  const lastLine = lineIndexOf(value, end - 1);
+  let lineStart = lineStartOffset(lines, firstLine);
+  for (let line = firstLine; line <= lastLine && line < lines.length; line += 1) {
+    const text = lines[line].text;
+    const lineEnd = lineStart + text.length;
+    const from = Math.max(start, lineStart);
+    const to = Math.min(end, lineEnd);
+    if (from >= to) {
+      lineStart = lineEnd + 1;
+      continue;
+    }
+
+    const block = find(line);
+    if (!block || line === block.start + 1) {
+      lineStart = lineEnd + 1;
+      continue;
+    }
+
+    let rebuilt = text.slice(0, from - lineStart);
+    for (let at = from; at < to; at += 1) if (keep[at - start]) rebuilt += value[at];
+    rebuilt += text.slice(to - lineStart);
+    lineStart = lineEnd + 1;
+    if (isTableRow(rebuilt)) continue;
+
+    for (let at = from; at < to; at += 1) keep[at - start] = true;
+  }
+
+  let kept = "";
+  for (let at = start; at < end; at += 1) if (keep[at - start]) kept += value[at];
+
+  return { text: `${value.slice(0, start)}${kept}${value.slice(end)}`, caret: start };
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   Selección rectangular de celdas: el cuadro que se pinta y lo que vacía Supr.
+   La selección de texto del textarea es una escalera (una fila entera de más
+   en cada vuelta); el rectángulo es lo que la persona marcó celda a celda.
+   ──────────────────────────────────────────────────────────────────────────── */
+
+/** Rectángulo de celdas marcadas: líneas absolutas y columnas normalizadas. */
+export interface TableCellRect {
+  /** Primera línea abarcada (cabecera o primera fila de cuerpo). */
+  top: number;
+  /** Última línea abarcada. */
+  bottom: number;
+  /** Columna izquierda (0-based). */
+  left: number;
+  /** Columna derecha (0-based, incluida). */
+  right: number;
+}
+
+/** Une dos celdas (ancla y foco) en el rectángulo que las contiene. */
+export function cellRect(anchor: TableCellRef, focus: TableCellRef): TableCellRect {
+  return {
+    top: Math.min(anchor.line, focus.line),
+    bottom: Math.max(anchor.line, focus.line),
+    left: Math.min(anchor.col, focus.col),
+    right: Math.max(anchor.col, focus.col),
+  };
+}
+
+/** ¿Abarca más de una celda? Una sola es texto suelto dentro de la celda. */
+export function rectSpansCells(rect: TableCellRect): boolean {
+  return rect.top !== rect.bottom || rect.left !== rect.right;
+}
+
+/** Líneas del rectángulo que son filas editables (nunca código ni separador). */
+function rectRowLines(lines: TableLine[], rect: TableCellRect): number[] {
+  const rows: number[] = [];
+  for (let line = Math.max(rect.top, 0); line <= rect.bottom && line < lines.length; line += 1) {
+    const entry = lines[line];
+    const text = entry.text;
+    if (entry.code || !isTableRow(text) || isTableDelimiter(text)) continue;
+    rows.push(line);
+  }
+  return rows;
+}
+
+/**
+ * Contenido de las celdas del rectángulo para el portapapeles: tabulador
+ * entre celdas y salto de línea entre filas (lo mismo que espera una hoja de
+ * cálculo al pegar), sin tocar los «|» del documento.
+ */
+export function cellRectClipboard(lines: TableLine[], rect: TableCellRect): string {
+  const rows: string[] = [];
+  for (const line of rectRowLines(lines, rect)) {
+    const cells = splitTableCells(lines[line].text);
+    const texts: string[] = [];
+    for (let col = rect.left; col <= rect.right && col < cells.length; col += 1) {
+      texts.push(cells[col].text);
+    }
+    rows.push(texts.join("\t"));
+  }
+  return rows.join("\n");
+}
+
+/**
+ * Vacía el contenido de las celdas del rectángulo. Se conservan los «|», la
+ * fila del separador y los saltos de línea: la tabla queda en pie con sus
+ * celdas vacías, igual que haría Supr sobre texto normal. Devuelve `null`
+ * cuando no había nada que borrar (todas las celdas ya estaban vacías).
+ */
+export function clearTableCells(
+  lines: TableLine[],
+  rect: TableCellRect,
+): TableDeletionPlan | null {
+  const next = lines.map((entry) => entry.text);
+  let touched = false;
+
+  for (const line of rectRowLines(lines, rect)) {
+    const text = lines[line].text;
+    const spans = splitTableCells(text);
+    let rebuilt = text;
+    // De derecha a izquierda: así no se mueven los offsets de la izquierda.
+    for (let col = Math.min(rect.right, spans.length - 1); col >= rect.left; col -= 1) {
+      const span = spans[col];
+      if (span.end <= span.start) continue;
+      rebuilt = `${rebuilt.slice(0, span.start)}${rebuilt.slice(span.end)}`;
+    }
+    // Seguro final: la fila tiene que seguir siendo una fila con sus celdas.
+    if (rebuilt === text || !isTableRow(rebuilt)) continue;
+    next[line] = rebuilt;
+    touched = true;
+  }
+
+  if (!touched) return null;
+
+  // El cursor vuelve al principio de la primera celda marcada. Ese offset es
+  // el del texto original: lo que va delante no cambió, así que sigue cayendo
+  // dentro de la celda (y escribir allí deja «| x |», no «|  x|»).
+  const caret =
+    tableCellRange(lines, rect.top, rect.left)?.start ?? lineStartOffset(lines, rect.top);
+  return { text: next.join("\n"), caret };
+}
+
+/**
+ * Combina las celdas del rectángulo en una sola, como en Excel: su contenido se
+ * concatena (en orden de lectura, saltando las vacías) en la celda de arriba a la
+ * izquierda y las demás se vacían. El rectángulo sigue ocupando su sitio en la
+ * rejilla —la tabla no pierde ni una fila ni una columna— y la celda combinada
+ * se dibuja ocupando todo ese rectángulo.
+ */
+export function mergeTableRect(
+  lines: TableLine[],
+  rect: TableCellRect,
+): TableEdit | null {
+  const parts: string[] = [];
+  for (const line of rectRowLines(lines, rect)) {
+    const cells = splitTableCells(lines[line].text);
+    for (let col = rect.left; col <= rect.right && col < cells.length; col += 1) {
+      const text = cells[col].text;
+      if (text !== "") parts.push(text);
+    }
+  }
+  if (parts.length === 0) return null;
+
+  const joined = parts.join(" ").replace(/\|/g, "\\|");
+  const next = lines.map((entry) => entry.text);
+  let touched = false;
+
+  for (const line of rectRowLines(lines, rect)) {
+    const text = lines[line].text;
+    const spans = splitTableCells(text);
+    let rebuilt = text;
+    // De derecha a izquierda: primero se vacían las celdas de la derecha y al
+    // final la de la izquierda recibe el texto combinado (puede ser más largo).
+    for (let col = Math.min(rect.right, spans.length - 1); col >= rect.left; col -= 1) {
+      const span = spans[col];
+      // El texto combinado solo vive en la celda de arriba a la izquierda: las
+      // demás celdas del rectángulo se vacían.
+      const value = line === rect.top && col === rect.left ? joined : "";
+      if (span.start === span.end && value === "") continue;
+      rebuilt = `${rebuilt.slice(0, span.start)}${value}${rebuilt.slice(span.end)}`;
+    }
+    if (rebuilt === text || !isTableRow(rebuilt)) continue;
+    next[line] = rebuilt;
+    touched = true;
+  }
+
+  if (!touched) return null;
+
+  // El cursor se queda en la celda de arriba a la izquierda, que es donde vive
+  // ahora el texto combinado.
+  return { lines: next, caret: { line: rect.top, col: rect.left } };
 }

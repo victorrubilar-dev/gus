@@ -173,6 +173,13 @@ body {
   background: transparent;
 }
 
+/* Igual cuando una tabla ha crecido al envolver sus celdas: a partir de su
+   última fila el overlay está más abajo que el textarea, y es el overlay quien
+   pinta el cursor y la selección (clase «gus-mark-edit»). */
+.gus-mark-edit::selection {
+  background: transparent;
+}
+
 /* Caret sintético dentro de la celda activa (posición real del texto). */
 .gus-cell-caret {
   display: inline-block;

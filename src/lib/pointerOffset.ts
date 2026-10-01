@@ -11,10 +11,16 @@ export function offsetAtPointer(
   area: HTMLTextAreaElement,
   x: number,
   y: number,
+  /**
+   * Píxeles que el overlay lleva de más por encima de `y` (una tabla que ha
+   * envuelto sus celdas). El textarea no los conoce, así que el cálculo
+   * geométrico los suma para no señalar la línea de arriba.
+   */
+  adjust = 0,
 ): number | null {
   const native = nativeOffset(area, x, y);
   if (native !== null && native <= area.value.length) return native;
-  return geometricOffset(area, x, y);
+  return geometricOffset(area, x, y, adjust);
 }
 
 function nativeOffset(area: HTMLTextAreaElement, x: number, y: number): number | null {
@@ -38,7 +44,12 @@ function nativeOffset(area: HTMLTextAreaElement, x: number, y: number): number |
   return null;
 }
 
-function geometricOffset(area: HTMLTextAreaElement, x: number, y: number): number | null {
+function geometricOffset(
+  area: HTMLTextAreaElement,
+  x: number,
+  y: number,
+  adjust: number,
+): number | null {
   const value = area.value;
   if (value.includes("\t")) return null;
 
@@ -63,7 +74,7 @@ function geometricOffset(area: HTMLTextAreaElement, x: number, y: number): numbe
   const cap = Math.max(1, Math.floor((area.clientWidth - padLeft - padRight) / charWidth));
   const lines = value.split("\n");
 
-  const row = Math.floor((y - rect.top - padTop + area.scrollTop) / lineHeight);
+  const row = Math.floor((y - rect.top - padTop + area.scrollTop + adjust) / lineHeight);
   if (row < 0) return 0;
 
   let lineIndex = 0;
@@ -107,6 +118,11 @@ function wrapStarts(line: string, cap: number): number[] {
     i = breakAt - 1;
   }
   return starts;
+}
+
+/** Ancho en píxeles de un carácter del textarea (sirve para medir columnas). */
+export function charWidthPx(element: HTMLElement): number | null {
+  return measureCharWidth(getComputedStyle(element));
 }
 
 function measureCharWidth(view: CSSStyleDeclaration): number | null {

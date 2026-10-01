@@ -1,13 +1,15 @@
 import { memo, useMemo, type CSSProperties, type ReactNode, type Ref } from "react";
 import clsx from "clsx";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, Plus } from "lucide-react";
 import type { SpellFn } from "../lib/spellCheck";
 import { codeBlocks } from "../lib/codeBlocks";
 import {
   delimiterAlign,
   sourceSegments,
   splitTableCells,
+  visualLength,
   type TableCellCaret,
+  type TableCellRect,
   type TableCellSpan,
 } from "../lib/tableLayout";
 
@@ -301,13 +303,49 @@ function visibleFor(
   return { nodes: inlineNodes(text, spell), layerClass: "" };
 }
 
+/** Selección absoluta dentro del documento (posiciones del textarea). */
+export interface TableSelection {
+  start: number;
+  end: number;
+}
+
+/** Barra «+» de una tabla sobre la que está el ratón (MarkdownEditor la mide). */
+export interface TableBarHover {
+  /** Primera línea del bloque de tabla. */
+  block: number;
+  /** "side" = tira del costado (añade columna), "bottom" = tira de abajo (fila). */
+  part: "side" | "bottom";
+}
+
+/** Borde de columna bajo el ratón, listo para arrastrar (MarkdownEditor lo mide). */
+export interface TableResizeHover {
+  /** Primera línea del bloque de tabla. */
+  block: number;
+  /** Columna cuyo borde derecho se agarra. */
+  col: number;
+}
+
 interface TableBlockProps {
   lines: SourceLine[];
   start: number;
   rowPitch: number;
+  /** Caracteres que caben en una fila del textarea (null si aún no se midió). */
+  textCols: number | null;
   offsets: number[];
   spell: SpellFn | null;
   tableCaret: TableCellCaret | null;
+  /** Selección absoluta dentro del bloque (puede abarcar varias filas). */
+  selection: TableSelection | null;
+  /** Rectángulo de celdas marcadas (varias celdas): se pinta como un cuadro. */
+  rect: TableCellRect | null;
+  /** Anchura en píxeles de cada columna (null = la que dé el contenido). */
+  widths: number[] | null;
+  /** Rectángulo de celdas combinadas en una sola (estilo Excel). */
+  merge: TableCellRect | null;
+  /** Barra «+» de este bloque bajo el ratón (null = ninguna visible). */
+  hoveredBar: "side" | "bottom" | null;
+  /** Columna cuyo borde derecho se puede arrastrar (null = ninguna). */
+  hoverResize: { col: number } | null;
 }
 
 /** Contenido de una celda; si está activa, marca la selección o el caret. */
@@ -315,29 +353,54 @@ function cellNodes(
   span: TableCellSpan,
   cellStart: number,
   cellEnd: number,
-  active: TableCellCaret | null,
+  active: boolean,
+  selection: TableSelection | null,
   spell: SpellFn | null,
 ): ReactNode {
-  if (!active) return inlineNodes(span.text, spell);
-  const selStart = Math.min(Math.max(active.selStart, cellStart), cellEnd);
-  const selEnd = Math.min(Math.max(active.selEnd, cellStart), cellEnd);
-  const relStart = selStart - cellStart;
-  const relEnd = selEnd - cellStart;
-  const pre = span.text.slice(0, relStart);
-  const mid = span.text.slice(relStart, relEnd);
-  const post = span.text.slice(relEnd);
+  const text = span.text;
+  if (!selection) return inlineNodes(text, spell);
+
+  const from = Math.min(Math.max(selection.start, cellStart), cellEnd);
+  const to = Math.min(Math.max(selection.end, cellStart), cellEnd);
+
+  // Sin texto seleccionado en esta celda: solo la activa dibuja el caret.
+  if (from >= to) {
+    if (!active) return inlineNodes(text, spell);
+    const at = from - cellStart;
+    return (
+      <>
+        {at > 0 && inlineNodes(text.slice(0, at), spell)}
+        <span className="gus-cell-caret" />
+        {at < text.length && inlineNodes(text.slice(at), spell)}
+      </>
+    );
+  }
+
+  const relStart = from - cellStart;
+  const relEnd = to - cellStart;
   return (
     <>
-      {pre !== "" && inlineNodes(pre, spell)}
-      {selStart === selEnd ? (
-        <span className="gus-cell-caret" />
-      ) : (
-        <span className="rounded-[2px] bg-gus-accent/30">{inlineNodes(mid, spell)}</span>
-      )}
-      {post !== "" && inlineNodes(post, spell)}
+      {relStart > 0 && inlineNodes(text.slice(0, relStart), spell)}
+      <span className="rounded-[2px] bg-gus-accent/30">
+        {inlineNodes(text.slice(relStart, relEnd), spell)}
+      </span>
+      {relEnd < text.length && inlineNodes(text.slice(relEnd), spell)}
     </>
   );
 }
+
+/** Grosor de las dos barras «+»: caben justo en el padding del overlay. */
+const BAR_SIZE = 16;
+
+/**
+ * Las dos barras «+» de la tabla: una a lo alto de todo el costado derecho y
+ * otra a todo el ancho por debajo. Están siempre en el DOM pero invisibles
+ * (opacity 0) hasta que el ratón se posa sobre ellas, que es cuando se
+ * enseñan. El overlay es de punteros inertes: hover y clic los resuelve
+ * MarkdownEditor por coordenadas, leyendo los atributos `data-add-*`.
+ */
+const ADD_BAR =
+  "absolute z-10 flex items-center justify-center rounded-full bg-gus-accent/90 text-white opacity-0 shadow-md transition-opacity duration-150";
 
 /**
  * Tabla renderida al estilo Obsidian: nunca se ve la fuente Markdown. Una
@@ -345,64 +408,294 @@ function cellNodes(
  * exactamente las mismas filas que el textarea. La fila del separador (|---|)
  * no se dibuja: la cabecera abarca su banda. El cursor se edita por celda con
  * resaltado y un caret sintético en la posición real del texto.
+ * Al acercar el ratón a los bordes se enseñan las dos barras «+»: la del
+ * costado (toda la altura) añade una columna y la de abajo (todo el ancho)
+ * añade una fila; solo se ven con el ratón encima de la barra.
  */
-function TableBlock({ lines, start, rowPitch, offsets, spell, tableCaret }: TableBlockProps) {
+function TableBlock({
+  lines,
+  start,
+  rowPitch,
+  textCols,
+  offsets,
+  spell,
+  tableCaret,
+  selection,
+  rect,
+  widths,
+  merge,
+  hoveredBar,
+  hoverResize,
+}: TableBlockProps) {
   const rows = lines.map((line) => splitTableCells(line.text));
   const aligns = rows[1].map((cell) => delimiterAlign(cell.text));
   const cols = rows.reduce((max, cells) => Math.max(max, cells.length), 1);
-  const outline = "1px solid var(--color-gus-border)";
-  const accentOutline = "1px solid var(--color-gus-accent)";
+  const lastRow = rows.length - 1;
+  /** Línea interior de la tabla: solo en el borde derecho y el de abajo de cada
+   *  celda, para que el contorno de la tarjeta no se dibuje dos veces. */
+  const cellLine = "1px solid color-mix(in oklab, var(--color-gus-border) 70%, transparent)";
+  const cellBorders = (col: number, row: number) => ({
+    borderRight: col < cols - 1 ? cellLine : undefined,
+    borderBottom: row < lastRow ? cellLine : undefined,
+  });
+
+  // El rectángulo marcado manda sobre la escalera de texto: se pinta el cuadro
+  // entero y las celdas dejan de resaltar su interior por separado (si no, la
+  // marca se llevaría por delante filas enteras de celdas que nadie marcó).
+  const boxed = rect !== null && rect.top >= start && rect.bottom <= start + lastRow;
+  // La fila del separador no se dibuja: la cabecera abarca su banda, así que
+  // las líneas del bloque saltan una rejilla al pasar de la cabecera al cuerpo.
+  const gridRowOf = (line: number) => {
+    const i = line - start;
+    return i === 0 ? 1 : i + 1;
+  };
+  const gridEndRowOf = (line: number) => {
+    const i = line - start;
+    return i === 0 ? 3 : i + 2;
+  };
+  const boxTop = boxed ? gridRowOf(rect.top) : 0;
+  const boxBottom = boxed ? gridEndRowOf(rect.bottom) : 0;
+  // La combinación de celdas vive en la esquina de arriba a la izquierda: las
+  // demás celdas del rectángulo no se dibujan (la combinada las ocupa todas).
+  const mergeHere =
+    merge !== null && merge.top >= start && merge.bottom <= start + lastRow ? merge : null;
+  const mergeTop = mergeHere ? gridRowOf(mergeHere.top) : 0;
+  const mergeBottom = mergeHere ? gridEndRowOf(mergeHere.bottom) : 0;
+
+  /**
+   * Asa del borde de una columna: al arrastrarla se cambia la anchura de esa
+   * columna. El asa invisible es la zona de agarre (7 px junto al borde) y solo
+   * se ve la línea cuando el ratón está encima; el overlay es de punteros
+   * inertes, así que MarkdownEditor la encuentra por coordenadas con
+   * `data-resize-*`.
+   */
+  const resizeHandle = (col: number, leftEdge = false) => (
+    <span
+      data-resize-block={start}
+      data-resize-col={col}
+      {...(leftEdge ? { "data-merge-edge": "" } : {})}
+      style={{
+        top: 0,
+        bottom: 0,
+        ...(leftEdge ? { left: 0, right: "auto" } : { right: 0 }),
+        width: 7,
+      }}
+      className="absolute z-20 cursor-col-resize"
+    >
+      <span
+        className={clsx(
+          "absolute inset-y-0 w-[2px] bg-gus-accent transition-opacity duration-150",
+          leftEdge ? "left-0" : "right-0",
+          hoverResize?.col === col ? "opacity-100" : "opacity-0",
+        )}
+      />
+    </span>
+  );
+
+  // La rejilla mide lo que suman sus columnas, no un ancho de bloque: al
+  // encoger una columna la tarjeta se encoge con ella y no queda un hueco vacío
+  // al final. Sin anchuras fijadas, en cambio, se estira hasta el ancho de la
+  // línea (las columnas `auto` reparten el sobrante), que es lo de siempre.
+  const fixed = widths !== null && widths.length >= cols;
+
+  // El crudo de una fila puede no caber en una línea del textarea: entonces el
+  // motor lo envuelve y esa fila ocupa ahí más de un alto de línea, mientras la
+  // tarjeta puede medir menos. La tarjeta reserva como alto mínimo el que ocupa
+  // el crudo: así las líneas de debajo del bloque siguen cayendo donde les
+  // toca (es lo que luego mide y compensa MarkdownEditor).
+  const rawRows =
+    textCols && textCols > 0
+      ? lines.reduce(
+          (rows, line) => rows + Math.max(1, Math.ceil(visualLength(line.text) / textCols)),
+          0,
+        )
+      : 0;
 
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: `repeat(${cols}, auto)`,
-        gridAutoRows: `${rowPitch}px`,
-      }}
-    >
-      {rows.map((cells, i) => {
-        if (i === 1) return null; // separador: la cabecera ocupa su banda
+    // El envoltorio cuelga de la tabla entera (los dos «+» viven por fuera de
+    // la tarjeta); dentro, la rejilla es una tarjeta con esquinas redondeadas y
+    // sus propias líneas, al estilo Obsidian.
+    <div className={clsx("relative", fixed && "w-fit")}>
+      <div
+        data-table-block={start}
+        style={{
+          position: "relative",
+          display: "grid",
+          // Con anchuras fijas (el usuario arrastró un borde) la rejilla las
+          // usa en píxeles; si no, cada columna mide lo que dé su contenido.
+          gridTemplateColumns: fixed
+            ? widths.map((width) => `${width}px`).join(" ")
+            : `repeat(${cols}, auto)`,
+          width: fixed ? "max-content" : undefined,
+          minHeight: rawRows > 0 ? rawRows * rowPitch : undefined,
+          // Cada fila mide una línea, como el textarea; pero si el texto de una
+          // celda no cabe en su columna, la fila crece y el texto salta de línea
+          // como en Excel. Ese alto de más lo mide MarkdownEditor y lo compensa
+          // al hacer scroll y al situar el cursor.
+          gridAutoRows: `minmax(${rowPitch}px, auto)`,
+        }}
+        className="overflow-hidden rounded-lg bg-gus-card/10 ring-1 ring-gus-border"
+      >
+        {rows.map((cells, i) => {
+          if (i === 1) return null; // separador: la cabecera ocupa su banda
 
-        const line = start + i;
-        const lineStart = offsets[line];
-        const header = i === 0;
-        const padded: (TableCellSpan | null)[] = [...cells];
-        while (padded.length < cols) padded.push(null);
+          const line = start + i;
+          const lineStart = offsets[line];
+          const header = i === 0;
+          const padded: (TableCellSpan | null)[] = [...cells];
+          while (padded.length < cols) padded.push(null);
 
-        return padded.map((span, c) => {
-          const active =
-            tableCaret !== null && tableCaret.line === line && tableCaret.col === c;
-          const cellStart = lineStart + (span?.start ?? lines[i].text.length);
-          const cellEnd = lineStart + (span?.end ?? lines[i].text.length);
+          return padded.map((span, c) => {
+            const active =
+              tableCaret !== null && tableCaret.line === line && tableCaret.col === c;
+            const cellStart = lineStart + (span?.start ?? lines[i].text.length);
+            const cellEnd = lineStart + (span?.end ?? lines[i].text.length);
+            // Con el cuadro marcado no se resalta el texto de cada celda: la
+            // escalera que une las dos puntas se llevaría por delante celdas que
+            // no están en el rectángulo.
+            const cellSelection = boxed
+              ? active && tableCaret
+                ? { start: tableCaret.selStart, end: tableCaret.selStart }
+                : null
+              : active || overlaps(selection, cellStart, cellEnd)
+                ? selection
+                : null;
 
-          return (
-            <div
-              key={`${i}.${c}`}
-              data-cell=""
-              data-line={line}
-              data-col={c}
-              style={{
-                gridRow: header ? "1 / span 2" : i + 1,
-                gridColumn: c + 1,
-                outline: active ? accentOutline : outline,
-                textAlign: aligns[c] ?? "left",
-              }}
-              className={clsx(
-                "truncate px-2",
-                header ? "bg-gus-card font-semibold text-gus-text" : "text-gus-text",
-                active && !header && "bg-gus-accent/10",
-              )}
-            >
-              {span === null
-                ? null
-                : cellNodes(span, cellStart, cellEnd, active ? tableCaret : null, spell)}
-            </div>
-          );
-        });
-      })}
+            // Las celdas de la combinación no se dibujan: la combinada (arriba a
+            // la izquierda) ocupa todo el rectángulo.
+            if (
+              mergeHere !== null &&
+              line >= mergeHere.top &&
+              line <= mergeHere.bottom &&
+              c >= mergeHere.left &&
+              c <= mergeHere.right
+            ) {
+              if (line !== mergeHere.top || c !== mergeHere.left) return null;
+              return (
+                <div
+                  key={`merge-${i}.${c}`}
+                  data-cell=""
+                  data-merge-cell=""
+                  data-line={line}
+                  data-col={c}
+                  style={{
+                    gridRow: `${mergeTop} / ${mergeBottom}`,
+                    gridColumn: `${mergeHere.left + 1} / ${mergeHere.right + 2}`,
+                    ...cellBorders(mergeHere.right, mergeHere.bottom - start + 1),
+                    textAlign: aligns[mergeHere.left] ?? "left",
+                  }}
+                  className={clsx(
+                    "relative px-3",
+                    header ? "bg-gus-card/60 font-semibold text-gus-text" : "text-gus-text",
+                    active && "bg-gus-accent/10 ring-2 ring-inset ring-gus-accent",
+                  )}
+                >
+                  <div className="whitespace-pre-wrap break-words">
+                    {span === null
+                      ? null
+                      : cellNodes(span, cellStart, cellEnd, active, cellSelection, spell)}
+                  </div>
+                  {resizeHandle(mergeHere.right)}
+                  {resizeHandle(mergeHere.left, true)}
+                </div>
+              );
+            }
+
+            return (
+              <div
+                key={`${i}.${c}`}
+                data-cell=""
+                data-line={line}
+                data-col={c}
+                style={{
+                  gridRow: header ? "1 / span 2" : i + 1,
+                  gridColumn: c + 1,
+                  ...cellBorders(c, i),
+                  textAlign: aligns[c] ?? "left",
+                }}
+                className={clsx(
+                  "relative px-3",
+                  header ? "bg-gus-card/60 font-semibold text-gus-text" : "text-gus-text",
+                  active && "bg-gus-accent/10 ring-2 ring-inset ring-gus-accent",
+                )}
+              >
+                <div className="whitespace-pre-wrap break-words">
+                  {span === null
+                    ? null
+                    : cellNodes(span, cellStart, cellEnd, active, cellSelection, spell)}
+                </div>
+                {resizeHandle(c)}
+              </div>
+            );
+          });
+        })}
+
+        {/* Cuadro de la selección: celdas completas entre la ancla y el foco,
+            como cuando se marca texto en el escritorio. */}
+        {boxed && rect && (
+          <div
+            aria-hidden="true"
+            data-table-selection=""
+            style={{
+              gridRow: `${boxTop} / ${boxBottom}`,
+              gridColumn: `${rect.left + 1} / ${rect.right + 2}`,
+            }}
+            className="pointer-events-none relative z-10 rounded-md border border-gus-accent/70 bg-gus-accent/15"
+          />
+        )}
+      </div>
+
+      {/* Tira del costado: toda la altura de la tabla, fuera de su borde. */}
+      <span
+        data-add-col={cols - 1}
+        data-add-block={start}
+        data-add-bar="side"
+        title="Agregar columna a la derecha"
+        aria-hidden="true"
+        style={{
+          top: 0,
+          bottom: 0,
+          right: -BAR_SIZE,
+          width: BAR_SIZE,
+          opacity: hoveredBar === "side" ? 1 : 0,
+        }}
+        className={ADD_BAR}
+      >
+        <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
+      </span>
+
+      {/* Tira de abajo: todo el ancho de la tabla, pegada a su último borde. */}
+      <span
+        data-add-row={start + lastRow}
+        data-add-block={start}
+        data-add-bar="bottom"
+        title="Agregar fila debajo"
+        aria-hidden="true"
+        style={{
+          left: 0,
+          right: 0,
+          bottom: -BAR_SIZE,
+          height: BAR_SIZE,
+          opacity: hoveredBar === "bottom" ? 1 : 0,
+        }}
+        className={ADD_BAR}
+      >
+        <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
+      </span>
     </div>
   );
+}
+
+/** ¿La selección toca el interior de la celda? (Las celdas vacías, que no
+ * tienen interior, cuentan si caen dentro de los dos extremos.) */
+function overlaps(
+  selection: TableSelection | null,
+  cellStart: number,
+  cellEnd: number,
+): boolean {
+  if (selection === null) return false;
+  if (cellStart === cellEnd) return selection.start <= cellStart && selection.end >= cellEnd;
+  return selection.start < cellEnd && selection.end > cellStart;
 }
 
 /** Situación de una línea dentro de un bloque de código (para pintarlo). */
@@ -428,6 +721,10 @@ interface PreviewLineProps {
   copied?: boolean;
   /** El cursor del textarea está sobre el botón «copiar» del bloque. */
   hovered?: boolean;
+  /** Cursor dibujado aquí (posición dentro de la línea), o null. */
+  caretAt?: number | null;
+  /** Texto seleccionado en esta línea (posiciones locales), o null. */
+  marked?: TableSelection | null;
 }
 
 const PreviewLine = memo(function PreviewLine({
@@ -441,6 +738,8 @@ const PreviewLine = memo(function PreviewLine({
   block,
   copied = false,
   hovered = false,
+  caretAt = null,
+  marked = null,
 }: PreviewLineProps) {
   if (raw) {
     const marked = spell && !code ? spellNodes(text, spell, "w") : text;
@@ -452,6 +751,47 @@ const PreviewLine = memo(function PreviewLine({
       </div>
     );
   }
+
+  /**
+   * Pinta la línea troceada donde van el cursor y el texto seleccionado. Cada
+   * trozo se dibuja como siempre (resaltado, sintaxis, corrector): el overlay
+   * puede pintar la marca cuando el textarea no puede, porque una tabla de
+   * arriba ha crecido y su cursor quedaría descolocado.
+   */
+  const markUp = (render: (piece: string) => ReactNode): ReactNode => {
+    const from = marked ? Math.max(0, Math.min(marked.start, text.length)) : 0;
+    const to = marked ? Math.max(from, Math.min(marked.end, text.length)) : 0;
+    const at = caretAt === null ? -1 : Math.max(0, Math.min(caretAt, text.length));
+    if (at < 0 && to <= from) return render(text);
+
+    const marks: { at: number; node: ReactNode }[] = [];
+    if (at >= 0) marks.push({ at, node: <span key="caret" className="gus-cell-caret" /> });
+    if (to > from) {
+      marks.push({
+        at: from,
+        node: (
+          <span key="mark" className="rounded-[2px] bg-gus-accent/30">
+            {render(text.slice(from, to))}
+          </span>
+        ),
+      });
+    }
+    marks.sort((a, b) => a.at - b.at);
+
+    const nodes: ReactNode[] = [];
+    let cursor = 0;
+    for (const mark of marks) {
+      if (mark.at > cursor) {
+        nodes.push(<span key={`t${cursor}`}>{render(text.slice(cursor, mark.at))}</span>);
+      }
+      nodes.push(mark.node);
+      cursor = mark.at;
+    }
+    if (cursor < text.length) {
+      nodes.push(<span key={`t${cursor}`}>{render(text.slice(cursor))}</span>);
+    }
+    return <>{nodes}</>;
+  };
 
   // Fondo continuo del bloque con las esquinas redondeadas arriba y abajo,
   // pero separado de los bordes del editor como la tarjeta de la vista
@@ -494,14 +834,17 @@ const PreviewLine = memo(function PreviewLine({
 
   // Línea del cursor: código fuente visible para editar los marcadores.
   if (caret) {
-    const raw = spell && !code ? spellNodes(text, spell, "c") : text;
     // La pista «/» se dibuja dentro de la propia línea vacía (ghost):
     // nunca flota sobre el texto y hace scroll con el contenido.
     const ghost = hint && text.trim() === "";
     return (
       <div className={clsx("min-h-[var(--gus-row-h)]", blockWrap)}>
         <span className="block whitespace-break-spaces break-words">
-          {text === "" ? "\u200B" : raw}
+          {text === "" ? (
+            "\u200B"
+          ) : (
+            markUp((piece) => (spell && !code ? spellNodes(piece, spell, "c") : piece))
+          )}
           {ghost && (
             <span className="ml-1 italic text-gus-muted/50">
               Pulsa «/» para insertar bloques…
@@ -532,7 +875,7 @@ const PreviewLine = memo(function PreviewLine({
             layerClass,
           )}
         >
-          {nodes}
+          {markUp((piece) => visibleFor({ text: piece, fence, code }, spell).nodes)}
         </span>
       )}
       {chip}
@@ -554,6 +897,22 @@ export interface InlinePreviewProps {
   tableCols?: number | null;
   /** Celda bajo el cursor para la edición estilo Excel (null = fuera de tabla). */
   tableCaret?: TableCellCaret | null;
+  /** Selección absoluta mientras el cursor está en una tabla (multifila). */
+  tableSelection?: TableSelection | null;
+  /** Rectángulo de celdas marcadas (varias celdas): se pinta como un cuadro. */
+  tableRect?: TableCellRect | null;
+  /** Barra «+» de tabla que tiene el ratón encima (la que hay que enseñar). */
+  hoveredBar?: TableBarHover | null;
+  /** Anchura fijada de cada columna por bloque (null = la que dé el contenido). */
+  tableWidths?: Map<number, number[]> | null;
+  /** Rectángulo de celdas combinadas en una sola (estilo Excel). */
+  tableMerge?: TableCellRect | null;
+  /** Cursor dibujado en el overlay, dentro de la línea del cursor. */
+  caretAt?: number | null;
+  /** Selección absoluta que el overlay pinta (el textarea la lleva oculta). */
+  caretSel?: TableSelection | null;
+  /** Borde de columna bajo el ratón, listo para arrastrar. */
+  hoverResize?: TableResizeHover | null;
   /** Primera línea del bloque cuyo botón «copiar» se acaba de pulsar (✔ 1 s). */
   copiedLine?: number | null;
   /** Primera línea del bloque que tiene el cursor encima (resalta su botón). */
@@ -572,6 +931,14 @@ export default function InlinePreview({
   slashHint = false,
   tableCols = null,
   tableCaret = null,
+  tableSelection = null,
+  tableRect = null,
+  hoveredBar = null,
+  tableWidths = null,
+  tableMerge = null,
+  hoverResize = null,
+  caretAt = null,
+  caretSel = null,
   copiedLine = null,
   hoverLine = null,
 }: InlinePreviewProps) {
@@ -636,14 +1003,36 @@ export default function InlinePreview({
               lines={lines.slice(segment.start, segment.end + 1)}
               start={segment.start}
               rowPitch={rowHeight}
+              textCols={tableCols}
               offsets={offsets}
               spell={spell}
               tableCaret={tableCaret}
+              selection={tableSelection}
+              rect={tableRect}
+              widths={tableWidths?.get(segment.start) ?? null}
+              merge={tableMerge}
+              hoveredBar={
+                hoveredBar && hoveredBar.block === segment.start ? hoveredBar.part : null
+              }
+              hoverResize={
+                hoverResize && hoverResize.block === segment.start
+                  ? { col: hoverResize.col }
+                  : null
+              }
             />
           );
         }
 
         const block = blockLines.get(segment.index);
+        const lineStart = offsets[segment.index];
+        const lineLen = lines[segment.index].text.length;
+        // La selección se recorta a esta línea: el overlay pinta solo su trozo.
+        const marked = caretSel
+          ? {
+              start: Math.max(0, Math.min(caretSel.start - lineStart, lineLen)),
+              end: Math.max(0, Math.min(caretSel.end - lineStart, lineLen)),
+            }
+          : null;
         return (
           <PreviewLine
             key={segment.index}
@@ -657,6 +1046,8 @@ export default function InlinePreview({
             block={block}
             copied={block !== undefined && block.start === copiedLine}
             hovered={block !== undefined && block.start === hoverLine}
+            caretAt={segment.index === caretLine ? caretAt : null}
+            marked={marked}
           />
         );
       })}

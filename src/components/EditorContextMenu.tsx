@@ -1,28 +1,66 @@
 import { useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { toLocalCoord } from "../lib/uiZoom";
+import type { TableCellRect } from "../lib/tableLayout";
 import {
   Blocks,
+  ArrowDownUp,
+  ArrowUpDown,
   BookPlus,
   BookX,
   Bold,
   ChevronRight,
+  ClipboardCopy,
   ClipboardPaste,
   Code,
+  Columns3,
   Copy,
   Eraser,
   EyeOff,
   Italic,
   Link,
+  Minus,
   Pilcrow,
+  Rows3,
   Scissors,
+  SplitSquareHorizontal,
   SquareDashedMousePointer,
   Strikethrough,
+  Table,
+  TableCellsMerge,
+  Trash,
   Type,
 } from "lucide-react";
 import clsx from "clsx";
-import { SLASH_ITEMS, type SlashItem } from "./EditorMenus";
+import { SLASH_ITEMS, type SlashItem, type TableAction } from "./EditorMenus";
 
 export type FormatKind = "bold" | "italic" | "strike" | "code" | "link";
+
+/** Acciones sobre la tabla bajo el clic derecho. */
+export type { TableAction };
+
+/** Contexto de la tabla en la que se ha pulsado el clic derecho. */
+export interface TableMenuInfo {
+  block: { start: number; end: number };
+  /** Fila sobre la que se pulsó (nunca la del separador). */
+  line: number;
+  /** Columna sobre la que se pulsó. */
+  col: number;
+  cols: number;
+  /** Filas de cuerpo que abarca la selección (para combinar). */
+  rows: number[];
+  /** Rectángulo de celdas marcadas (para combinarlas en una, como en Excel). */
+  rect: TableCellRect | null;
+  canDeleteRow: boolean;
+  canDeleteCol: boolean;
+  /** Hay una combinación de celdas en pie (para deshacerla). */
+  merged: boolean;
+  /** Con dos filas o más de cuerpo, se puede ordenar. */
+  canSort: boolean;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  /** La celda del cursor es una casilla de tarea («- [ ]»). */
+  canToggleTask: boolean;
+}
 
 export interface ContextSpell {
   mode: "misspelled" | "personal";
@@ -37,6 +75,9 @@ export interface EditorContextMenuProps {
   y: number;
   spell: ContextSpell | null;
   hasSelection: boolean;
+  /** Tabla bajo el clic derecho; null si el clic no cayó en una. */
+  table: TableMenuInfo | null;
+  onTableAction: (action: TableAction) => void;
   onPick: (suggestion: string) => void;
   onAdd: () => void;
   onIgnore: () => void;
@@ -73,11 +114,65 @@ const FORMAT_ITEMS: { kind: FormatKind; label: string; Icon: typeof Bold }[] = [
 
 type Group = "insert" | "text" | "format";
 
+/** Filas del submenú de tabla, en el orden en que las pide el usuario. */
+const TABLE_ITEMS: {
+  action: TableAction;
+  label: string;
+  Icon: typeof Blocks;
+  /** Indica si la opción está disponible en este bloque. */
+  enabled: (table: TableMenuInfo) => boolean;
+}[] = [
+  { action: "add-row", label: "Agregar fila", Icon: Rows3, enabled: () => true },
+  { action: "add-col", label: "Agregar columna", Icon: Columns3, enabled: () => true },
+  {
+    action: "del-row",
+    label: "Eliminar fila",
+    Icon: Minus,
+    enabled: (table) => table.canDeleteRow,
+  },
+  {
+    action: "del-col",
+    label: "Eliminar columna",
+    Icon: Minus,
+    enabled: (table) => table.canDeleteCol,
+  },
+  { action: "del-table", label: "Eliminar tabla", Icon: Trash, enabled: () => true },
+  {
+    action: "merge",
+    label: "Combinar celdas",
+    Icon: TableCellsMerge,
+    // Con un rectángulo marcado se combinan esas celdas; si no, hacen falta dos
+    // filas o más seleccionadas.
+    enabled: (table) => table.rect !== null || table.rows.length >= 2,
+  },
+  {
+    action: "unmerge",
+    label: "Descombinar celdas",
+    Icon: SplitSquareHorizontal,
+    enabled: (table) => table.merged,
+  },
+  {
+    action: "sort-asc",
+    label: "Ordenar A→Z",
+    Icon: ArrowDownUp,
+    enabled: (table) => table.canSort,
+  },
+  {
+    action: "sort-desc",
+    label: "Ordenar Z→A",
+    Icon: ArrowUpDown,
+    enabled: (table) => table.canSort,
+  },
+  { action: "clipboard", label: "Copiar celdas", Icon: ClipboardCopy, enabled: () => true },
+];
+
 export default function EditorContextMenu({
   x,
   y,
   spell,
   hasSelection,
+  table,
+  onTableAction,
   onPick,
   onAdd,
   onIgnore,
@@ -106,7 +201,7 @@ export default function EditorContextMenu({
     setPos((current) =>
       current.left === left && current.top === top ? current : { left, top },
     );
-  }, [x, y, spell?.mode, spell?.suggestions.length, hasSelection]);
+  }, [x, y, spell?.mode, spell?.suggestions.length, hasSelection, table]);
 
   const holdFocus = (event: ReactMouseEvent) => {
     event.stopPropagation();
@@ -180,6 +275,37 @@ export default function EditorContextMenu({
         onMouseDown={holdFocus}
         className="absolute min-w-56 rounded-xl border border-gus-border bg-gus-card py-1 shadow-2xl"
       >
+        {table && (
+          <>
+            <div className="flex items-center gap-2 px-3 pt-1.5 pb-1 text-[10px] font-medium uppercase tracking-wide text-gus-muted">
+              <Table className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              Tabla
+            </div>
+
+            {TABLE_ITEMS.filter(
+              (item) =>
+                item.action !== "merge" || table.rect !== null || table.rows.length >= 2,
+            ).map((item) => {
+              const enabled = item.enabled(table);
+              return (
+                <button
+                  key={item.action}
+                  type="button"
+                  role="menuitem"
+                  disabled={!enabled}
+                  onClick={() => onTableAction(item.action)}
+                  className={clsx(ITEM, "disabled:pointer-events-none disabled:opacity-40")}
+                >
+                  <item.Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  {item.label}
+                </button>
+              );
+            })}
+
+            <div className="my-1 border-t border-gus-border" />
+          </>
+        )}
+
         {spell && (
           <>
             {spell.mode === "misspelled" &&
