@@ -1,8 +1,12 @@
-# Gus
+<div align="center">
+  <img src="src/assets/gus-icon-512.png" alt="Logo de Gus" width="256" style="border-radius: 8px; margin-bottom: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.15);">
+  <h1>Gus</h1>
+</div>
+
+
+
 
 Una aplicación de escritorio **100 % local** para tomar notas y gestionar tareas. Las notas viven en archivos `.md` de una carpeta tuya; las tareas, en un almacén JSON oculto por vault. Sin nube, sin cuentas.
-
-<img src="src/assets/gus-icon-512.png" alt="Logo de Gus" width="128" align="right" />
 
 **Tecnología:** Tauri v2 (backend en Rust + el WebView del sistema). Ligera y rápida.
 
@@ -16,9 +20,7 @@ Una aplicación de escritorio **100 % local** para tomar notas y gestionar tarea
 
 - **Menú `/`** — inserta títulos, listas, tareas, citas, tablas, código, imágenes y más. Dentro de una tabla ofrece acciones de agregar/eliminar filas y columnas, marcar tareas, ordenar, alinear y copiar celdas. Fuera de tabla, convierte texto seleccionado en tabla (separa por tabuladores, comas o `|`).
 
-- **Corrector ortográfico** — subrayado ondulado con uno o varios diccionarios (7 idiomas); las palabras estánBien
-
-Now I need to fixa si lo reconoce cualquiera. Sugerencias en un cuadro al pasar el cursor: **Alt+Intro** aplica, **↑/↓** recorre, **1-9** aplica, **Esc** descarta.
+- **Corrector ortográfico** — subrayado ondulado con uno o varios diccionarios (7 idiomas); las palabras están subrayadas al pasar el cursor. Sugerencias en un cuadro al pasar el cursor: **Alt+Intro** aplica, **↑/↓** recorre, **1-9** aplica, **Esc** descarta.
 
 - **Menú derecho** — siempre visible: cortar/copiar/pegar/pegar sin formato/seleccionar todo, y submenús para insertar bloques (código, tablas, fórmulas, diagramas), texto y formato. Si el clic está sobre una tabla, muestra sus acciones.
 
