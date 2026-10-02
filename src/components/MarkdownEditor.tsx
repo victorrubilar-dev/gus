@@ -1432,12 +1432,16 @@ export default function MarkdownEditor({
     }
 
     if (event.key === "Enter") {
-      event.preventDefault();
       if (tagMenuOpen && options.length > 0) {
         pickTag(options[Math.min(tagIndex, options.length - 1)].tag);
         return;
       }
-      commitTagInput();
+      const parsed = parseNoteTagInput(tagInput);
+      if (parsed.length > 0) {
+        event.preventDefault();
+        applyNoteTags([...parseNoteTags(content), ...parsed]);
+        setTagInput("");
+      }
       return;
     }
 
