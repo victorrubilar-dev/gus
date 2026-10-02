@@ -259,13 +259,17 @@ export default function PdfViewer({
         }
         docRef.current = doc;
 
-        const sizes: PageSize[] = [];
-        for (let i = 1; i <= doc.numPages; i += 1) {
-          const page = await doc.getPage(i);
+        // Las páginas son independientes: se piden todas a la vez y después
+        // se leen sus medidas en un bucle síncrono.
+        const pdfPages = await Promise.all(
+          Array.from({ length: doc.numPages }, (_, index) => doc.getPage(index + 1)),
+        );
+        if (cancelled) return;
+
+        const sizes: PageSize[] = pdfPages.map((page, index) => {
           const viewport = page.getViewport({ scale: 1 });
-          sizes.push({ num: i, w: viewport.width, h: viewport.height });
-          if (cancelled) return;
-        }
+          return { num: index + 1, w: viewport.width, h: viewport.height };
+        });
 
         if (cancelled) return;
         setPages(sizes);
@@ -300,6 +304,12 @@ export default function PdfViewer({
       let failed = false;
       let failure: unknown = null;
 
+      // El pintado secuencial es a propósito: `renderSeqRef` y `cancelled`
+      // cancelan UNA tarea de render a la vez (la limpieza del efecto solo
+      // cancela `renderTaskRef.current`) y el pintado progresivo no compite
+      // por el hilo principal con todas las páginas a la vez. Paralelizar con
+      // Promise.all rompería esa cancelación.
+      /* eslint-disable react-doctor/async-await-in-loop */
       for (let i = 0; i < pages.length; i += 1) {
         if (cancelled || seq !== renderSeqRef.current) return;
         const canvas = canvasesRef.current[i];
@@ -331,6 +341,7 @@ export default function PdfViewer({
           break;
         }
       }
+      /* eslint-enable react-doctor/async-await-in-loop */
 
       if (failed) {
         if (cancelled) return;

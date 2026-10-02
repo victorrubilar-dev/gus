@@ -519,6 +519,13 @@ export default function CalendarView({
                 <span>{t("calendar.totalCount", { count: selectedTasks.length })}</span>
               </div>
 
+              {/* La frontera hace su trabajo mientras `ready` está activo
+                  (cambia el día, vacío↔lista, entra y salen tareas); solo se
+                  desmonta al recargar o cambiar de bóveda, donde el reemplazo
+                  instantáneo por el spinner es lo deseable. Envolverla en otra
+                  AnimatePresence sería decorativo: su hijo directo es un
+                  fragmento sin `exit` y saldría al instante igual. */}
+              {/* eslint-disable-next-line react-doctor/motion-animate-presence-must-outlive-child */}
               <AnimatePresence initial={false}>
                 {selectedTasks.length === 0 ? (
                   <m.div

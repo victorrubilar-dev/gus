@@ -506,8 +506,12 @@ export default function TaskList({
       )}
 
       <div className="gus-scrollbar flex-1 space-y-6 overflow-y-auto pr-1">
+        {/* La frontera vive fuera de las condiciones de vista: al cambiar de
+            vista observa la salida (los `m.li` anidados corren su `exit`) y la
+            lista espera a terminar antes de enseñar el tablero. */}
+        <AnimatePresence mode="wait" initial={false}>
         {view === "board" && (
-          <div className="space-y-3">
+          <div key="board" className="space-y-3">
             {status === "loading" && (
               <p className="rounded-xl border border-dashed border-gus-border px-4 py-8 text-center text-sm text-gus-muted">
                 {t("tasks.loading")}
@@ -534,8 +538,7 @@ export default function TaskList({
         )}
 
         {view === "list" && (
-        <ul className="space-y-2">
-          <AnimatePresence initial={false}>
+        <ul key="list" className="space-y-2">
             {visible.map((task) => {
               const isEditing = editingId === task.id;
               const plazo = dueState(task, t);
@@ -713,7 +716,6 @@ export default function TaskList({
                 </m.li>
               );
             })}
-          </AnimatePresence>
 
           {status === "loading" && (
             <li className="rounded-xl border border-dashed border-gus-border px-4 py-8 text-center text-sm text-gus-muted">
@@ -748,6 +750,7 @@ export default function TaskList({
           )}
         </ul>
         )}
+        </AnimatePresence>
 
       </div>
     </section>
