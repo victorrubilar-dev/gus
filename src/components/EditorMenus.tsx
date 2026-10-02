@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import clsx from "clsx";
+import { invoke } from "@tauri-apps/api/core";
 import { toLocalCoord } from "../lib/uiZoom";
 import { m } from "framer-motion";
 import {
@@ -9,6 +10,7 @@ import {
   Heading2,
   Heading3,
   Image as ImageIcon,
+  ImagePlus,
   List,
   ListChecks,
   ListOrdered,
@@ -35,6 +37,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { CaretAnchor } from "../lib/caretPosition";
+import { imageFolderLabel, type VaultImage } from "../lib/imageLinks";
 import { normalizeWikiText, wikiNoteBaseTitle, wikiNoteFolder, type WikiNote } from "../lib/wikiLink";
 import { t as activeT, useT } from "../lib/i18n";
 import type { MessageKey, TranslateParams } from "../lib/i18n/core";
@@ -74,6 +77,12 @@ export interface SlashItem {
   size?: { cols: number; rows: number };
   /** Convierte el texto seleccionado en tabla (no inserta un bloque). */
   convertSelection?: boolean;
+  /**
+   * Imagen: no trae texto, trae de dónde sale. `vault` abre el selector de las
+   * imágenes del vault y `computer` el diálogo del sistema (que copia la
+   * imagen junto a la nota).
+   */
+  imageSource?: "vault" | "computer";
 }
 
 export const SLASH_ITEMS: SlashItem[] = [
@@ -170,12 +179,22 @@ export const SLASH_ITEMS: SlashItem[] = [
     Icon: Minus,
   },
   {
-    id: "image",
-    labelKey: "menu.image",
-    hintKey: "menu.hint.image",
-    snippet: "![descripción](ruta/imagen.png)",
-    caretOffset: "![descripción](ruta/imagen.png)".length,
+    id: "image-vault",
+    labelKey: "menu.imageVault",
+    hintKey: "menu.hint.imageVault",
+    snippet: "",
+    caretOffset: 0,
     Icon: ImageIcon,
+    imageSource: "vault",
+  },
+  {
+    id: "image-computer",
+    labelKey: "menu.imageComputer",
+    hintKey: "menu.hint.imageComputer",
+    snippet: "",
+    caretOffset: 0,
+    Icon: ImagePlus,
+    imageSource: "computer",
   },
   {
     id: "math",
@@ -546,6 +565,154 @@ export function SlashMenu({
       })}
 
       <MenuHints corner="/ta" />
+    </MenuShell>
+  );
+}
+
+/**
+ * Miniaturas del selector de imágenes. Se guardan en un mapa propio para que
+ * volver a abrir el menú no vuelva a leer las fotos del disco, y se piden de
+ * cuatro en cuatro: una lista larga no debe frenar el menú.
+ */
+const THUMB_CACHE = new Map<string, string | null>();
+/** Imágenes del listado que se les pide miniatura. */
+const THUMB_BATCH = 12;
+const THUMB_KEEP = 48;
+
+function storeThumb(path: string, thumb: string | null) {
+  if (THUMB_CACHE.size >= THUMB_KEEP) {
+    const oldest = THUMB_CACHE.keys().next().value;
+    if (oldest !== undefined) THUMB_CACHE.delete(oldest);
+  }
+  THUMB_CACHE.set(path, thumb);
+}
+
+/**
+ * Pide las miniaturas de las primeras imágenes de la lista. `images` tiene que
+ * llegar memoizado: el efecto vuelve a dispararse con cada array nuevo.
+ */
+function useThumbs(images: readonly VaultImage[]): number {
+  const [arrived, setArrived] = useState(0);
+
+  useEffect(() => {
+    const pending = images
+      .slice(0, THUMB_BATCH)
+      .filter((image) => !THUMB_CACHE.has(image.path));
+    if (pending.length === 0) return;
+
+    let cancelled = false;
+    let cursor = 0;
+
+    const worker = async () => {
+      while (!cancelled && cursor < pending.length) {
+        const image = pending[cursor];
+        cursor += 1;
+
+        let thumb: string | null = null;
+        try {
+          thumb = await invoke<string>("read_vault_image_thumb", {
+            path: image.path,
+            maxPx: 96,
+          });
+        } catch {
+          // Formato que el codificador no entiende: la fila se queda con el icono.
+          thumb = null;
+        }
+
+        storeThumb(image.path, thumb);
+        if (!cancelled) setArrived((count) => count + 1);
+      }
+    };
+
+    void Promise.all([worker(), worker(), worker(), worker()]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [images]);
+
+  return arrived;
+}
+
+export interface VaultImageMenuProps {
+  anchor: CaretAnchor;
+  /** Imágenes que encajan con la consulta, ya filtradas por el editor. */
+  images: VaultImage[];
+  loading: boolean;
+  query: string;
+  index: number;
+  onPick: (image: VaultImage) => void;
+  onHover: (index: number) => void;
+}
+
+/**
+ * Selector de imágenes del vault (el que abre «Imagen del vault» del menú
+ * «/»): lista con miniatura y carpeta, y se filtra escribiendo en el propio
+ * documento —el textarea conserva el foco mientras el menú está abierto.
+ */
+export function VaultImageMenu({
+  anchor,
+  images,
+  loading,
+  query,
+  index,
+  onPick,
+  onHover,
+}: VaultImageMenuProps) {
+  const t = useT();
+  // El contador solo fuerza el repintado: el valor vive en la caché.
+  useThumbs(images);
+  const active = images.length > 0 ? Math.min(index, images.length - 1) : -1;
+
+  return (
+    <MenuShell anchor={anchor} label={t("menu.imageLabel")} activeIndex={active}>
+      {loading && images.length === 0 && (
+        <p className="px-3 py-2 text-xs text-gus-muted">{t("menu.imageSearching")}</p>
+      )}
+
+      {!loading && images.length === 0 && (
+        <p className="px-3 py-2 text-xs text-gus-muted">
+          {query ? t("menu.imageNoMatch", { query }) : t("menu.imageEmpty")}
+        </p>
+      )}
+
+      {images.map((image, position) => {
+        const isActive = position === active;
+        const thumb = THUMB_CACHE.get(image.path);
+        const folder = imageFolderLabel(image);
+
+        return (
+          <button
+            key={image.path}
+            type="button"
+            role="option"
+            aria-selected={isActive}
+            onClick={() => onPick(image)}
+            onMouseDown={(event) => event.preventDefault()}
+            onMouseEnter={() => onHover(position)}
+            className={clsx(
+              "flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs outline-none transition-colors",
+              isActive
+                ? "bg-gus-accent/15 text-gus-text"
+                : "text-gus-muted hover:bg-gus-card hover:text-gus-text",
+            )}
+          >
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded border border-gus-border bg-gus-bg">
+              {thumb ? (
+                <img src={thumb} alt="" className="h-full w-full object-contain" />
+              ) : (
+                <ImageIcon className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
+              )}
+            </span>
+            <span className="min-w-0 flex-1 truncate">{image.name}</span>
+            <span className="max-w-24 shrink-0 truncate rounded border border-gus-border px-1 py-0.5 text-[10px] text-gus-muted/70">
+              {folder ?? t("welcome.vaultRoot")}
+            </span>
+          </button>
+        );
+      })}
+
+      <MenuHints />
     </MenuShell>
   );
 }

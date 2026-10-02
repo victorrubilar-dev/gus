@@ -993,6 +993,52 @@ fn read_vault_image(path: String) -> Result<String, String> {
     Ok(format!("data:{mime};base64,{}", base64_encode(&bytes)))
 }
 
+/**
+ * Miniatura de una imagen para el selector de imágenes: PNG de lado `max_px`
+ * como máximo, para que cada fila del menú no cargue la foto entera. Los
+ * formatos que el codificador no entiende (HEIC, JXL, SVG…) fallan aquí y la
+ * fila se queda con su icono: la imagen sigue pudiéndose insertar igual.
+ */
+#[tauri::command]
+fn read_vault_image_thumb(path: String, max_px: u32) -> Result<String, String> {
+    let path = expand_home(&path);
+    let archivo = std::path::Path::new(&path);
+
+    if image_mime(archivo).is_none() {
+        return Err(format!("Formato no soportado (solo imágenes): «{path}»"));
+    }
+    if !archivo.is_file() {
+        return Err(format!("No existe el archivo «{path}»"));
+    }
+
+    const MAX_BYTES: u64 = 60 * 1024 * 1024;
+    let metadata = std::fs::metadata(archivo)
+        .map_err(|err| format!("No se pudo leer «{path}»: {err}"))?;
+    if metadata.len() > MAX_BYTES {
+        return Err(format!(
+            "La imagen pesa {} MB y el límite son 60 MB",
+            metadata.len() / (1024 * 1024)
+        ));
+    }
+
+    let bytes =
+        std::fs::read(archivo).map_err(|err| format!("No se pudo leer «{path}»: {err}"))?;
+    let imagen = image::load_from_memory(&bytes)
+        .map_err(|err| format!("No se pudo reducir «{path}»: {err}"))?;
+
+    let lado = max_px.max(16);
+    let miniatura = imagen.thumbnail(lado, lado);
+    let mut png = Vec::new();
+    miniatura
+        .write_to(
+            &mut std::io::Cursor::new(&mut png),
+            image::ImageFormat::Png,
+        )
+        .map_err(|err| format!("No se pudo guardar la miniatura de «{path}»: {err}"))?;
+
+    Ok(format!("data:image/png;base64,{}", base64_encode(&png)))
+}
+
 #[tauri::command]
 fn read_vault_pdf(path: String) -> Result<String, String> {
     let path = expand_home(&path);
@@ -1755,6 +1801,84 @@ fn list_vault_notes(path: String) -> Result<Vec<RecentNote>, String> {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct VaultImage {
+    pub name: String,
+    pub path: String,
+    pub relative: String,
+    pub modified_ms: Option<u64>,
+}
+
+/// Recorre el vault buscando imágenes, con la misma poda que `collect_notes`
+/// (nada de ocultas ni más allá de ocho niveles).
+fn collect_images(
+    dir: &std::path::Path,
+    relative: &str,
+    depth: usize,
+    out: &mut Vec<VaultImage>,
+) {
+    if depth >= 8 {
+        return;
+    }
+
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if name.starts_with('.') {
+            continue;
+        }
+
+        let child = entry.path();
+        let Ok(metadata) = std::fs::metadata(&child) else {
+            continue;
+        };
+
+        let relative = if relative.is_empty() {
+            name.clone()
+        } else {
+            format!("{relative}/{name}")
+        };
+
+        if metadata.is_dir() {
+            collect_images(&child, &relative, depth + 1, out);
+        } else if metadata.is_file() && is_image_file(&child) {
+            out.push(VaultImage {
+                name,
+                path: child.to_string_lossy().into_owned(),
+                relative,
+                modified_ms: metadata_modified_ms(&metadata),
+            });
+        }
+    }
+}
+
+/**
+ * Imágenes de todo el vault para el selector del menú «/»: primero las más
+ * recientes, que son las que suele querer quien inserta una imagen.
+ */
+#[tauri::command]
+fn list_vault_images(path: String) -> Result<Vec<VaultImage>, String> {
+    let root = expand_home(&path);
+    let root = std::path::Path::new(&root);
+    if !root.is_dir() {
+        return Err(format!("No existe la carpeta «{}»", root.display()));
+    }
+
+    let mut images = Vec::new();
+    collect_images(root, "", 0, &mut images);
+    images.sort_by(|a, b| {
+        b.modified_ms
+            .cmp(&a.modified_ms)
+            .then_with(|| a.relative.to_lowercase().cmp(&b.relative.to_lowercase()))
+    });
+    images.truncate(500);
+
+    Ok(images)
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VaultTag {
     pub tag: String,
@@ -1935,6 +2059,7 @@ pub fn run() {
             get_vault_files,
             list_recent_notes,
             list_vault_notes,
+            list_vault_images,
             list_vault_tags,
             read_vault_file,
             write_vault_file,
@@ -1955,6 +2080,7 @@ pub fn run() {
             rename_vault_dir,
             move_vault_file,
             read_vault_image,
+            read_vault_image_thumb,
             read_vault_pdf,
             load_app_config,
             save_app_config,
@@ -3141,6 +3267,95 @@ mod tests {
 
         let err = read_vault_image(dir.join("no-existe.png").to_string_lossy().into_owned())
             .expect_err("no existe");
+        assert!(err.contains("No existe"), "mensaje = {err}");
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn list_vault_images_busca_en_carpetas_y_ordena_por_fecha() {
+        let dir = temp_vault("images-list");
+        std::fs::create_dir(dir.join("adjuntos")).expect("mkdir adjuntos");
+        std::fs::create_dir(dir.join(".oculta")).expect("mkdir oculta");
+
+        std::fs::write(dir.join("raiz.png"), [1]).expect("png");
+        std::fs::write(dir.join("adjuntos").join("foto.jpg"), [1]).expect("jpg");
+        std::fs::write(dir.join("nota.md"), "# hola").expect("md");
+        std::fs::write(dir.join("manual.pdf"), "%PDF-1.4").expect("pdf");
+        std::fs::write(dir.join(".oculta").join("secreta.png"), [1]).expect("oculta");
+
+        // La fecha manda: la de la carpeta es la más reciente.
+        let tocar = |ruta: std::path::PathBuf, hace_segundos: u64| {
+            let mut file = std::fs::OpenOptions::new()
+                .write(true)
+                .open(&ruta)
+                .expect("open mtime");
+            file.set_modified(
+                std::time::SystemTime::now() - std::time::Duration::from_secs(hace_segundos),
+            )
+            .expect("set mtime");
+        };
+        tocar(dir.join("raiz.png"), 7200);
+        tocar(dir.join("adjuntos").join("foto.jpg"), 60);
+
+        let images = list_vault_images(dir.to_string_lossy().into_owned()).expect("lista");
+        let relativas: Vec<&str> = images
+            .iter()
+            .map(|image| image.relative.as_str())
+            .collect();
+
+        // Solo imágenes: ni notas, ni PDF, ni la carpeta oculta.
+        assert_eq!(relativas, ["adjuntos/foto.jpg", "raiz.png"]);
+        assert_eq!(images[0].name, "foto.jpg");
+        assert!(images[0].path.ends_with("foto.jpg"));
+        assert!(images[0].modified_ms.is_some());
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn read_vault_image_thumb_reduce_la_imagen() {
+        let dir = temp_vault("img-thumb");
+        let ruta = dir.join("foto.png");
+
+        let original = image::RgbaImage::from_fn(200, 100, |x, y| {
+            image::Rgba([x as u8, y as u8, 64, 255])
+        });
+        let mut png = Vec::new();
+        image::DynamicImage::ImageRgba8(original)
+            .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+            .expect("png");
+        std::fs::write(&ruta, &png).expect("write");
+
+        let thumb =
+            read_vault_image_thumb(ruta.to_string_lossy().into_owned(), 64).expect("miniatura");
+        assert!(thumb.starts_with("data:image/png;base64,"), "url = {thumb}");
+
+        let bytes = decode_base64(thumb.trim_start_matches("data:image/png;base64,"))
+            .expect("base64 válido");
+        let reducida = image::load_from_memory(&bytes).expect("miniatura decodificable");
+        // 200×100 con lado máximo 64: baja a 64×32 sin cambiar la proporción.
+        assert_eq!((reducida.width(), reducida.height()), (64, 32));
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn read_vault_image_thumb_explica_lo_que_no_se_puede_reducir() {
+        let dir = temp_vault("img-thumb-err");
+
+        let err = read_vault_image_thumb(dir.join("nota.md").to_string_lossy().into_owned(), 64)
+            .expect_err("no es imagen");
+        assert!(err.contains("solo imágenes"), "mensaje = {err}");
+
+        std::fs::write(dir.join("rota.png"), b"no soy un png").expect("write");
+        let err = read_vault_image_thumb(dir.join("rota.png").to_string_lossy().into_owned(), 64)
+            .expect_err("no decodifica");
+        assert!(err.contains("No se pudo reducir"), "mensaje = {err}");
+
+        let err =
+            read_vault_image_thumb(dir.join("fantasma.png").to_string_lossy().into_owned(), 64)
+                .expect_err("no existe");
         assert!(err.contains("No existe"), "mensaje = {err}");
 
         std::fs::remove_dir_all(&dir).ok();

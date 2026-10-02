@@ -23,7 +23,7 @@ const root = document.getElementById("root") as HTMLElement;
 createRoot(root).render(
   <StrictMode>
     <div className="h-screen w-screen">
-      <MarkdownEditor path="/tmp/prueba.md" title="Prueba" content={TABLA} />
+      <MarkdownEditor path="/tmp/prueba.md" vaultPath="/tmp/vault" title="Prueba" content={TABLA} />
     </div>
   </StrictMode>,
 );

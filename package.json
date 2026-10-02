@@ -23,6 +23,7 @@
     "test:watch": "vitest",
     "bench": "node bench/prueba-editor.mjs",
     "bench:menu": "node bench/prueba-menu.mjs",
+    "bench:images": "node bench/prueba-imagenes.mjs",
     "bench:explorer": "node bench/prueba-explorador.mjs",
     "traza": "node bench/colector.mjs"
   },

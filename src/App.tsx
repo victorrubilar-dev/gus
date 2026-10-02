@@ -32,6 +32,7 @@ import DashboardView from "./components/DashboardView";
 import FileExplorer, { type FileExplorerHandle, type NoteFile } from "./components/FileExplorer";
 import MarkdownEditor, {
   type EditorDraft,
+  type ImageInsertResult,
   type MarkdownEditorHandle,
 } from "./components/MarkdownEditor";
 import SettingsPanel from "./components/SettingsPanel";
@@ -40,6 +41,7 @@ import TrashView from "./components/TrashView";
 import VaultPicker, { type VaultAppConfig, type VaultInfo } from "./components/VaultPicker";
 import WelcomePanel from "./components/WelcomePanel";
 import { baseName, isInsidePath, joinPath, safeFileName } from "./lib/fileName";
+import { isImagePath } from "./lib/imageLinks";
 import {
   importFilesIntoVault,
   relativeFolderLabel,
@@ -249,14 +251,17 @@ function App({
   const [droppingFiles, setDroppingFiles] = useState(false);
   /** Carpeta bajo el cursor durante el arrastre: allí caerán los archivos. */
   const [dropFolder, setDropFolder] = useState<string | null>(null);
+  /** true si el arrastre cae sobre el texto de la nota abierta. */
+  const [dropOnNote, setDropOnNote] = useState(false);
   /**
    * Lo que hace el arrastre nativo, guardado en un ref para que el listener —
    * enganchado una sola vez— siempre vea las últimas funciones y estados.
    */
   const dragDropRef = useRef<{
     folder: (position: { x: number; y: number }) => string | null;
+    editor: (position: { x: number; y: number }) => boolean;
     drop: (paths: string[], position: { x: number; y: number }) => Promise<void>;
-  }>({ folder: () => null, drop: async () => {} });
+  }>({ folder: () => null, editor: () => false, drop: async () => {} });
 
   const [sidebarWidth, setSidebarWidth] = useState(readStoredSidebarWidth);
   const sidebarWidthRef = useRef(sidebarWidth);
@@ -595,6 +600,20 @@ function App({
     importNoticeTimerRef.current = window.setTimeout(() => setImportNotice(null), 8000);
   }
 
+  /** Frase del aviso tras insertar imágenes en la nota. */
+  function summarizeImageInsert(result: ImageInsertResult): ImportSummary {
+    if (result.inserted === 0) {
+      return { ok: false, message: t("editor.imagesFailed", { count: result.failed }) };
+    }
+
+    const head = t("editor.imagesInserted", { count: result.inserted });
+    if (result.failed === 0) return { ok: true, message: head };
+    return {
+      ok: false,
+      message: `${head} ${t("editor.imagesFailed", { count: result.failed })}`,
+    };
+  }
+
   /**
    * Carpeta que recibiría un arrastre: la fila bajo el cursor del explorador o,
    * si no la hay, la carpeta que se está viendo (la raíz si no hay explorador).
@@ -631,17 +650,61 @@ function App({
     return bajoCursor ?? explorerRef.current?.currentDir() ?? vault;
   }
 
-  /** Importa los archivos soltados y cuenta lo que ha dado de sí. */
+  /**
+   * ¿El arrastre cae sobre el campo de texto de la nota? Tauri da la posición
+   * en píxeles físicos: se comprueba con las dos cuentas posibles (con y sin
+   * el zoom de la interfaz), como se hace con las carpetas. Siempre que una
+   * de las dos dé en el editor, se enlaza ahí.
+   */
+  function overEditorAt(position: { x: number; y: number }): boolean {
+    const dpr = window.devicePixelRatio || 1;
+    const x = position.x / dpr;
+    const y = position.y / dpr;
+
+    const bajo = (px: number, py: number): boolean => {
+      try {
+        const element = document.elementFromPoint(px, py);
+        return element instanceof Element && element.closest("[data-drop-editor]") !== null;
+      } catch {
+        return false;
+      }
+    };
+
+    return bajo(x, y) || bajo(toLocalCoord(x), toLocalCoord(y));
+  }
+
+  /**
+   * Importa los archivos soltados y cuenta lo que ha dado de sí. Las imágenes
+   * que caen sobre el texto de la nota no van a una carpeta: se enlazan en la
+   * nota que está abierta (copiándolas junto a ella si vienen de fuera).
+   */
   async function handleDroppedFiles(paths: string[], position: { x: number; y: number }) {
+    if (paths.length === 0) return;
+
+    const imagenes = paths.filter(isImagePath);
+    const resto = paths.filter((ruta) => !isImagePath(ruta));
+
+    if (imagenes.length > 0 && currentVault && overEditorAt(position)) {
+      const resultado =
+        (await editorRef.current?.insertImages(imagenes, position)) ?? {
+          inserted: 0,
+          failed: imagenes.length,
+        };
+      showImportNotice(summarizeImageInsert(resultado));
+      // Copiar una imagen al vault crea un archivo nuevo: el explorador lo
+      // tiene que enseñar (aunque solo se insertaran enlaces de vault).
+      if (resultado.inserted > 0) setVaultRefresh((key) => key + 1);
+      if (resto.length === 0) return;
+    }
+
     const dest = resolveDropFolder(position);
     if (!dest) {
       showImportNotice({ ok: false, message: t("app.noVaultForFiles") });
       return;
     }
-    if (paths.length === 0) return;
 
     try {
-      const items = await importFilesIntoVault(paths, dest);
+      const items = await importFilesIntoVault(resto, dest);
       showImportNotice(summarizeImport(items, relativeFolderLabel(dest, currentVault ?? dest)));
       setVaultRefresh((key) => key + 1);
     } catch (error: unknown) {
@@ -651,7 +714,11 @@ function App({
 
   // El ref siempre apunta a la versión más reciente de las funciones de arriba.
   useEffect(() => {
-    dragDropRef.current = { folder: resolveDropFolder, drop: handleDroppedFiles };
+    dragDropRef.current = {
+      folder: resolveDropFolder,
+      editor: overEditorAt,
+      drop: handleDroppedFiles,
+    };
   });
 
   /**
@@ -681,13 +748,16 @@ function App({
           if (payload.type === "drop") {
             setDroppingFiles(false);
             setDropFolder(null);
+            setDropOnNote(false);
             void dragDropRef.current.drop(payload.paths, payload.position);
           } else if (payload.type === "enter" || payload.type === "over") {
             setDroppingFiles(true);
             setDropFolder(dragDropRef.current.folder(payload.position));
+            setDropOnNote(dragDropRef.current.editor(payload.position));
           } else {
             setDroppingFiles(false);
             setDropFolder(null);
+            setDropOnNote(false);
           }
         })
         .then((stop) => {
@@ -1429,8 +1499,12 @@ function App({
                 onRemoveMany={handleRemoveVaults}
                 onSelectBaseDir={handleSelectBaseDir}
               />
-            ) : (
-              <AnimatePresence mode="wait" initial={false}>
+            ) : null}
+            <AnimatePresence mode="wait" initial={false}>
+              {/* La frontera queda fuera de la condición para poder observar la
+                  salida de la sección (cierre de bóveda / arranque); el picker
+                  y el spinner ocupan su sitio enseguida. */}
+              {bootStatus !== "loading" && currentVault !== null && (
                 <m.section
                   key={activeTab}
                   initial={{ opacity: 0, x: 16 }}
@@ -1482,8 +1556,8 @@ function App({
                     />
                   )}
                 </m.section>
-              </AnimatePresence>
-            )}
+              )}
+            </AnimatePresence>
           </main>
 
           <CommandPalette
@@ -1557,9 +1631,13 @@ function App({
             >
               <Upload className="h-10 w-10 text-gus-accent" strokeWidth={1.5} aria-hidden="true" />
               <p className="text-sm font-semibold text-gus-text">
-                {t(currentVault ? "app.dropVault" : "app.dropNoVault")}
+                {!currentVault
+                  ? t("app.dropNoVault")
+                  : dropOnNote
+                    ? t("app.dropNote")
+                    : t("app.dropVault")}
               </p>
-              {currentVault && (
+              {currentVault && !dropOnNote && (
                 <p className="max-w-md break-words text-xs text-gus-muted">
                   {t("app.dropEnter", {
                     folder: relativeFolderLabel(dropFolder ?? currentVault, currentVault),

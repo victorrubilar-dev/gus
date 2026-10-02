@@ -82,7 +82,16 @@ const ITEM =
 const SUB_WIDTH = 232;
 const SUB_ROW = 32;
 
-const INSERT_IDS = new Set(["code", "table", "image", "math", "mathblock", "mermaid", "hr"]);
+const INSERT_IDS = new Set([
+  "code",
+  "table",
+  "image-vault",
+  "image-computer",
+  "math",
+  "mathblock",
+  "mermaid",
+  "hr",
+]);
 const TEXT_IDS = new Set(["h1", "h2", "h3", "ul", "ol", "task", "quote"]);
 
 const INSERT_ITEMS = SLASH_ITEMS.filter((item) => INSERT_IDS.has(item.id));

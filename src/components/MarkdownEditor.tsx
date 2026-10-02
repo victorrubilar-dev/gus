@@ -25,7 +25,20 @@ import { invoke } from "@tauri-apps/api/core";
 import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
 import clsx from "clsx";
 import { Check, ChevronDown, Eye, FileDown, Pencil, X } from "lucide-react";
-import { pathWithTitle, safeFileName } from "../lib/fileName";
+import { open } from "@tauri-apps/plugin-dialog";
+import { isInsidePath, parentPath, pathWithTitle, safeFileName } from "../lib/fileName";
+import { imageFilters, importFilesIntoVault } from "../lib/importFiles";
+import {
+  decodeImageDest,
+  filterVaultImages,
+  imageAlt,
+  imageCandidates,
+  imageDest,
+  imageMarkdown,
+  isImagePath,
+  type VaultImage,
+} from "../lib/imageLinks";
+import { DRAG_ENTRY_MIME, type DragEntry } from "./FileExplorer";
 import { listEnterEdit } from "../lib/listContinue";
 import {
   orderedBlockAt,
@@ -135,6 +148,7 @@ import {
   filterSlashItems,
   SlashMenu,
   SpellSuggestMenu,
+  VaultImageMenu,
   WikiLinkMenu,
   type SlashItem,
 } from "./EditorMenus";
@@ -160,9 +174,26 @@ export interface EditorDraft {
   content: string;
 }
 
+/** Qué ha dado de sí meter un lote de imágenes en la nota. */
+export interface ImageInsertResult {
+  /** Imágenes que acabaron enlazadas. */
+  inserted: number;
+  /** Las que no se pudieron copiar ni resolver. */
+  failed: number;
+}
+
 export interface MarkdownEditorHandle {
   flush: () => Promise<boolean>;
   requestExport: () => void;
+  /**
+   * Inserta imágenes en la nota, en el punto `point` (un arrastre del sistema
+   * trae la posición) o donde esté el cursor. Las que vengan de fuera del
+   * vault se copian junto a la nota antes de enlazarlas.
+   */
+  insertImages: (
+    sources: string[],
+    point?: { x: number; y: number },
+  ) => Promise<ImageInsertResult>;
 }
 
 export interface MarkdownEditorProps {
@@ -221,12 +252,15 @@ interface TableDrift {
 /** Mapa de alturas vacío reutilizable: evita re-renderizar por un Map nuevo. */
 const EMPTY_DRIFT: Map<number, TableDrift> = new Map();
 
+/** Lista vacía de imágenes, para no crear una nueva en cada render. */
+const EMPTY_IMAGES: VaultImage[] = [];
+
 type SaveState = "idle" | "dirty" | "saved" | "error";
 
 type ViewMode = "edit" | "preview";
 
 interface EditorMenu {
-  kind: "wiki" | "slash";
+  kind: "wiki" | "slash" | "images";
   start: number;
   query: string;
   index: number;
@@ -446,6 +480,111 @@ const MarkdownBody = lazy(async () => {
 
   return { default: Preview };
 });
+
+/** Imágenes de la vista previa ya resueltas, para no repetir lecturas. */
+const RESOLVED_IMAGES = new Map<string, string>();
+
+/**
+ * Imagen de la vista previa. Las rutas del vault no las entiende el webview
+ * (son relativas a la nota o a la raíz), así que se resuelven a datos de
+ * imagen con `read_vault_image`, probando primero junto a la nota y después
+ * desde la raíz. Mientras carga y si no la encuentra se avisa en el sitio de
+ * dejar un hueco roto.
+ */
+function PreviewImage({
+  src,
+  alt,
+  notePath,
+  vaultPath,
+}: {
+  src?: string;
+  alt?: string;
+  notePath: string;
+  vaultPath: string | null;
+}) {
+  const t = useT();
+  const candidates = useMemo(
+    () => (src ? imageCandidates(src, notePath, vaultPath) : []),
+    [src, notePath, vaultPath],
+  );
+  const directo = src && /^(data:|https?:\/\/)/i.test(src) ? src : null;
+  const key = directo ?? candidates.join("\n");
+
+  const [estado, setEstado] = useState<
+    { fase: "listo"; url: string } | { fase: "carga" } | { fase: "fallo" }
+  >(() => {
+    if (directo) return { fase: "listo", url: directo };
+    const cacheado = key ? RESOLVED_IMAGES.get(key) : undefined;
+    return cacheado ? { fase: "listo", url: cacheado } : { fase: "carga" };
+  });
+
+  useEffect(() => {
+    if (directo) {
+      setEstado((actual) =>
+        actual.fase === "listo" && actual.url === directo ? actual : { fase: "listo", url: directo },
+      );
+      return;
+    }
+    if (candidates.length === 0) {
+      setEstado({ fase: "fallo" });
+      return;
+    }
+
+    const cacheado = RESOLVED_IMAGES.get(key);
+    if (cacheado) {
+      setEstado({ fase: "listo", url: cacheado });
+      return;
+    }
+
+    let cancelado = false;
+    setEstado({ fase: "carga" });
+
+    void (async () => {
+      for (const ruta of candidates) {
+        try {
+          const url = await invoke<string>("read_vault_image", { path: ruta });
+          RESOLVED_IMAGES.set(key, url);
+          if (!cancelado) setEstado({ fase: "listo", url });
+          return;
+        } catch {
+          // Ni una ni otra: se prueba la siguiente candidata.
+        }
+      }
+      if (!cancelado) setEstado({ fase: "fallo" });
+    })();
+
+    return () => {
+      cancelado = true;
+    };
+  }, [key, directo, candidates]);
+
+  if (estado.fase === "listo") {
+    return (
+      <img
+        src={estado.url}
+        alt={alt ?? ""}
+        loading="lazy"
+        className="my-4 max-h-[70vh] max-w-full rounded-lg border border-gus-border bg-gus-card object-contain"
+      />
+    );
+  }
+
+  const nombre = alt || (src ? decodeImageDest(src) : "");
+
+  if (estado.fase === "fallo") {
+    return (
+      <span className="my-4 block break-words rounded-lg border border-dashed border-rose-400/40 bg-rose-400/5 px-3 py-2 text-xs text-rose-300">
+        {t("editor.imageBroken", { name: nombre })}
+      </span>
+    );
+  }
+
+  return (
+    <span className="my-4 block rounded-lg border border-gus-border bg-gus-card px-3 py-2 text-xs text-gus-muted">
+      {t("editor.imageLoading")}
+    </span>
+  );
+}
 
 function countWords(text: string): number {
   const trimmed = text.trim();
@@ -749,6 +888,21 @@ export default function MarkdownEditor({
   const hintLineRef = useRef(-1);
   const [wikiNotes, setWikiNotes] = useState<WikiNote[]>([]);
   const [wikiNotesLoading, setWikiNotesLoading] = useState(false);
+  /** Imágenes del vault para el selector que abre «Imagen del vault». */
+  const [vaultImages, setVaultImages] = useState<VaultImage[]>([]);
+  const [vaultImagesLoading, setVaultImagesLoading] = useState(false);
+  /** Arrastrando una imagen del explorador por encima del campo de texto. */
+  const [imageDropOver, setImageDropOver] = useState(false);
+  /**
+   * Imágenes que enseña el selector: dependen de su consulta y de la lista del
+   * vault, no del índice recorrido, para que el array no cambie al pulsar ↑↓
+   * (si no, el efecto de las miniaturas se volvería a disparar en cada tecla).
+   */
+  const imagesQuery = menu?.kind === "images" ? menu.query : null;
+  const imageMatches = useMemo(
+    () => (imagesQuery === null ? EMPTY_IMAGES : filterVaultImages(vaultImages, imagesQuery)),
+    [imagesQuery, vaultImages],
+  );
   const [tagInput, setTagInput] = useState("");
   const [vaultTags, setVaultTags] = useState<VaultTag[]>([]);
   const [tagMenuOpen, setTagMenuOpen] = useState(false);
@@ -762,6 +916,7 @@ export default function MarkdownEditor({
   const skipHistoryRef = useRef(false);
   const pendingCaretRef = useRef<[number, number] | null>(null);
   const wikiRequestRef = useRef(0);
+  const imagesRequestRef = useRef(0);
   const tagRequestRef = useRef(0);
 
   const ownPathRef = useRef(path);
@@ -888,6 +1043,11 @@ export default function MarkdownEditor({
     persistRef.current = persist;
   });
 
+  const insertImagesRef = useRef(insertImagesAt);
+  useLayoutEffect(() => {
+    insertImagesRef.current = insertImagesAt;
+  });
+
   // `flush` solo lee refs: con useCallback su identidad deja de cambiar en
   // cada render y useImperativeHandle no se vuelve a ejecutar sin motivo.
   const flush = useCallback(async (): Promise<boolean> => {
@@ -908,6 +1068,10 @@ export default function MarkdownEditor({
         setHeaderMenu(false);
         setExportOpen(true);
       },
+      // Va por ref para que App suelte imágenes sobre la nota que toque sin
+      // que el handle se quede con la ruta de la primera que se montó.
+      insertImages: (sources: string[], point?: { x: number; y: number }) =>
+        insertImagesRef.current(sources, point),
     }),
     [flush],
   );
@@ -1301,6 +1465,33 @@ export default function MarkdownEditor({
       .catch(() => {
         if (request !== wikiRequestRef.current) return;
         setWikiNotesLoading(false);
+      });
+  }
+
+  /**
+   * Imágenes de todo el vault para el selector que abre «Imagen del vault»: se
+   * piden al abrirlo, que recorrer el vault entero no es algo que hacer en
+   * cada render.
+   */
+  function loadVaultImages() {
+    if (!vaultPath) {
+      setVaultImages([]);
+      setVaultImagesLoading(false);
+      return;
+    }
+
+    const request = ++imagesRequestRef.current;
+    setVaultImagesLoading(true);
+
+    invoke<VaultImage[]>("list_vault_images", { path: vaultPath })
+      .then((images) => {
+        if (request !== imagesRequestRef.current) return;
+        setVaultImages(images);
+        setVaultImagesLoading(false);
+      })
+      .catch(() => {
+        if (request !== imagesRequestRef.current) return;
+        setVaultImagesLoading(false);
       });
   }
 
@@ -1884,6 +2075,157 @@ export default function MarkdownEditor({
     if (!menu) return;
     // En el menú «/» lo que se sustituye es el propio `/consulta` del documento.
     runMenuItem(item, menu.start);
+  }
+
+  /**
+   * Punto del documento bajo unas coordenadas de pantalla (un arrastre del
+   * sistema o del explorador), o `null` si caen fuera del campo: el cálculo se
+   * pega a los bordes y ahí mejor manda el cursor.
+   */
+  function caretAtPoint(clientX: number, clientY: number): number | null {
+    const area = textareaRef.current;
+    if (!area) return null;
+
+    const rect = area.getBoundingClientRect();
+    const dentro =
+      clientX >= rect.left &&
+      clientX <= rect.right &&
+      clientY >= rect.top &&
+      clientY <= rect.bottom;
+    if (!dentro) return null;
+
+    return offsetAtPointer(area, clientX, clientY, driftAtPointer(clientY));
+  }
+
+  /**
+   * Enlaza imágenes en la nota: las que ya están en el vault se referen tal
+   * cual y las del equipo se copian antes junto a la nota (si no, el enlace
+   * apuntaría a una ruta que vive fuera del vault y se rompería al moverlo).
+   *
+   * La selección debe haberse colapsado ya en `from` cuando lo que se trae es
+   * un arrastre; con el menú «/» abierto, en cambio, `from` es la barra y el
+   * cursor sigue al final de la consulta, que es el texto que hay que sustituir.
+   */
+  async function insertImageFiles(
+    sources: string[],
+    from: number,
+  ): Promise<ImageInsertResult> {
+    if (sources.length === 0) return { inserted: 0, failed: 0 };
+
+    const dentro: string[] = [];
+    const fuera: string[] = [];
+    for (const source of sources) {
+      (vaultPath && isInsidePath(source, vaultPath) ? dentro : fuera).push(source);
+    }
+
+    const destinos = [...dentro];
+
+    if (fuera.length > 0) {
+      const carpeta = parentPath(path);
+      if (carpeta) {
+        try {
+          const items = await importFilesIntoVault(fuera, carpeta);
+          for (const item of items) if (item.path) destinos.push(item.path);
+        } catch {
+          // Sin vault o sin permisos: no se enlaza nada de lo que venía de fuera.
+        }
+      }
+    }
+
+    if (destinos.length === 0) return { inserted: 0, failed: sources.length };
+
+    const enlaces = destinos.map((destino) =>
+      imageMarkdown(imageAlt(destino), imageDest(path, destino)),
+    );
+    // Cada imagen en su línea: sueltas tres y las tres quedan repartidas.
+    const texto = enlaces.join("\n");
+    replaceRange(from, texto, texto.length);
+
+    return { inserted: destinos.length, failed: sources.length - destinos.length };
+  }
+
+  /**
+   * Inserta imágenes en el punto `at` (ya en px de documento) o, sin punto, en
+   * el cursor. La selección se colapsa antes: si no, lo que se suelta encima
+   * de un texto marcado se comería ese texto.
+   */
+  async function insertImagesDropped(
+    sources: string[],
+    at: number | null,
+  ): Promise<ImageInsertResult> {
+    const area = textareaRef.current;
+    if (!area) {
+      // Vista previa: no hay campo de texto, así que la imagen entra al final.
+      return insertImageFiles(sources, stripFrontmatter(content).length);
+    }
+
+    const from = at ?? area.selectionStart;
+    area.setSelectionRange(from, from);
+    return insertImageFiles(sources, from);
+  }
+
+  /**
+   * Lo que llama App cuando sueltas archivos encima del editor: `point` llega
+   * en píxeles físicos, como los da Tauri.
+   */
+  async function insertImagesAt(
+    sources: string[],
+    point?: { x: number; y: number },
+  ): Promise<ImageInsertResult> {
+    const dpr = window.devicePixelRatio || 1;
+    const at = point ? caretAtPoint(point.x / dpr, point.y / dpr) : null;
+    return insertImagesDropped(sources, at);
+  }
+
+  /**
+   * Imagen del equipo: se elige en el diálogo del sistema, se copia junto a la
+   * nota y se enlaza empezando en `from` (la barra del «/» o el cursor).
+   */
+  async function insertImagesFromComputer(from: number): Promise<ImageInsertResult> {
+    if (!vaultPath) return { inserted: 0, failed: 0 };
+
+    let picked: string | string[] | null = null;
+    try {
+      picked = await open({ multiple: true, filters: imageFilters() });
+    } catch {
+      return { inserted: 0, failed: 0 };
+    }
+    // Cancelar el diálogo no es un error: simplemente no se inserta nada.
+    if (!picked) return { inserted: 0, failed: 0 };
+
+    const sources = Array.isArray(picked) ? picked : [picked];
+    return insertImageFiles(sources, from);
+  }
+
+  /** Imagen elegida en el selector del vault: se enlaza relativa a la nota. */
+  function insertVaultImage(image: VaultImage) {
+    const area = textareaRef.current;
+    const start =
+      menu?.kind === "images" ? menu.start : (area?.selectionStart ?? stripFrontmatter(content).length);
+    const texto = imageMarkdown(imageAlt(image.name), imageDest(path, image.path));
+    replaceRange(start, texto, texto.length);
+  }
+
+  /** Entrada del explorador que se arrastra, si es que lo es. */
+  function readExplorerEntry(dataTransfer: DataTransfer): DragEntry | null {
+    try {
+      const raw = dataTransfer.getData(DRAG_ENTRY_MIME);
+      if (!raw) return null;
+      const parsed: unknown = JSON.parse(raw);
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        "kind" in parsed &&
+        "path" in parsed &&
+        (parsed.kind === "file" || parsed.kind === "folder") &&
+        typeof parsed.path === "string"
+      ) {
+        return { kind: parsed.kind, path: parsed.path };
+      }
+    } catch {
+      // Ni JSON del explorador ni nada que interpretar.
+    }
+    return null;
   }
 
   /** Sugerencias de hunspell con caché de un término (se repiten al navegar). */
@@ -2619,7 +2961,34 @@ export default function MarkdownEditor({
       return;
     }
 
-    area.setSelectionRange(from, from);
+    // Imagen del vault: se abre el selector con las imágenes del vault. La
+    // consulta del «/» se queda en el documento mientras tanto: la sustituye
+    // el enlace que se inserta al elegir una.
+    if (item.imageSource === "vault") {
+      setMenu({
+        kind: "images",
+        start: from,
+        query: "",
+        index: 0,
+        anchor: caretAnchor(area, area.selectionStart),
+      });
+      loadVaultImages();
+      return;
+    }
+
+    // Imagen del equipo: se elige en el diálogo del sistema y, mientras se
+    // decide, el menú se cierra (el enlace entra al volver).
+    if (item.imageSource === "computer") {
+      setMenu(null);
+      void insertImagesFromComputer(from);
+      return;
+    }
+
+    // Desde el menú «/» hay que sustituir la consulta, que ocupa hasta el
+    // cursor: colapsar el rango la dejaba pegada al bloque («# /titu»). Desde
+    // el menú contextual, en cambio, hay selección y se inserta delante sin
+    // comérsela.
+    if (menu?.kind !== "slash") area.setSelectionRange(from, from);
     replaceRange(from, item.snippet, item.caretOffset);
   }
 
@@ -2807,6 +3176,13 @@ export default function MarkdownEditor({
     // paradas: una tecla que no forme parte de la composición la da por
     // terminada.
     if (composing && !event.nativeEvent.isComposing) setComposing(false);
+
+    // El selector de imágenes se lleva el teclado mientras está abierto: sus
+    // teclas escriben en la consulta del menú y no deben llegar al documento.
+    if (menu?.kind === "images") {
+      handleImageMenuKeys(event);
+      if (event.defaultPrevented) return;
+    }
 
     // La ancla de la selección multifila solo vive mientras se extiende con
     // Mayús: cualquier otra tecla la retira.
@@ -3674,8 +4050,69 @@ export default function MarkdownEditor({
     selectCellBlock(anchor, { line: focus.line, col: targetCol });
   }
 
+  /**
+   * Teclado del selector de imágenes. Mientras está abierto las teclas no van
+   * al documento: escriben en la consulta del menú (el textarea conserva el
+   * foco, que es lo que hace que el cursor no se mueva), ↑↓ recorren, Intro
+   * inserta y Esc cierra.
+   */
+  function handleImageMenuKeys(event: KeyboardEvent<HTMLElement>) {
+    const selector = menu;
+    if (!selector || selector.kind !== "images") return;
+    if (event.ctrlKey || event.metaKey || event.altKey || event.nativeEvent.isComposing) return;
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setMenu(null);
+      return;
+    }
+
+    if (event.key === "Backspace") {
+      event.preventDefault();
+      setMenu({ ...selector, query: selector.query.slice(0, -1), index: 0 });
+      return;
+    }
+
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      const size = imageMatches.length;
+      event.preventDefault();
+      if (size === 0) return;
+
+      const actual = Math.min(selector.index, size - 1);
+      const siguiente =
+        event.key === "ArrowDown"
+          ? (actual + 1) % size
+          : actual <= 0
+            ? size - 1
+            : actual - 1;
+      setMenu({ ...selector, index: siguiente });
+      return;
+    }
+
+    if (event.key === "Enter" || event.key === "Tab") {
+      // Sin coincidencias no se cierra: se sigue afinando la consulta.
+      const elegida = imageMatches[Math.min(selector.index, imageMatches.length - 1)];
+      if (!elegida) {
+        event.preventDefault();
+        return;
+      }
+      event.preventDefault();
+      insertVaultImage(elegida);
+      return;
+    }
+
+    if (event.key.length === 1) {
+      event.preventDefault();
+      setMenu({ ...selector, query: selector.query + event.key, index: 0 });
+    }
+  }
+
   function handleMenuKeyDown(event: KeyboardEvent<HTMLElement>) {
     if (!menu) return;
+
+    // El selector de imágenes tiene teclado propio (se gestiona al principio
+    // de handleKeyDown): aquí no hay nada que hacer con él.
+    if (menu.kind === "images") return;
 
     if (event.key === "Escape") {
       event.preventDefault();
@@ -4036,6 +4473,14 @@ export default function MarkdownEditor({
         </a>
       );
     },
+    img: (props) => (
+      <PreviewImage
+        src={props.src}
+        alt={props.alt}
+        notePath={path}
+        vaultPath={vaultPath ?? null}
+      />
+    ),
     ul: ({ children }) => (
       <ul className="my-3 list-disc space-y-1.5 pl-6 text-gus-text marker:text-gus-accent/70">
         {children}
@@ -4395,6 +4840,37 @@ export default function MarkdownEditor({
             onCut={handleCut}
             onCopy={handleCopy}
             onPaste={handlePaste}
+            // Arrastre de una fila del explorador: las imágenes se enlazan en
+            // el punto exacto; el resto (notas, carpetas) no se tira encima
+            // del texto. Cualquier arrastre del explorador se come aquí para
+            // que el navegador no pegue la ruta como texto.
+            onDragOver={(event) => {
+              if (!Array.from(event.dataTransfer.types).includes(DRAG_ENTRY_MIME)) return;
+              event.preventDefault();
+              event.dataTransfer.dropEffect = "copy";
+              if (!imageDropOver) setImageDropOver(true);
+            }}
+            onDragLeave={(event) => {
+              const destino = event.relatedTarget;
+              if (destino instanceof Node && event.currentTarget.contains(destino)) return;
+              setImageDropOver(false);
+            }}
+            onDrop={(event) => {
+              const traeDelExplorador = Array.from(event.dataTransfer.types).includes(
+                DRAG_ENTRY_MIME,
+              );
+              setImageDropOver(false);
+              if (!traeDelExplorador) return;
+
+              event.preventDefault();
+              const entrada = readExplorerEntry(event.dataTransfer);
+              if (!entrada || entrada.kind !== "file" || !isImagePath(entrada.path)) return;
+
+              void insertImagesDropped(
+                [entrada.path],
+                caretAtPoint(event.clientX, event.clientY),
+              );
+            }}
             onMouseDown={handleOverlayMouseDown}
             onDoubleClick={handleOverlayDoubleClick}
             onSelect={handleCaretMove}
@@ -4439,6 +4915,10 @@ export default function MarkdownEditor({
                   }
                 : undefined
             }
+            // App mira este atributo para saber si un arrastre nativo del
+            // sistema cae sobre la nota (y enlazar la imagen) o sobre una
+            // carpeta del explorador.
+            data-drop-editor="nota"
             className={clsx(
               // break-spaces: los espacios finales envuelven en vez de «colgar»
               // fuera del borde derecho; el cursor baja al pulsar espacio y el
@@ -4452,6 +4932,7 @@ export default function MarkdownEditor({
               // así que el cursor de redimensionado lo pone el propio campo
               // mientras hay un borde de columna justo debajo.
               hoverResize !== null && "cursor-col-resize",
+              imageDropOver && "ring-2 ring-inset ring-gus-accent",
             )}
           />
 
@@ -4478,6 +4959,19 @@ export default function MarkdownEditor({
                 insideTable={tableCaret !== null}
                 label={tableCaret !== null ? t("menu.tableActions") : undefined}
                 onPick={insertSlashItem}
+                onHover={(index) => setMenu({ ...menu, index })}
+              />
+            )}
+
+            {menu?.kind === "images" && (
+              <VaultImageMenu
+                key="images"
+                anchor={menu.anchor}
+                images={imageMatches}
+                loading={vaultImagesLoading}
+                query={menu.query}
+                index={menu.index}
+                onPick={insertVaultImage}
                 onHover={(index) => setMenu({ ...menu, index })}
               />
             )}

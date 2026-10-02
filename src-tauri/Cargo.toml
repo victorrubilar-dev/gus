@@ -26,6 +26,8 @@ tauri-plugin-clipboard-manager = "~2.3"
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Miniaturas para el selector de imágenes del menú «/» (y nada más).
+image = "0.25"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

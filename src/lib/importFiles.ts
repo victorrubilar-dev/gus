@@ -15,7 +15,7 @@ export interface ImportItem {
  * Extensiones que el vault sabe abrir. Tiene que cuadrar con `is_importable`
  * de Rust, o el archivo se elegirá y luego se rechazará con su motivo.
  */
-const IMAGE_EXTENSIONS = [
+export const IMAGE_EXTENSIONS = [
   "png",
   "apng",
   "jpg",
@@ -51,6 +51,11 @@ export function importFilters(): { name: string; extensions: string[] }[] {
     },
     { name: activeT("import.filterAll"), extensions: ["*"] },
   ];
+}
+
+/** Filtros del diálogo «Elegir imágenes», en el idioma activo. */
+export function imageFilters(): { name: string; extensions: string[] }[] {
+  return [{ name: activeT("import.filterImages"), extensions: IMAGE_EXTENSIONS }];
 }
 
 /** Copia archivos del equipo al vault (no se mueven: el original queda donde estaba). */

@@ -122,12 +122,16 @@ interface MenuState {
   y: number;
 }
 
-interface DragEntry {
+export interface DragEntry {
   kind: "file" | "folder";
   path: string;
 }
 
-const DRAG_ENTRY_MIME = "application/x-gus-explorer-entry";
+/**
+ * MIME con el que el explorador arrastra sus filas. El editor lo reconoce al
+ * soltar: una imagen enlaza en la nota en vez de moverse de carpeta.
+ */
+export const DRAG_ENTRY_MIME = "application/x-gus-explorer-entry";
 
 const MENU_WIDTH = 208;
 const MENU_MAX_HEIGHT = 280;
