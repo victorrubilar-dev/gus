@@ -593,8 +593,12 @@ function storeThumb(path: string, thumb: string | null) {
  */
 function useThumbs(images: readonly VaultImage[]): number {
   const [arrived, setArrived] = useState(0);
+  const countRef = useRef(0);
 
   useEffect(() => {
+    countRef.current = 0;
+    setArrived(0);
+
     const pending = images
       .slice(0, THUMB_BATCH)
       .filter((image) => !THUMB_CACHE.has(image.path));
@@ -603,7 +607,10 @@ function useThumbs(images: readonly VaultImage[]): number {
     let cancelled = false;
     let cursor = 0;
 
+    // Los workers solo cargan y cuentan; el setter vive fuera de la función
+    // async para que el efecto no tenga setters tras `await` en su interior.
     const worker = async () => {
+      let count = 0;
       while (!cancelled && cursor < pending.length) {
         const image = pending[cursor];
         cursor += 1;
@@ -620,11 +627,16 @@ function useThumbs(images: readonly VaultImage[]): number {
         }
 
         storeThumb(image.path, thumb);
-        if (!cancelled) setArrived((count) => count + 1);
+        if (cancelled) return 0;
+        count += 1;
       }
+      return count;
     };
 
-    void Promise.all([worker(), worker(), worker(), worker()]);
+    void Promise.all([worker(), worker(), worker(), worker()]).then((counts) => {
+      if (cancelled) return;
+      setArrived(counts.reduce((a, b) => a + b, 0));
+    });
 
     return () => {
       cancelled = true;

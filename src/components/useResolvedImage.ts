@@ -44,9 +44,7 @@ export function useResolvedImage(
 
   useEffect(() => {
     if (directo) {
-      setEstado((actual) =>
-        actual.fase === "listo" && actual.url === directo ? actual : { fase: "listo", url: directo },
-      );
+      setEstado({ fase: "listo", url: directo });
       return;
     }
     if (candidates.length === 0) {
@@ -63,19 +61,24 @@ export function useResolvedImage(
     let cancelado = false;
     setEstado({ fase: "carga" });
 
+    // La IIFE async solo resuelve con el resultado; el setter vive en el
+    // callback `.then()` (no async) para que el efecto no tenga setters
+    // tras `await` en su interior.
     void (async () => {
       for (const ruta of candidates) {
         try {
           const url = await invoke<string>("read_vault_image", { path: ruta });
           RESOLVED_IMAGES.set(key, url);
-          if (!cancelado) setEstado({ fase: "listo", url });
-          return;
+          if (cancelado) return null;
+          return { fase: "listo", url } as const;
         } catch {
           // Ni una ni otra: se prueba la siguiente candidata.
         }
       }
-      if (!cancelado) setEstado({ fase: "fallo" });
-    })();
+      return { fase: "fallo" } as const;
+    })().then((result) => {
+      if (result && !cancelado) setEstado(result);
+    });
 
     return () => {
       cancelado = true;
