@@ -489,6 +489,107 @@ chequeo(
   JSON.stringify(alFondo),
 );
 
+console.log("· redimensionado de la imagen con su asa");
+// Se vuelve arriba para que la primera imagen quede a tiro.
+await page.evaluate(() => {
+  document.querySelector("textarea").scrollTop = 0;
+});
+await page.waitForTimeout(600);
+
+const asa = await page.evaluate(() => {
+  const el = document.querySelector("[data-image-resize]");
+  if (!el) return null;
+  const r = el.getBoundingClientRect();
+  return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+});
+chequeo("la imagen de bloque enseña su asa de redimensionar", asa !== null && asa.x > 0);
+
+await page.mouse.move(asa.x, asa.y);
+await page.waitForTimeout(300);
+const alpasar = await page.evaluate(() => {
+  const area = document.querySelector("textarea");
+  const marca = document.querySelector("[data-image-resize] > span");
+  return {
+    cursor: area.className.includes("cursor-nwse-resize"),
+    visible: marca ? getComputedStyle(marca).opacity !== "0" : false,
+  };
+});
+chequeo(
+  "sobre el asa el cursor es de redimensionar y la esquina se ve",
+  alpasar.cursor && alpasar.visible,
+  JSON.stringify(alpasar),
+);
+
+const antes = await page.evaluate(() => {
+  const linea = document.querySelector("[data-drift-line]");
+  const siguiente = linea.nextElementSibling;
+  const img = linea.querySelector("img");
+  return {
+    ancho: img.getBoundingClientRect().width,
+    siguienteTop: siguiente ? siguiente.getBoundingClientRect().top : 0,
+  };
+});
+
+await page.mouse.down();
+await page.mouse.move(asa.x + 80, asa.y + 80, { steps: 8 });
+await page.waitForTimeout(200);
+const enArrastre = await page.evaluate(() => {
+  const area = document.querySelector("textarea");
+  const linea = document.querySelector("[data-drift-line]");
+  const siguiente = linea.nextElementSibling;
+  const img = linea.querySelector("img");
+  return {
+    ancho: img ? img.getBoundingClientRect().width : 0,
+    siguienteTop: siguiente ? siguiente.getBoundingClientRect().top : 0,
+    cursor: area.className.includes("cursor-nwse-resize"),
+  };
+});
+chequeo(
+  "al arrastrar el asa la imagen crece en vivo",
+  enArrastre.ancho > antes.ancho + 10,
+  `${Math.round(antes.ancho)} → ${Math.round(enArrastre.ancho)}`,
+);
+chequeo(
+  "la línea de abajo baja al crecer (sobrante al momento)",
+  enArrastre.siguienteTop > antes.siguienteTop + 10,
+  `${Math.round(antes.siguienteTop)} → ${Math.round(enArrastre.siguienteTop)}`,
+);
+chequeo(
+  "mientras se arrastra el cursor sigue siendo el de redimensionar",
+  enArrastre.cursor,
+);
+
+await page.mouse.up();
+await page.waitForTimeout(400);
+const tras = await page.evaluate(() => {
+  const linea = document.querySelector("[data-drift-line]");
+  const img = linea ? linea.querySelector("img") : null;
+  return {
+    valor: document.querySelector("textarea").value,
+    ancho: img ? Math.round(img.getBoundingClientRect().width) : 0,
+    alto: img ? Math.round(img.getBoundingClientRect().height) : 0,
+  };
+});
+chequeo(
+  "al soltar se guarda el ancho en el markdown",
+  /!\[Aventura\|\d+\]\(vault\/Aventura\.png\)/.test(tras.valor),
+  tras.valor
+    .split("\n")
+    .find((l) => l.includes("![Aventura")) ?? "(sin línea)",
+);
+chequeo("la imagen guarda su escala", Math.abs(tras.alto - tras.ancho) <= 2, `${tras.ancho}×${tras.alto}`);
+
+await page.keyboard.press("Control+z");
+await page.waitForTimeout(300);
+const trasDeshacer = await page.evaluate(() => document.querySelector("textarea").value);
+chequeo(
+  "deshacer revierte el redimensionado",
+  trasDeshacer.includes("![Aventura](vault/Aventura.png)") && !/!\[Aventura\|/.test(trasDeshacer),
+  trasDeshacer
+    .split("\n")
+    .find((l) => l.includes("![Aventura")) ?? "(sin línea)",
+);
+
 console.log("· vista de lectura");
 const lectura = await page.evaluate(() =>
   [...document.querySelectorAll("button")].some((b) =>

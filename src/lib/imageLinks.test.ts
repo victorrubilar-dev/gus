@@ -172,17 +172,65 @@ describe("línea que es entera una imagen", () => {
     expect(parseImageLine("![Aventura](vault/Aventura.png)")).toEqual({
       alt: "Aventura",
       destination: "vault/Aventura.png",
+      ancho: null,
     });
     // El destino viene escapado por imageMarkdown: se deja tal cual (lo
     // descodifica `decodeImageDest` al resolver la imagen).
     expect(parseImageLine(imageMarkdown("cumpleaños", "/vault/cumplea 1.png"))).toEqual({
       alt: "cumpleaños",
       destination: "/vault/cumplea%201.png",
+      ancho: null,
     });
     expect(parseImageLine("  ![subida](../fotos/subida.png)  ")).toEqual({
       alt: "subida",
       destination: "../fotos/subida.png",
+      ancho: null,
     });
+  });
+
+  it("lee el ancho fijado del texto alternativo", () => {
+    expect(parseImageLine("![Aventura|300](vault/Aventura.png)")).toEqual({
+      alt: "Aventura",
+      destination: "vault/Aventura.png",
+      ancho: 300,
+    });
+    // La variante con alto también se entiende (el alto lo manda la escala).
+    expect(parseImageLine("![foto|300x200](a.png)")).toEqual({
+      alt: "foto",
+      destination: "a.png",
+      ancho: 300,
+    });
+    // Una barra que no remata la línea es texto del alt, no un ancho.
+    expect(parseImageLine("![dos|tres](a.png)")).toEqual({
+      alt: "dos|tres",
+      destination: "a.png",
+      ancho: null,
+    });
+    expect(parseImageLine("![|0](a.png)")).toEqual({
+      alt: "",
+      destination: "a.png",
+      ancho: null,
+    });
+    expect(isImageLine("![foto|300](a.png)")).toBe(true);
+  });
+
+  it("escribe y borra el ancho fijado", () => {
+    expect(imageMarkdown("Aventura", "vault/Aventura.png", 300)).toBe(
+      "![Aventura|300](vault/Aventura.png)",
+    );
+    expect(imageMarkdown("Aventura", "vault/Aventura.png", 300.6)).toBe(
+      "![Aventura|301](vault/Aventura.png)",
+    );
+    // Sin ancho (o con uno inútil) el enlace queda como siempre.
+    expect(imageMarkdown("Aventura", "vault/Aventura.png", null)).toBe(
+      "![Aventura](vault/Aventura.png)",
+    );
+    expect(imageMarkdown("Aventura", "vault/Aventura.png", 0)).toBe(
+      "![Aventura](vault/Aventura.png)",
+    );
+    // El ancho va siempre detrás del alt ya limpio: de ida y vuelta no se acumula.
+    const partes = parseImageLine("![Aventura|300](a.png)");
+    expect(imageMarkdown(partes?.alt ?? "", "a.png", 412)).toBe("![Aventura|412](a.png)");
   });
 
   it("no confunde con texto alrededor ni con otras sintaxis", () => {

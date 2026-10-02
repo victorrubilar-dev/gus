@@ -971,6 +971,8 @@ const ImageLine = memo(function ImageLine({
   spell,
   caretAt = null,
   marked = null,
+  anchoVivo = null,
+  resizando = false,
 }: {
   text: string;
   /** Número de línea de origen, con el que se mide el sobrante. */
@@ -980,6 +982,10 @@ const ImageLine = memo(function ImageLine({
   spell: SpellFn | null;
   caretAt?: number | null;
   marked?: TableSelection | null;
+  /** Ancho al que se pinta mientras se arrastra el asa (la escala manda). */
+  anchoVivo?: number | null;
+  /** Si se enseña el asa (ratón encima u arrastre en marcha). */
+  resizando?: boolean;
 }) {
   const { notePath, vaultPath } = useContext(ImageNoteContext);
   const partes = parseImageLine(text);
@@ -992,13 +998,33 @@ const ImageLine = memo(function ImageLine({
   // carga, o si no existe, la línea se queda en su fila.
   const imgRef = useRef<HTMLImageElement | null>(null);
   const [medida, setMedida] = useState<{ src: string; alto: number } | null>(null);
-  const alto = src && medida?.src === src ? medida.alto : 0;
+  const [natural, setNatural] = useState<{ src: string; w: number; h: number } | null>(null);
+
+  // El ancho fijado lo mandan el markdown («foto|300») y, en su caso, el
+  // redimensionado en marcha.
+  const ancho = anchoVivo ?? partes?.ancho ?? null;
+  // Con ancho fijado la altura se deduce de la escala al momento (sin pasar
+  // por medir y volver a renderizar, que dejaría el sobrante un paso atrás);
+  // sin ancho, manda la medida real tras la carga.
+  const alto =
+    ancho !== null && natural && natural.src === src
+      ? (ancho * natural.h) / natural.w
+      : src && medida?.src === src
+        ? medida.alto
+        : 0;
   const filasImagen = alto > 0 ? Math.max(1, Math.ceil(alto / rowPitch)) : 1;
   const filas = filasImagen + (caret ? 1 : 0);
 
   const medir = () => {
     const el = imgRef.current;
     if (!src || !el) return;
+    if (el.naturalWidth > 0 && el.naturalHeight > 0) {
+      setNatural((prev) =>
+        prev && prev.src === src && prev.w === el.naturalWidth && prev.h === el.naturalHeight
+          ? prev
+          : { src, w: el.naturalWidth, h: el.naturalHeight },
+      );
+    }
     const altoAhora = el.getBoundingClientRect().height;
     setMedida((prev) =>
       prev && prev.src === src && prev.alto === altoAhora ? prev : { src, alto: altoAhora },
@@ -1038,13 +1064,36 @@ const ImageLine = memo(function ImageLine({
           </span>
         )}
         {src ? (
-          <img
-            ref={imgRef}
-            src={src}
-            alt={alt}
-            onLoad={medir}
-            className="mx-auto block max-h-[70vh] max-w-full object-contain"
-          />
+          // El envase abraza la imagen para que el asa caiga en su esquina,
+          // no en la de la línea (que va centrada con holgura).
+          <span className="relative mx-auto block w-fit max-w-full">
+            <img
+              ref={imgRef}
+              src={src}
+              alt={alt}
+              onLoad={medir}
+              style={ancho !== null ? { width: `${ancho}px` } : undefined}
+              className={clsx(
+                "block max-w-full object-contain",
+                // Con ancho fijado la altura la da la escala; el tope de 70vh
+                // deformaría la imagen, así que solo aplica sin ancho.
+                ancho === null && "max-h-[70vh]",
+              )}
+            />
+            {/* Asa de la esquina: el overlay no recibe eventos, así que solo
+                se dibuja aquí y MarkdownEditor la detecta por coordenadas. */}
+            <span
+              data-image-resize={index}
+              className="absolute bottom-0 right-0 z-20 size-4 cursor-nwse-resize"
+            >
+              <span
+                className={clsx(
+                  "absolute inset-0 border-b-2 border-r-2 border-gus-accent transition-opacity duration-150",
+                  resizando ? "opacity-100" : "opacity-0",
+                )}
+              />
+            </span>
+          </span>
         ) : (
           <span className="block text-gus-muted italic">
             {alt ? spellNodes(`🖼 ${alt}`, spell, "i") : "🖼 imagen"}
@@ -1083,6 +1132,10 @@ export interface InlinePreviewProps {
   caretSel?: TableSelection | null;
   /** Borde de columna bajo el ratón, listo para arrastrar. */
   hoverResize?: TableResizeHover | null;
+  /** Redimensionado de imagen en marcha: línea y ancho en píxeles. */
+  imageResize?: { line: number; width: number } | null;
+  /** Línea cuya asa tiene el ratón encima (o cuyo arrastre va en marcha). */
+  hoverImageLine?: number | null;
   /** Primera línea del bloque cuyo botón «copiar» se acaba de pulsar (✔ 1 s). */
   copiedLine?: number | null;
   /** Primera línea del bloque que tiene el cursor encima (resalta su botón). */
@@ -1110,6 +1163,8 @@ export default function InlinePreview({
   hoveredBar = null,
   tableWidths = null,
   hoverResize = null,
+  imageResize = null,
+  hoverImageLine = null,
   caretAt = null,
   caretSel = null,
   copiedLine = null,
@@ -1226,6 +1281,8 @@ export default function InlinePreview({
               spell={spell}
               caretAt={segment.index === caretLine ? caretAt : null}
               marked={marked}
+              anchoVivo={imageResize?.line === segment.index ? imageResize.width : null}
+              resizando={hoverImageLine === segment.index || imageResize?.line === segment.index}
             />
           );
         }

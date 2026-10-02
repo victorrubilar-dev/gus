@@ -41,6 +41,8 @@ import {
   imageDest,
   imageMarkdown,
   isImagePath,
+  parseImageLine,
+  splitImageAlt,
   type VaultImage,
 } from "../lib/imageLinks";
 import { DRAG_ENTRY_MIME, type DragEntry } from "./FileExplorer";
@@ -251,6 +253,22 @@ interface BlockDrift {
 
 /** Mapa de alturas vacío reutilizable: evita re-renderizar por un Map nuevo. */
 const EMPTY_DRIFT: Map<number, BlockDrift> = new Map();
+
+/** Estado del arrastre de una imagen para redimensionarla (ver `ImageLine`). */
+interface ImageResizeDrag {
+  /** Línea de origen que se está redimensionando. */
+  line: number;
+  startX: number;
+  startY: number;
+  /** Anchura inicial de la imagen (px), para detectar clic sin arrastre. */
+  startW: number;
+  /** Anchura actual (px): es la que se guarda al soltar. */
+  width: number;
+  minW: number;
+  maxW: number;
+  move: (event: globalThis.MouseEvent) => void;
+  up: () => void;
+}
 
 /** Lista vacía de imágenes, para no crear una nueva en cada render. */
 const EMPTY_IMAGES: VaultImage[] = [];
@@ -501,17 +519,25 @@ function PreviewImage({
   const estado = useResolvedImage(src, notePath, vaultPath);
 
   if (estado.fase === "listo") {
+    // El ancho fijado vive en el propio texto alternativo («foto|300», estilo
+    // Obsidian): se saca de aquí y se pinta tal cual. Sin ancho manda el tamaño
+    // con tope de 70vh, como siempre.
+    const { alt: texto, ancho } = splitImageAlt(alt ?? "");
     return (
       <img
         src={estado.url}
-        alt={alt ?? ""}
+        alt={texto}
         loading="lazy"
-        className="my-4 max-h-[70vh] max-w-full rounded-lg border border-gus-border bg-gus-card object-contain"
+        style={ancho !== null ? { width: `${ancho}px` } : undefined}
+        className={clsx(
+          "my-4 max-w-full rounded-lg border border-gus-border bg-gus-card object-contain",
+          ancho === null && "max-h-[70vh]",
+        )}
       />
     );
   }
 
-  const nombre = alt || (src ? decodeImageDest(src) : "");
+  const nombre = splitImageAlt(alt ?? "").alt || (src ? decodeImageDest(src) : "");
 
   if (estado.fase === "fallo") {
     return (
@@ -651,6 +677,10 @@ export default function MarkdownEditor({
   const [blockDrift, setBlockDrift] = useState<Map<number, BlockDrift>>(EMPTY_DRIFT);
   /** Borde de columna bajo el ratón, listo para arrastrar. */
   const [hoverResize, setHoverResize] = useState<TableResizeHover | null>(null);
+  /** Redimensionado de imagen en marcha: línea y ancho en píxeles. */
+  const [imageResize, setImageResize] = useState<{ line: number; width: number } | null>(null);
+  /** Asa de imagen bajo el ratón (o cuyo arrastre va a cuestas), por línea. */
+  const [hoverImageResize, setHoverImageResize] = useState<number | null>(null);
   const prevTableLineRef = useRef(-1);
   /** Celda ancla de la selección: punto fijo de Mayús+flechas / Mayús+clic. */
   const tableAnchorRef = useRef<{ line: number; col: number } | null>(null);
@@ -658,6 +688,9 @@ export default function MarkdownEditor({
   const colWidthsRef = useRef<Map<number, number[]>>(new Map());
   /** Espejo de blockDrift: se lee al hacer scroll y al situar el cursor. */
   const blockDriftRef = useRef<Map<number, BlockDrift>>(blockDrift);
+  /** Espejo de `content`: el arrastre de imagen se suelta desde un escuchador
+   * global montado una sola vez, y su cierre no ve el estado de este render. */
+  const contentRef = useRef(content);
   /** Asas de redimensionar del overlay (se buscan por coordenadas). */
   const tableResizeHandlesRef = useRef<HTMLElement[]>([]);
   /**
@@ -672,6 +705,7 @@ export default function MarkdownEditor({
   useLayoutEffect(() => {
     colWidthsRef.current = tableWidths ?? new Map();
     blockDriftRef.current = blockDrift;
+    contentRef.current = content;
   });
   /** Arrastre de columna en curso: bloque, columna, x inicial y anchuras. */
   const resizeDragRef = useRef<{
@@ -680,6 +714,11 @@ export default function MarkdownEditor({
     startX: number;
     widths: number[];
   } | null>(null);
+  /**
+   * Arrastre de imagen en curso: línea, puntero de partida, anchura inicial y
+   * actual, topes y escuchadores (para soltarlos al terminar).
+   */
+  const imageResizeRef = useRef<ImageResizeDrag | null>(null);
   const rightClickSelRef = useRef<[number, number] | null>(null);
   /**
    * Último rectángulo de celdas que se ha pintado, tal cual. La selección de
@@ -1066,10 +1105,11 @@ export default function MarkdownEditor({
 
   function historySnapshot(): HistorySnapshot {
     const area = textareaRef.current;
+    const texto = contentRef.current;
     return {
-      content,
-      start: area?.selectionStart ?? content.length,
-      end: area?.selectionEnd ?? content.length,
+      content: texto,
+      start: area?.selectionStart ?? texto.length,
+      end: area?.selectionEnd ?? texto.length,
       at: Date.now(),
     };
   }
@@ -1683,6 +1723,102 @@ export default function MarkdownEditor({
   }
 
   /**
+   * Arrastre de la esquina de una imagen de bloque: se cambia su anchura
+   * manteniendo la escala (la altura la fija siempre el propio ratio de la
+   * imagen). El puntero lleva la diagonal: tirar hacia abajo y a la derecha
+   * ensancha y subir/izquierda estrecha, en proporción.
+   *
+   * Mientras se arrastra se pinta con el ancho vivo (estado `imageResize`), así
+   * que la línea y el sobrante de abajo se mueven al momento; al soltar, el
+   * ancho se guarda en la nota como `![alt|300](ruta)`.
+   */
+  function startImageResize(line: number, clientX: number, clientY: number) {
+    const overlay = overlayRef.current;
+    const handle = overlay?.querySelector<HTMLElement>(`[data-image-resize="${line}"]`);
+    const img = handle?.parentElement?.querySelector("img");
+    const lineEl = handle?.closest<HTMLElement>("[data-drift-line]");
+    if (!handle || !img || !lineEl || !img.complete || img.naturalWidth === 0) return;
+
+    const minW = 40;
+    // La imagen no puede ensancharse más que el hueco que la contiene (su
+    // `max-w-full` haría de tope visual y rompería la proporción del asa).
+    const maxW = Math.max(minW, lineEl.getBoundingClientRect().width);
+    const startW = Math.round(img.getBoundingClientRect().width);
+    const drag: ImageResizeDrag = {
+      line,
+      startX: clientX,
+      startY: clientY,
+      startW,
+      width: startW,
+      minW,
+      maxW,
+      move: () => {},
+      up: () => endImageResize(true),
+    };
+    drag.move = (event) => {
+      if (event.buttons === 0) return;
+      const dx = event.clientX - drag.startX;
+      const dy = event.clientY - drag.startY;
+      const width = Math.round(Math.min(drag.maxW, Math.max(drag.minW, drag.startW + (dx + dy) / 2)));
+      if (width === drag.width) return;
+      drag.width = width;
+      // El cursor de redimensionar y el asa se mantienen aunque el puntero se
+      // salga de la imagen: son los del arrastre, no los del contorno.
+      setHoverImageResize(line);
+      setImageResize({ line, width });
+    };
+
+    imageResizeRef.current = drag;
+    window.addEventListener("mousemove", drag.move);
+    window.addEventListener("mouseup", drag.up);
+    setHoverImageResize(line);
+  }
+
+  /** Suelta el arrastre de imagen; con `aplicar` guarda el ancho en la nota. */
+  function endImageResize(aplicar: boolean) {
+    const drag = imageResizeRef.current;
+    if (!drag) return;
+    window.removeEventListener("mousemove", drag.move);
+    window.removeEventListener("mouseup", drag.up);
+    imageResizeRef.current = null;
+    if (aplicar) aplicarAnchoImagen(drag);
+    setImageResize(null);
+  }
+
+  /** Escribe el ancho con el que se ha soltado la imagen: `![alt|300](ruta)`. */
+  function aplicarAnchoImagen(drag: { line: number; width: number; startW: number }) {
+    const area = textareaRef.current;
+    if (!area) return;
+    const lineas = area.value.split("\n");
+    if (drag.line >= lineas.length) return;
+    const partes = parseImageLine(lineas[drag.line]);
+    if (!partes) return;
+    // Un clic sobre el asa sin arrastrar no toca la nota.
+    if (drag.width === drag.startW) return;
+    const nueva = imageMarkdown(partes.alt, partes.destination, drag.width);
+    if (nueva === lineas[drag.line]) return;
+
+    // El cursor/selección se reajusta al cambio de longitud de la línea.
+    let start = 0;
+    for (let i = 0; i < drag.line; i += 1) start += lineas[i].length + 1;
+    const end = start + lineas[drag.line].length;
+    const delta = nueva.length - lineas[drag.line].length;
+    const adjust = (offset: number) =>
+      offset > start && offset < end
+        ? Math.min(offset, start + nueva.length)
+        : offset >= end
+          ? offset + delta
+          : offset;
+    pendingCaretRef.current = [adjust(area.selectionStart), adjust(area.selectionEnd)];
+    // Cada redimensionado es un paso de deshacer propio (no se agrupa con
+    // lo escrito justo antes).
+    forceHistoryRef.current = true;
+    const next = [...lineas];
+    next[drag.line] = nueva;
+    editBody(next.join("\n"));
+  }
+
+  /**
    * Doble clic sobre el borde de una columna: se ajusta a su contenido, como el
    * doble clic de Excel sobre el separador de cabeceras. Se mide la celda más
    * larga de la columna (en una sola línea) y se respeta el ancho disponible.
@@ -1745,6 +1881,28 @@ export default function MarkdownEditor({
     const col = Number(handle.dataset.resizeCol);
     if (Number.isNaN(block) || Number.isNaN(col)) return null;
     return { block, col };
+  }
+
+  /**
+   * Asa de redimensionado de imagen bajo el punto, o la línea a la que
+   * pertenece (null si no se pisa ninguna). Solo cuenta si la imagen ya está
+   * cargada: sin sus píxeles no hay escala que mantener.
+   *
+   * No se usa una lista guardada (como con las celdas): el asa aparece cuando
+   * cada imagen termina de cargar, y eso no pasa por `sourceInfo`. Se busca en
+   * vivo, que con las pocas imágenes de una nota es barato.
+   */
+  function imageResizeHandleAt(clientX: number, clientY: number): number | null {
+    const overlay = overlayRef.current;
+    if (!overlay) return null;
+    const handle = Array.from(overlay.querySelectorAll<HTMLElement>("[data-image-resize]")).find(
+      (element) => insideRect(element, clientX, clientY),
+    );
+    if (!handle) return null;
+    const img = handle.parentElement?.querySelector("img");
+    if (!img || !img.complete || img.naturalWidth === 0) return null;
+    const line = Number(handle.dataset.imageResize);
+    return Number.isInteger(line) ? line : null;
   }
 
   /** Copia el contenido de un bloque de código y enseña el ✔ un segundo. */
@@ -1871,6 +2029,15 @@ export default function MarkdownEditor({
     setHoverResize((prev) =>
       prev && resize && prev.block === resize.block && prev.col === resize.col ? prev : resize,
     );
+
+    // La esquina de una imagen se agarra para cambiar su ancho. Durante el
+    // arrastre se sigue mostrando el asa de esa imagen (como con la columna),
+    // para que el cursor de redimensionado no parpadee si el puntero se sale.
+    const draggedImage = imageResizeRef.current;
+    const imageLine = draggedImage
+      ? draggedImage.line
+      : imageResizeHandleAt(event.clientX, event.clientY);
+    setHoverImageResize((prev) => (prev === imageLine ? prev : imageLine));
   }
 
   /**
@@ -2053,6 +2220,16 @@ export default function MarkdownEditor({
       textareaRef.current?.focus();
       const widths = measureTableColumns(resize.block);
       if (widths) startColumnResize(resize.block, resize.col, event.clientX, widths);
+      return;
+    }
+
+    // Asa de la esquina de una imagen: al arrastrarla se cambia su ancho
+    // manteniendo la escala.
+    const imageLine = imageResizeHandleAt(event.clientX, event.clientY);
+    if (imageLine !== null && !imageResizeRef.current) {
+      event.preventDefault();
+      textareaRef.current?.focus();
+      startImageResize(imageLine, event.clientX, event.clientY);
       return;
     }
 
@@ -4425,7 +4602,9 @@ export default function MarkdownEditor({
       if (extra > 1) next.set(line, { end: line, extra });
     }
     setBlockDrift((prev) => (sameDrift(prev, next) ? prev : next));
-  }, [sourceInfo, inlineActive, tableCols, rowPitch, tableWidths, caretLine]);
+    // `imageResize`: mientras se arrastra el asa, la altura de la línea cambia
+    // en cada movimiento y hay que remesurar el sobrante al momento.
+  }, [sourceInfo, inlineActive, tableCols, rowPitch, tableWidths, caretLine, imageResize]);
 
   // Con un bloque crecido por encima (una tabla envuelta o una imagen de
   // bloque a tamaño real), el overlay ya no coincide con el textarea: el
@@ -4517,6 +4696,7 @@ export default function MarkdownEditor({
     const stop = () => {
       cellDragRef.current = null;
       endTextDrag();
+      endImageResize(true);
     };
     window.addEventListener("mouseup", stop);
     window.addEventListener("blur", stop);
@@ -4940,6 +5120,8 @@ export default function MarkdownEditor({
               hoveredBar={hoverBar}
               tableWidths={tableWidths}
               hoverResize={hoverResize}
+              imageResize={imageResize}
+              hoverImageLine={hoverImageResize}
               caretAt={overlayMark ? (caretMark?.at ?? null) : null}
               caretSel={overlayMark ? (caretMark?.sel ?? null) : null}
               copiedLine={copyDone}
@@ -5055,6 +5237,7 @@ export default function MarkdownEditor({
               // así que el cursor de redimensionado lo pone el propio campo
               // mientras hay un borde de columna justo debajo.
               hoverResize !== null && "cursor-col-resize",
+              hoverImageResize !== null && "cursor-nwse-resize",
               imageDropOver && "ring-2 ring-inset ring-gus-accent",
             )}
           />

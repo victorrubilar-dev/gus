@@ -53,7 +53,7 @@ export function imageAlt(path: string): string {
 }
 
 /** Enlace `![alt](ruta)` listo para pegar en la nota. */
-export function imageMarkdown(alt: string, destination: string): string {
+export function imageMarkdown(alt: string, destination: string, ancho?: number | null): string {
   // Los corchetes cerrarían el texto alternativo y un salto de línea partiría
   // la imagen en dos, así que el texto se deja en una sola línea corriente.
   const cleanAlt = alt
@@ -61,13 +61,31 @@ export function imageMarkdown(alt: string, destination: string): string {
     .replace(/[[\]]/g, "")
     .replace(/\s+/g, " ")
     .trim();
-  return `![${cleanAlt}](${encodeImageDest(destination)})`;
+  // Con ancho, se fija en el texto alternativo («foto|300», como Obsidian): el
+  // destino queda limpio y cualquier visor lo entiende.
+  const size =
+    typeof ancho === "number" && Number.isFinite(ancho) && ancho > 0
+      ? `|${Math.round(ancho)}`
+      : "";
+  return `![${cleanAlt}${size}](${encodeImageDest(destination)})`;
+}
+
+/** Texto alternativo de un enlace de imagen, con su ancho fijado si lo trae. */
+export function splitImageAlt(raw: string): { alt: string; ancho: number | null } {
+  // Solo cuenta un «|300» (o «|300x200») cuando remata la línea: un alt con
+  // una barra entre letras se queda entero.
+  const match = /^(.*?)(?:\|(\d+)(?:x\d+)?)?$/.exec(raw);
+  if (!match || match[2] === undefined) return { alt: raw, ancho: null };
+  const ancho = Number(match[2]);
+  return { alt: match[1], ancho: ancho > 0 ? ancho : null };
 }
 
 /** Texto alternativo y destino de un enlace de imagen. */
 export interface ImageLineParts {
   alt: string;
   destination: string;
+  /** Ancho fijado en píxeles («|300»), o `null` si la imagen va a su tamaño. */
+  ancho: number | null;
 }
 
 const IMAGE_LINE = /^\s{0,3}!\[([^\]\n]*)\]\(([^()\n]+)\)\s*$/;
@@ -76,15 +94,17 @@ const IMAGE_LINE = /^\s{0,3}!\[([^\]\n]*)\]\(([^()\n]+)\)\s*$/;
  * Si la línea entera es un enlace de imagen, sus partes; si no, `null`.
  *
  * Es la imagen de bloque (la que ocupa una línea para sola), la que en el modo
- * edición puede crecer hasta el tamaño de su imagen real. Una imagen con texto
- * a los lados o una referencia `![alt][ref]` no lo son: esas se quedan como
- * miniatura de fila. El destino no admite paréntesis porque `imageMarkdown`
- * los escapa; escrito a mano con ellos, la línea se trata como texto.
+ * edición puede crecer hasta el tamaño de su imagen real y redimensionarse con
+ * su asa. Una imagen con texto a los lados o una referencia `![alt][ref]` no lo
+ * son: esas se quedan como miniatura de fila. El destino no admite
+ * paréntesis porque `imageMarkdown` los escapa; escrito a mano con ellos, la
+ * línea se trata como texto.
  */
 export function parseImageLine(text: string): ImageLineParts | null {
   const match = IMAGE_LINE.exec(text);
   if (!match) return null;
-  return { alt: match[1], destination: match[2] };
+  const { alt, ancho } = splitImageAlt(match[1]);
+  return { alt, destination: match[2], ancho };
 }
 
 /** ¿La línea entera es un enlace de imagen? (Ver `parseImageLine`.) */
