@@ -590,6 +590,49 @@ chequeo(
     .find((l) => l.includes("![Aventura")) ?? "(sin línea)",
 );
 
+// Con zoom de interfaz al 80 %, el arrastre sigue al cursor 1:1 (el ancho se
+// guarda en px de layout, no de pantalla).
+await page.evaluate(() => {
+  document.querySelector("textarea").scrollTop = 0;
+  document.documentElement.style.zoom = "0.8";
+  window.dispatchEvent(new Event("gus:zoom"));
+});
+await page.waitForTimeout(700);
+const asa80 = await page.evaluate(() => {
+  const el = document.querySelector("[data-image-resize]");
+  if (!el) return null;
+  const r = el.getBoundingClientRect();
+  const img = el.parentElement?.querySelector("img");
+  const ir = img?.getBoundingClientRect();
+  return { x: r.left + r.width / 2, y: r.top + r.height / 2, imgW: ir ? Math.round(ir.width) : 0 };
+});
+if (asa80) {
+  await page.mouse.move(asa80.x, asa80.y);
+  await page.waitForTimeout(200);
+  await page.mouse.down();
+  await page.mouse.move(asa80.x + 60, asa80.y + 60, { steps: 6 });
+  await page.waitForTimeout(150);
+  const arrastre80 = await page.evaluate(() => {
+    const linea = document.querySelector("[data-drift-line]");
+    const img = linea?.querySelector("img");
+    return img ? Math.round(img.getBoundingClientRect().width) : 0;
+  });
+  await page.mouse.up();
+  await page.waitForTimeout(250);
+  chequeo(
+    "al 80 % de zoom la imagen sigue al cursor 1:1",
+    Math.abs(arrastre80 - (asa80.imgW + 60)) <= 3,
+    `inicio=${asa80.imgW} arrastre=${arrastre80}, se esperaba ~${asa80.imgW + 60}`,
+  );
+} else {
+  chequeo("al 80 % de zoom la imagen de bloque enseña su asa", false, "sin asa");
+}
+await page.evaluate(() => {
+  document.documentElement.style.zoom = "1";
+  window.dispatchEvent(new Event("gus:zoom"));
+});
+await page.waitForTimeout(500);
+
 console.log("· vista de lectura");
 const lectura = await page.evaluate(() =>
   [...document.querySelectorAll("button")].some((b) =>

@@ -74,7 +74,7 @@ import {
 import { comboFor, comboLabel, matchesCombo, type ShortcutId, type ShortcutMap } from "../lib/shortcuts";
 import { useT } from "../lib/i18n";
 import { charWidthPx, offsetAtPointer } from "../lib/pointerOffset";
-import { toLocalCoord } from "../lib/uiZoom";
+import { toLocalCoord, uiZoomFactor } from "../lib/uiZoom";
 import {
   adjacentTableCell,
   alignTableColumn,
@@ -1739,11 +1739,16 @@ export default function MarkdownEditor({
     const lineEl = handle?.closest<HTMLElement>("[data-drift-line]");
     if (!handle || !img || !lineEl || !img.complete || img.naturalWidth === 0) return;
 
+    // Con zoom de interfaz, los rects y el puntero vienen en px de pantalla
+    // (afectados por el zoom) pero el ancho se guarda y se pinta en px de
+    // layout: sin esta conversión la imagen no seguiría al cursor y al soltar
+    // daría un salto. Todo el arrastre se hace en px de layout.
+    const zoom = uiZoomFactor();
     const minW = 40;
     // La imagen no puede ensancharse más que el hueco que la contiene (su
     // `max-w-full` haría de tope visual y rompería la proporción del asa).
-    const maxW = Math.max(minW, lineEl.getBoundingClientRect().width);
-    const startW = Math.round(img.getBoundingClientRect().width);
+    const maxW = Math.max(minW, Math.round(lineEl.getBoundingClientRect().width / zoom));
+    const startW = Math.round(img.getBoundingClientRect().width / zoom);
     const drag: ImageResizeDrag = {
       line,
       startX: clientX,
@@ -1759,7 +1764,10 @@ export default function MarkdownEditor({
       if (event.buttons === 0) return;
       const dx = event.clientX - drag.startX;
       const dy = event.clientY - drag.startY;
-      const width = Math.round(Math.min(drag.maxW, Math.max(drag.minW, drag.startW + (dx + dy) / 2)));
+      // El delta del puntero es de pantalla: se pasa a layout para que la
+      // imagen siga al cursor 1:1 con cualquier zoom.
+      const delta = toLocalCoord((dx + dy) / 2);
+      const width = Math.round(Math.min(drag.maxW, Math.max(drag.minW, drag.startW + delta)));
       if (width === drag.width) return;
       drag.width = width;
       // El cursor de redimensionar y el asa se mantienen aunque el puntero se
