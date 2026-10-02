@@ -27,12 +27,17 @@ import clsx from "clsx";
 import { Check, ChevronDown, Eye, FileDown, Pencil, X } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { isInsidePath, parentPath, pathWithTitle, safeFileName } from "../lib/fileName";
-import { imageFilters, importFilesIntoVault } from "../lib/importFiles";
+import {
+  imageFilters,
+  importFilesIntoVault,
+  summarizeImageInsert,
+  type ImageInsertResult,
+  type ImportSummary,
+} from "../lib/importFiles";
 import {
   decodeImageDest,
   filterVaultImages,
   imageAlt,
-  imageCandidates,
   imageDest,
   imageMarkdown,
   isImagePath,
@@ -160,6 +165,7 @@ import InlinePreview, {
   type TableSelection,
 } from "./InlinePreview";
 import MermaidDiagram from "./MermaidDiagram";
+import { useResolvedImage } from "./useResolvedImage";
 import EditorContextMenu, {
   type ContextSpell,
   type FormatKind,
@@ -172,14 +178,6 @@ export interface EditorDraft {
   path: string;
   title: string;
   content: string;
-}
-
-/** Qué ha dado de sí meter un lote de imágenes en la nota. */
-export interface ImageInsertResult {
-  /** Imágenes que acabaron enlazadas. */
-  inserted: number;
-  /** Las que no se pudieron copiar ni resolver. */
-  failed: number;
 }
 
 export interface MarkdownEditorHandle {
@@ -240,9 +238,11 @@ const DEFAULT_COL_WIDTH = 48;
 /** Zona de clic de la casilla de tarea (unos cinco caracteres con el relleno). */
 const TASK_CHECKBOX_PX = 36;
 
-/** Alto que una tabla ha ganado al envolver sus celdas: a partir de su última
- *  fila el overlay queda más abajo que el textarea, y hay que compensarlo. */
-interface TableDrift {
+/** Alto que un bloque ha ganado por encima de su markdown: una tabla al
+ *  envolver sus celdas o una imagen de bloque a tamaño real. A partir de su
+ *  última línea el overlay queda más abajo que el texto del textarea, y hay
+ *  que compensarlo (scroll, clic y cursor). */
+interface BlockDrift {
   /** Última línea del bloque de tabla. */
   end: number;
   /** Píxeles de más que ocupa el bloque. */
@@ -250,7 +250,7 @@ interface TableDrift {
 }
 
 /** Mapa de alturas vacío reutilizable: evita re-renderizar por un Map nuevo. */
-const EMPTY_DRIFT: Map<number, TableDrift> = new Map();
+const EMPTY_DRIFT: Map<number, BlockDrift> = new Map();
 
 /** Lista vacía de imágenes, para no crear una nueva en cada render. */
 const EMPTY_IMAGES: VaultImage[] = [];
@@ -481,15 +481,10 @@ const MarkdownBody = lazy(async () => {
   return { default: Preview };
 });
 
-/** Imágenes de la vista previa ya resueltas, para no repetir lecturas. */
-const RESOLVED_IMAGES = new Map<string, string>();
-
 /**
- * Imagen de la vista previa. Las rutas del vault no las entiende el webview
- * (son relativas a la nota o a la raíz), así que se resuelven a datos de
- * imagen con `read_vault_image`, probando primero junto a la nota y después
- * desde la raíz. Mientras carga y si no la encuentra se avisa en el sitio de
- * dejar un hueco roto.
+ * Imagen de la vista previa: mientras carga y si no la encuentra se avisa en
+ * el sitio de dejar un hueco roto. La resolución a datos de imagen vive en
+ * `useResolvedImage`, la misma que pinta las imágenes en el modo edición.
  */
 function PreviewImage({
   src,
@@ -503,60 +498,7 @@ function PreviewImage({
   vaultPath: string | null;
 }) {
   const t = useT();
-  const candidates = useMemo(
-    () => (src ? imageCandidates(src, notePath, vaultPath) : []),
-    [src, notePath, vaultPath],
-  );
-  const directo = src && /^(data:|https?:\/\/)/i.test(src) ? src : null;
-  const key = directo ?? candidates.join("\n");
-
-  const [estado, setEstado] = useState<
-    { fase: "listo"; url: string } | { fase: "carga" } | { fase: "fallo" }
-  >(() => {
-    if (directo) return { fase: "listo", url: directo };
-    const cacheado = key ? RESOLVED_IMAGES.get(key) : undefined;
-    return cacheado ? { fase: "listo", url: cacheado } : { fase: "carga" };
-  });
-
-  useEffect(() => {
-    if (directo) {
-      setEstado((actual) =>
-        actual.fase === "listo" && actual.url === directo ? actual : { fase: "listo", url: directo },
-      );
-      return;
-    }
-    if (candidates.length === 0) {
-      setEstado({ fase: "fallo" });
-      return;
-    }
-
-    const cacheado = RESOLVED_IMAGES.get(key);
-    if (cacheado) {
-      setEstado({ fase: "listo", url: cacheado });
-      return;
-    }
-
-    let cancelado = false;
-    setEstado({ fase: "carga" });
-
-    void (async () => {
-      for (const ruta of candidates) {
-        try {
-          const url = await invoke<string>("read_vault_image", { path: ruta });
-          RESOLVED_IMAGES.set(key, url);
-          if (!cancelado) setEstado({ fase: "listo", url });
-          return;
-        } catch {
-          // Ni una ni otra: se prueba la siguiente candidata.
-        }
-      }
-      if (!cancelado) setEstado({ fase: "fallo" });
-    })();
-
-    return () => {
-      cancelado = true;
-    };
-  }, [key, directo, candidates]);
+  const estado = useResolvedImage(src, notePath, vaultPath);
 
   if (estado.fase === "listo") {
     return (
@@ -646,7 +588,7 @@ function measureTableCols(area: HTMLTextAreaElement | null): number | null {
 }
 
 /** ¿Dos mapas de alturas de bloque dicen lo mismo? (evita re-renderizar) */
-function sameDrift(a: Map<number, TableDrift>, b: Map<number, TableDrift>): boolean {
+function sameDrift(a: Map<number, BlockDrift>, b: Map<number, BlockDrift>): boolean {
   if (a.size !== b.size) return false;
   for (const [key, drift] of a) {
     const other = b.get(key);
@@ -706,7 +648,7 @@ export default function MarkdownEditor({
   /** Cursor y selección absolutos, para que los pinte el overlay. */
   const [caretMark, setCaretMark] = useState<{ at: number; sel: TableSelection } | null>(null);
   /** Alto ganado por cada tabla al envolver sus celdas (por bloque). */
-  const [tableDrift, setTableDrift] = useState<Map<number, TableDrift>>(EMPTY_DRIFT);
+  const [blockDrift, setBlockDrift] = useState<Map<number, BlockDrift>>(EMPTY_DRIFT);
   /** Borde de columna bajo el ratón, listo para arrastrar. */
   const [hoverResize, setHoverResize] = useState<TableResizeHover | null>(null);
   const prevTableLineRef = useRef(-1);
@@ -714,8 +656,8 @@ export default function MarkdownEditor({
   const tableAnchorRef = useRef<{ line: number; col: number } | null>(null);
   /** Espejo de tableWidths para leerlo en los escuchadores del arrastre. */
   const colWidthsRef = useRef<Map<number, number[]>>(new Map());
-  /** Espejo de tableDrift: se lee al hacer scroll y al situar el cursor. */
-  const tableDriftRef = useRef<Map<number, TableDrift>>(tableDrift);
+  /** Espejo de blockDrift: se lee al hacer scroll y al situar el cursor. */
+  const blockDriftRef = useRef<Map<number, BlockDrift>>(blockDrift);
   /** Asas de redimensionar del overlay (se buscan por coordenadas). */
   const tableResizeHandlesRef = useRef<HTMLElement[]>([]);
   /**
@@ -729,7 +671,7 @@ export default function MarkdownEditor({
   // paint, para no escribir en un ref mientras se renderiza.
   useLayoutEffect(() => {
     colWidthsRef.current = tableWidths ?? new Map();
-    tableDriftRef.current = tableDrift;
+    blockDriftRef.current = blockDrift;
   });
   /** Arrastre de columna en curso: bloque, columna, x inicial y anchuras. */
   const resizeDragRef = useRef<{
@@ -752,6 +694,14 @@ export default function MarkdownEditor({
    * el ancla para Mayús+flechas y Supr.
    */
   const cellDragRef = useRef<{ anchor: number; line: number; col: number } | null>(null);
+  /**
+   * Arrastre de selección a mano (ver `startTextDrag`): solo existe mientras
+   * el botón sigue bajo, y guarda sus escuchadores para poder soltarlos.
+   */
+  const textDragRef = useRef<{
+    move: (event: globalThis.MouseEvent) => void;
+    up: () => void;
+  } | null>(null);
   /** Barra «+» de tabla bajo el ratón: las barras solo se enseñan así. */
   const [hoverBar, setHoverBar] = useState<TableBarHover | null>(null);
   const tableBarsRef = useRef<HTMLElement[]>([]);
@@ -893,6 +843,19 @@ export default function MarkdownEditor({
   const [vaultImagesLoading, setVaultImagesLoading] = useState(false);
   /** Arrastrando una imagen del explorador por encima del campo de texto. */
   const [imageDropOver, setImageDropOver] = useState(false);
+  // Aviso de las imágenes recién insertadas desde el menú «/» o soltadas
+  // sobre la nota: el de un arrastre del sistema lo enseña App, que es quien
+  // lo recibe, para que no salgan dos a la vez.
+  const [imageNotice, setImageNotice] = useState<ImportSummary | null>(null);
+  const imageNoticeTimerRef = useRef<number | null>(null);
+
+  function showImageNotice(result: ImageInsertResult) {
+    // Cancelar el diálogo no es un error: no se avisa de nada.
+    if (result.inserted === 0 && result.failed === 0) return;
+    setImageNotice(summarizeImageInsert(result));
+    if (imageNoticeTimerRef.current !== null) window.clearTimeout(imageNoticeTimerRef.current);
+    imageNoticeTimerRef.current = window.setTimeout(() => setImageNotice(null), 8000);
+  }
   /**
    * Imágenes que enseña el selector: dependen de su consulta y de la lista del
    * vault, no del índice recorrido, para que el array no cambie al pulsar ↑↓
@@ -997,10 +960,14 @@ export default function MarkdownEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [menu]);
 
-  // Al desmontar no queda ningún temporizador de la pista colgando.
+  // Al desmontar no queda ningún temporizador suelto (ni el de la pista del
+  // «/» ni el del aviso de imágenes).
   useEffect(() => {
     return () => {
       if (hintTimerRef.current !== null) window.clearTimeout(hintTimerRef.current);
+      if (imageNoticeTimerRef.current !== null) {
+        window.clearTimeout(imageNoticeTimerRef.current);
+      }
     };
   }, []);
 
@@ -1294,9 +1261,9 @@ export default function MarkdownEditor({
     if (!area) return;
 
     const overlay = overlayRef.current;
-    // El overlay es más alto que el textarea cuando una tabla ha envuelto sus
-    // celdas: se le suma lo que ya ha pasado por arriba para que siga entrando
-    // por arriba lo que toca.
+    // El overlay es más alto que el textarea cuando un bloque ha crecido
+    // (tabla envuelta, imagen a tamaño real): se le suma lo que ya ha pasado
+    // por arriba para que siga entrando por arriba lo que toca.
     if (overlay) overlay.scrollTop = area.scrollTop + driftBeforeScroll(area.scrollTop);
 
     const width = area.offsetWidth - area.clientWidth;
@@ -1865,7 +1832,9 @@ export default function MarkdownEditor({
       if (!area) return;
       const at =
         cellOffsetAt(event.clientX, event.clientY) ??
-        offsetAtPointer(area, event.clientX, event.clientY, driftBeforeLine(drag.line));
+        // Fuera de las celdas manda la cuenta geométrica, con el sobrante que
+        // los bloques crecidos llevan por encima del punto (no del ancla).
+        offsetAtPointer(area, event.clientX, event.clientY, driftAtPointer(event.clientY));
       if (at === null) return;
       if (at === area.selectionStart && area.selectionEnd === drag.anchor) return;
       if (at === area.selectionEnd && area.selectionStart === drag.anchor) return;
@@ -1902,6 +1871,131 @@ export default function MarkdownEditor({
     setHoverResize((prev) =>
       prev && resize && prev.block === resize.block && prev.col === resize.col ? prev : resize,
     );
+  }
+
+  /**
+   * Línea de imagen de bloque cuya altura cubre la coordenada vertical del
+   * punto, o `null`. La imagen se pinta con las filas de su imagen real, así
+   * que su rect mide mucho más que la fila que el texto reserva para su
+   * markdown (y se mide solo el alto: la imagen puede ir centrada y dejar
+   * hueco a los lados).
+   */
+  function imageLineAtPoint(clientY: number): number | null {
+    const overlay = overlayRef.current;
+    if (!overlay) return null;
+    for (const element of overlay.querySelectorAll<HTMLElement>("[data-drift-line]")) {
+      const rect = element.getBoundingClientRect();
+      if (clientY < rect.top || clientY > rect.bottom) continue;
+      const line = Number(element.dataset.driftLine);
+      return Number.isInteger(line) ? line : null;
+    }
+    return null;
+  }
+
+  /**
+   * Offset del texto que toca en un punto del ratón, midiendo el overlay (lo
+   * que se ve) en vez del textarea. Devuelve `null` cuando la geometría nativa
+   * ya acierta —el punto no depende de ningún bloque crecido— y entonces manda
+   * el cursor del motor, como siempre.
+   *
+   * Dentro de una imagen de bloque el cursor va a su línea (en el texto esa
+   * imagen ocupa una sola fila, y sin más el clic seguiría hacia las filas de
+   * debajo) y por debajo de un bloque crecido se suma lo que lleva de más.
+   */
+  function overlayOffsetAt(clientX: number, clientY: number): number | null {
+    const area = textareaRef.current;
+    if (!area) return null;
+
+    const imagen = imageLineAtPoint(clientY);
+    if (imagen !== null && blockDriftRef.current.has(imagen)) {
+      const lineas = area.value.split("\n");
+      if (imagen >= lineas.length) return null;
+      const char = charWidthPx(area);
+      const rect = area.getBoundingClientRect();
+      const padLeft = Number.parseFloat(getComputedStyle(area).paddingLeft) || 0;
+      const col = char
+        ? Math.max(
+            0,
+            Math.floor(
+              (toLocalCoord(clientX) - toLocalCoord(rect.left) - padLeft + area.scrollLeft) / char,
+            ),
+          )
+        : 0;
+      let inicio = 0;
+      for (let i = 0; i < imagen; i += 1) inicio += lineas[i].length + 1;
+      return inicio + Math.min(col, lineas[imagen].length);
+    }
+
+    const drift = driftAtPointer(clientY);
+    if (drift <= 0) return null;
+    return offsetAtPointer(area, clientX, clientY, drift);
+  }
+
+  /**
+   * Tras un clic que había que corregir, el motor no arrastra (se le canceló
+   * el suyo): mientras el botón siga bajo, la selección la llevamos nosotros
+   * midiendo el overlay. El mismo compás que el arrastre de celdas de tabla.
+   */
+  function startTextDrag(anchor: number) {
+    const area = textareaRef.current;
+    if (!area) return;
+    endTextDrag();
+
+    const move = (event: globalThis.MouseEvent) => {
+      if (event.buttons === 0) return;
+      const at =
+        overlayOffsetAt(event.clientX, event.clientY) ??
+        offsetAtPointer(area, event.clientX, event.clientY);
+      if (at === null) return;
+      if (at === area.selectionStart && area.selectionEnd === anchor) return;
+      if (at === area.selectionEnd && area.selectionStart === anchor) return;
+      area.setSelectionRange(Math.min(anchor, at), Math.max(anchor, at));
+      handleCaretMove();
+    };
+    const up = () => endTextDrag();
+
+    textDragRef.current = { move, up };
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
+  }
+
+  /** Suelta el arrastre de `startTextDrag` (también al perder el foco). */
+  function endTextDrag() {
+    const drag = textDragRef.current;
+    if (!drag) return;
+    window.removeEventListener("mousemove", drag.move);
+    window.removeEventListener("mouseup", drag.up);
+    textDragRef.current = null;
+  }
+
+  /**
+   * Clic en un punto donde el textarea y el overlay no cuadran: el cursor se
+   * coloca midiendo el overlay y, si se arrastra, la selección la sigue
+   * `startTextDrag`. El clic nativo se cancela solo en ese caso; si el punto
+   * no necesita corrección, no se toca nada.
+   */
+  function colocarCursorTrasClic(event: MouseEvent<HTMLTextAreaElement>) {
+    const at = overlayOffsetAt(event.clientX, event.clientY);
+    if (at === null) return;
+    const area = textareaRef.current;
+    if (!area) return;
+
+    event.preventDefault();
+    area.focus();
+
+    if (event.shiftKey) {
+      // Mayús+clic: la selección crece desde el extremo que no se mueve, como
+      // lo haría el motor si acertara el punto (aquí no lo acierta).
+      const anchor =
+        area.selectionDirection === "backward" ? area.selectionEnd : area.selectionStart;
+      area.setSelectionRange(Math.min(anchor, at), Math.max(anchor, at));
+      handleCaretMove();
+      return;
+    }
+
+    area.setSelectionRange(at, at);
+    startTextDrag(at);
+    handleCaretMove();
   }
 
   function handleOverlayMouseDown(event: MouseEvent<HTMLTextAreaElement>) {
@@ -1965,6 +2059,10 @@ export default function MarkdownEditor({
     const cell = cellAt(event.clientX, event.clientY);
     if (!cell) {
       cellDragRef.current = null;
+      // Si un bloque crecido (tabla envuelta, imagen a tamaño real) hace que el
+      // overlay no cuadre con el textarea, el cursor nativo caería en otra
+      // línea: aquí se coloca midiendo lo que se ve.
+      colocarCursorTrasClic(event);
       return;
     }
 
@@ -2194,7 +2292,9 @@ export default function MarkdownEditor({
     if (!picked) return { inserted: 0, failed: 0 };
 
     const sources = Array.isArray(picked) ? picked : [picked];
-    return insertImageFiles(sources, from);
+    const result = await insertImageFiles(sources, from);
+    showImageNotice(result);
+    return result;
   }
 
   /** Imagen elegida en el selector del vault: se enlaza relativa a la nota. */
@@ -2204,6 +2304,7 @@ export default function MarkdownEditor({
       menu?.kind === "images" ? menu.start : (area?.selectionStart ?? stripFrontmatter(content).length);
     const texto = imageMarkdown(imageAlt(image.name), imageDest(path, image.path));
     replaceRange(start, texto, texto.length);
+    showImageNotice({ inserted: 1, failed: 0 });
   }
 
   /** Entrada del explorador que se arrastra, si es que lo es. */
@@ -4289,9 +4390,10 @@ export default function MarkdownEditor({
     // medición local de arriba).
   }, [sourceInfo, inlineActive, tableCols, zoomTick, fontSize]);
 
-  // Alto que gana cada tabla al envolver sus celdas: a partir de su última fila
-  // el overlay queda más abajo que el textarea, así que se mide para poder
-  // compensarlo (scroll, clic y cursor).
+  // Alto que gana un bloque por encima de su markdown: las tablas al envolver
+  // sus celdas y las líneas de imagen que se pintan a tamaño real. A partir de
+  // su última línea el overlay queda más abajo que el textarea, así que se mide
+  // para poder compensarlo (scroll, clic y cursor).
   //
   // Esta medición depende de que el efecto anterior ya haya pintado los anchos
   // y de que R haya fijado la altura de fila: la cadena de efectos es el
@@ -4300,10 +4402,10 @@ export default function MarkdownEditor({
   useEffect(() => {
     const overlay = overlayRef.current;
     if (!overlay || !inlineActive || tableCols === null) {
-      setTableDrift(EMPTY_DRIFT);
+      setBlockDrift(EMPTY_DRIFT);
       return;
     }
-    const next = new Map<number, TableDrift>();
+    const next = new Map<number, BlockDrift>();
     for (const segment of sourceSegments(sourceInfo, false, tableCols)) {
       if (segment.kind !== "table") continue;
       const element = overlay.querySelector<HTMLElement>(`[data-table-block="${segment.start}"]`);
@@ -4312,24 +4414,35 @@ export default function MarkdownEditor({
       // offsetHeight viene entero: se ignoran los restos de subpíxel.
       if (extra > 1) next.set(segment.start, { end: segment.end, extra });
     }
-    setTableDrift((prev) => (sameDrift(prev, next) ? prev : next));
-  }, [sourceInfo, inlineActive, tableCols, rowPitch, tableWidths]);
+    // Las imágenes de bloque: su sobrante es lo que la línea mide de más
+    // sobre el alto que el textarea reserva para su markdown (medido con el
+    // medidor de la propia línea, que envuelve igual).
+    for (const element of overlay.querySelectorAll<HTMLElement>("[data-drift-line]")) {
+      const line = Number(element.dataset.driftLine);
+      if (!Number.isInteger(line)) continue;
+      const measure = element.querySelector<HTMLElement>("[data-line-measure]");
+      const extra = element.offsetHeight - (measure?.offsetHeight ?? rowPitch);
+      if (extra > 1) next.set(line, { end: line, extra });
+    }
+    setBlockDrift((prev) => (sameDrift(prev, next) ? prev : next));
+  }, [sourceInfo, inlineActive, tableCols, rowPitch, tableWidths, caretLine]);
 
-  // Con una tabla crecida por encima, el overlay ya no coincide con el textarea:
-  // el cursor y la selección los dibuja el overlay (el textarea los pone
+  // Con un bloque crecido por encima (una tabla envuelta o una imagen de
+  // bloque a tamaño real), el overlay ya no coincide con el textarea: el
+  // cursor y la selección los dibuja el overlay (el textarea los pone
   // transparentes) para que no queden descolocados.
   // Con la selección marcándose desde el overlay, el caret y la selección
   // nativos se ocultan (clase «gus-mark-edit»): pasa cuando el cursor está en
   // una tabla, cuando la selección abarca una (la tarjeta manda sobre el texto
-  // crudo) y cuando una tabla de arriba ha crecido y lo dejaría descolocado.
+  // crudo) y cuando un bloque de arriba ha crecido y lo dejaría descolocado.
   const overlayMark =
     !composing &&
     (tableCaret !== null || tableSelection !== null || driftBeforeLine(caretLine) > 0);
 
-  /** Píxeles que las tablas ya superadas dejan más abajo en el overlay. */
+  /** Píxeles que los bloques ya superados dejan más abajo en el overlay. */
   function driftBeforeLine(line: number): number {
     let extra = 0;
-    for (const drift of tableDriftRef.current.values()) {
+    for (const drift of blockDriftRef.current.values()) {
       if (drift.end < line) extra += drift.extra;
     }
     return extra;
@@ -4338,26 +4451,33 @@ export default function MarkdownEditor({
   /** Igual, pero medido sobre el overlay: sirve para compensar el scroll. */
   function driftBeforeScroll(scrollTop: number): number {
     const overlay = overlayRef.current;
-    if (!overlay || tableDriftRef.current.size === 0) return 0;
+    if (!overlay || blockDriftRef.current.size === 0) return 0;
     let extra = 0;
-    for (const [block, drift] of tableDriftRef.current) {
-      const element = overlay.querySelector<HTMLElement>(`[data-table-block="${block}"]`);
+    for (const [block, drift] of blockDriftRef.current) {
+      // Las tablas se identifican por bloque y las imágenes por su línea.
+      const element = overlay.querySelector<HTMLElement>(
+        `[data-table-block="${block}"], [data-drift-line="${block}"]`,
+      );
       if (element && element.offsetTop + element.offsetHeight <= scrollTop) extra += drift.extra;
     }
     return extra;
   }
 
   /**
-   * Desplazamiento que las tablas crecidas añaden a un punto del ratón. El
+   * Desplazamiento que los bloques crecidos añaden a un punto del ratón. El
    * textarea no lo sabe, así que se lo pasamos al cálculo geométrico del offset
    * (el nativo ya acierta por su cuenta).
+   *
+   * El punto se mide desde el borde del área (padding incluido), que es la
+   * misma convención de los `offsetTop` del overlay con los que se compara:
+   * restar el relleno aquí dejaría cada bloque16 px «más abajo» y el clic
+   * justo debajo de uno crecido no lo contaría.
    */
   function driftAtPointer(clientY: number): number {
     const area = textareaRef.current;
-    if (!area || tableDriftRef.current.size === 0) return 0;
+    if (!area || blockDriftRef.current.size === 0) return 0;
     const rect = area.getBoundingClientRect();
-    const padTop = Number.parseFloat(getComputedStyle(area).paddingTop) || 0;
-    const y = toLocalCoord(clientY) - toLocalCoord(rect.top) - padTop + area.scrollTop;
+    const y = toLocalCoord(clientY) - toLocalCoord(rect.top) + area.scrollTop;
     return driftBeforeScroll(y);
   }
 
@@ -4396,6 +4516,7 @@ export default function MarkdownEditor({
   useEffect(() => {
     const stop = () => {
       cellDragRef.current = null;
+      endTextDrag();
     };
     window.addEventListener("mouseup", stop);
     window.addEventListener("blur", stop);
@@ -4823,6 +4944,8 @@ export default function MarkdownEditor({
               caretSel={overlayMark ? (caretMark?.sel ?? null) : null}
               copiedLine={copyDone}
               hoverLine={copyHover}
+              notePath={path}
+              vaultPath={vaultPath ?? null}
             />
           )}
 
@@ -4869,7 +4992,7 @@ export default function MarkdownEditor({
               void insertImagesDropped(
                 [entrada.path],
                 caretAtPoint(event.clientX, event.clientY),
-              );
+              ).then(showImageNotice);
             }}
             onMouseDown={handleOverlayMouseDown}
             onDoubleClick={handleOverlayDoubleClick}
@@ -5021,6 +5144,21 @@ export default function MarkdownEditor({
         <PdfExportDialog title={title} onClose={() => setExportOpen(false)}>
           <MarkdownBody components={previewComponents}>{body}</MarkdownBody>
         </PdfExportDialog>
+      )}
+
+      {imageNotice && (
+        <div
+          role="status"
+          aria-live="polite"
+          className={clsx(
+            "fixed right-4 bottom-4 z-50 max-w-sm rounded-xl border bg-gus-panel px-4 py-3 text-xs shadow-2xl shadow-black/40",
+            imageNotice.ok
+              ? "border-gus-accent/40 text-gus-accent"
+              : "border-amber-400/40 text-amber-300",
+          )}
+        >
+          {imageNotice.message}
+        </div>
       )}
     </div>
   );

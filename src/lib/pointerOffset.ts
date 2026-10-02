@@ -12,15 +12,20 @@ export function offsetAtPointer(
   x: number,
   y: number,
   /**
-   * Píxeles que el overlay lleva de más por encima de `y` (una tabla que ha
-   * envuelto sus celdas). El textarea no los conoce, así que el cálculo
-   * geométrico los suma para no señalar la línea de arriba.
+   * Píxeles que los bloques crecidos (una tabla envuelta, una imagen de bloque
+   * a tamaño real) dejan el punto por debajo de su línea en el overlay: el
+   * punto está más abajo en lo que se ve que en el texto del textarea. Con ese
+   * sobrante el «nativo» no puede (no lo conoce), así que manda la cuenta
+   * geométrica, que lo descuenta para caer en la línea que se ve.
    */
   adjust = 0,
 ): number | null {
+  if (adjust > 0) {
+    return geometricOffset(area, x, y, adjust) ?? nativeOffset(area, x, y);
+  }
   const native = nativeOffset(area, x, y);
   if (native !== null && native <= area.value.length) return native;
-  return geometricOffset(area, x, y, adjust);
+  return geometricOffset(area, x, y, 0);
 }
 
 function nativeOffset(area: HTMLTextAreaElement, x: number, y: number): number | null {
@@ -74,7 +79,10 @@ function geometricOffset(
   const cap = Math.max(1, Math.floor((area.clientWidth - padLeft - padRight) / charWidth));
   const lines = value.split("\n");
 
-  const row = Math.floor((y - rect.top - padTop + area.scrollTop + adjust) / lineHeight);
+  // `adjust` es lo que los bloques crecidos dejan el punto por debajo de su
+  // línea en el overlay: hay que descontarlo para que la fila sea la que toca
+  // en el texto.
+  const row = Math.floor((y - rect.top - padTop + area.scrollTop - adjust) / lineHeight);
   if (row < 0) return 0;
 
   let lineIndex = 0;

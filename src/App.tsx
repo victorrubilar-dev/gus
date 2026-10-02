@@ -32,7 +32,6 @@ import DashboardView from "./components/DashboardView";
 import FileExplorer, { type FileExplorerHandle, type NoteFile } from "./components/FileExplorer";
 import MarkdownEditor, {
   type EditorDraft,
-  type ImageInsertResult,
   type MarkdownEditorHandle,
 } from "./components/MarkdownEditor";
 import SettingsPanel from "./components/SettingsPanel";
@@ -45,6 +44,7 @@ import { isImagePath } from "./lib/imageLinks";
 import {
   importFilesIntoVault,
   relativeFolderLabel,
+  summarizeImageInsert,
   summarizeImport,
   type ImportSummary,
 } from "./lib/importFiles";
@@ -598,20 +598,6 @@ function App({
     setImportNotice(summary);
     if (importNoticeTimerRef.current !== null) window.clearTimeout(importNoticeTimerRef.current);
     importNoticeTimerRef.current = window.setTimeout(() => setImportNotice(null), 8000);
-  }
-
-  /** Frase del aviso tras insertar imágenes en la nota. */
-  function summarizeImageInsert(result: ImageInsertResult): ImportSummary {
-    if (result.inserted === 0) {
-      return { ok: false, message: t("editor.imagesFailed", { count: result.failed }) };
-    }
-
-    const head = t("editor.imagesInserted", { count: result.inserted });
-    if (result.failed === 0) return { ok: true, message: head };
-    return {
-      ok: false,
-      message: `${head} ${t("editor.imagesFailed", { count: result.failed })}`,
-    };
   }
 
   /**

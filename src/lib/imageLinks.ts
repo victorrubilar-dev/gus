@@ -64,6 +64,34 @@ export function imageMarkdown(alt: string, destination: string): string {
   return `![${cleanAlt}](${encodeImageDest(destination)})`;
 }
 
+/** Texto alternativo y destino de un enlace de imagen. */
+export interface ImageLineParts {
+  alt: string;
+  destination: string;
+}
+
+const IMAGE_LINE = /^\s{0,3}!\[([^\]\n]*)\]\(([^()\n]+)\)\s*$/;
+
+/**
+ * Si la línea entera es un enlace de imagen, sus partes; si no, `null`.
+ *
+ * Es la imagen de bloque (la que ocupa una línea para sola), la que en el modo
+ * edición puede crecer hasta el tamaño de su imagen real. Una imagen con texto
+ * a los lados o una referencia `![alt][ref]` no lo son: esas se quedan como
+ * miniatura de fila. El destino no admite paréntesis porque `imageMarkdown`
+ * los escapa; escrito a mano con ellos, la línea se trata como texto.
+ */
+export function parseImageLine(text: string): ImageLineParts | null {
+  const match = IMAGE_LINE.exec(text);
+  if (!match) return null;
+  return { alt: match[1], destination: match[2] };
+}
+
+/** ¿La línea entera es un enlace de imagen? (Ver `parseImageLine`.) */
+export function isImageLine(text: string): boolean {
+  return parseImageLine(text) !== null;
+}
+
 /**
  * Ruta de `toPath` relativa a `fromDir`, con `/` (así lo espera Markdown).
  * Si comparten pocos niveles sube con `../`; si no comparten nada (volumen

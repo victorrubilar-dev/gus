@@ -1,8 +1,20 @@
-import { memo, useMemo, type CSSProperties, type ReactNode, type Ref } from "react";
+import {
+  createContext,
+  memo,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+  type Ref,
+} from "react";
 import clsx from "clsx";
 import { Check, Copy, Plus } from "lucide-react";
 import type { SpellFn } from "../lib/spellCheck";
 import { codeBlocks } from "../lib/codeBlocks";
+import { parseImageLine } from "../lib/imageLinks";
 import {
   computeTableMerges,
   delimiterAlign,
@@ -14,6 +26,7 @@ import {
   type TableCellSpan,
 } from "../lib/tableLayout";
 import { useT } from "../lib/i18n";
+import { useResolvedImage } from "./useResolvedImage";
 
 export interface SourceLine {
   text: string;
@@ -118,6 +131,55 @@ function spellNodes(text: string, spell: SpellFn | null, key: string): ReactNode
   return nodes;
 }
 
+/**
+ * Nota y vault que la imagen de una línea necesita para resolverse: se pasan
+ * por contexto porque `inlineNodes` es una función pura que se llama desde
+ * varias capas (líneas, celdas de tabla) y enhebrarla por todas costaría caro.
+ */
+const ImageNoteContext = createContext<{ notePath: string; vaultPath: string | null }>({
+  notePath: "",
+  vaultPath: null,
+});
+
+/**
+ * Imagen renderizada dentro de una línea del modo edición.
+ *
+ * Ocupa justo la altura de la fila: la capa visible del overlay es absoluta y
+ * recorta, así que lo que sobresalga no desplaza a las líneas de debajo ni
+ * descuadra el texto del textarea. Mientras carga, y si no se encuentra, se
+ * queda el «🖼 nombre» de siempre.
+ */
+function InlineImage({
+  destination,
+  alt,
+  spell,
+  nodeKey,
+}: {
+  destination: string;
+  alt: string;
+  spell: SpellFn | null;
+  nodeKey: string;
+}) {
+  const { notePath, vaultPath } = useContext(ImageNoteContext);
+  const estado = useResolvedImage(destination, notePath, vaultPath);
+
+  if (estado.fase === "listo") {
+    return (
+      <img
+        src={estado.url}
+        alt={alt}
+        className="inline-block h-[var(--gus-row-h)] max-w-[160px] object-contain align-top"
+      />
+    );
+  }
+
+  return (
+    <span className="text-gus-muted italic">
+      {alt ? spellNodes(`🖼 ${alt}`, spell, nodeKey) : "🖼 imagen"}
+    </span>
+  );
+}
+
 function inlineNodes(text: string, spell: SpellFn | null, depth = 0): ReactNode {
   if (depth > 4 || text === "") return spellNodes(text, spell, `d${depth}`);
 
@@ -174,11 +236,16 @@ function inlineNodes(text: string, spell: SpellFn | null, depth = 0): ReactNode 
         const close = tail.indexOf("](", 2);
         const end = tail.indexOf(")", close + 2);
         const alt = tail.slice(2, close);
+        const destination = tail.slice(close + 2, end);
         consumed = end + 1;
         node = (
-          <span key={key} className="text-gus-muted italic">
-            {alt ? spellNodes(`🖼 ${alt}`, spell, `a${key}`) : "🖼 imagen"}
-          </span>
+          <InlineImage
+            key={key}
+            destination={destination}
+            alt={alt}
+            spell={spell}
+            nodeKey={`a${key}`}
+          />
         );
         break;
       }
@@ -686,6 +753,60 @@ interface CodeBlockLineInfo {
   text: string;
 }
 
+/**
+ * Pinta una línea troceada donde van el cursor y el texto seleccionado. Cada
+ * trozo se dibuja como siempre (resaltado, sintaxis, corrector): el overlay
+ * puede pintar la marca cuando el textarea no puede, porque un bloque de arriba
+ * (una tabla envuelta o una imagen a tamaño real) ha crecido y su cursor
+ * quedaría descolocado.
+ */
+function markUpNodes(
+  text: string,
+  marked: TableSelection | null,
+  caretAt: number | null,
+  render: (piece: string) => ReactNode,
+): ReactNode {
+  const from = marked ? Math.max(0, Math.min(marked.start, text.length)) : 0;
+  const to = marked ? Math.max(from, Math.min(marked.end, text.length)) : 0;
+  const at = caretAt === null ? -1 : Math.max(0, Math.min(caretAt, text.length));
+  if (at < 0 && to <= from) return render(text);
+
+  // `end` marca hasta dónde avanza el flujo tras insertar el nodo: el de la
+  // selección trae ya dentro el texto de su trozo, así que hay que saltarlo
+  // entero (si no, el resto se volvería a pintar desde el principio del
+  // trozo y la línea saldría duplicada «al costado»).
+  const marks: { at: number; end: number; node: ReactNode }[] = [];
+  if (at >= 0) {
+    marks.push({ at, end: at, node: <span key="caret" className="gus-cell-caret" /> });
+  }
+  if (to > from) {
+    marks.push({
+      at: from,
+      end: to,
+      node: (
+        <span key="mark" className="rounded-[2px] bg-gus-accent/30">
+          {render(text.slice(from, to))}
+        </span>
+      ),
+    });
+  }
+  marks.sort((a, b) => a.at - b.at);
+
+  const nodes: ReactNode[] = [];
+  let cursor = 0;
+  for (const mark of marks) {
+    if (mark.at > cursor) {
+      nodes.push(<span key={`t${cursor}`}>{render(text.slice(cursor, mark.at))}</span>);
+    }
+    nodes.push(mark.node);
+    cursor = Math.max(cursor, mark.end);
+  }
+  if (cursor < text.length) {
+    nodes.push(<span key={`t${cursor}`}>{render(text.slice(cursor))}</span>);
+  }
+  return <>{nodes}</>;
+}
+
 interface PreviewLineProps {
   text: string;
   code: boolean;
@@ -734,50 +855,12 @@ const PreviewLine = memo(function PreviewLine({
   /**
    * Pinta la línea troceada donde van el cursor y el texto seleccionado. Cada
    * trozo se dibuja como siempre (resaltado, sintaxis, corrector): el overlay
-   * puede pintar la marca cuando el textarea no puede, porque una tabla de
-   * arriba ha crecido y su cursor quedaría descolocado.
+   * puede pintar la marca cuando el textarea no puede, porque un bloque de
+   * arriba (una tabla envuelta o una imagen a tamaño real) ha crecido y su
+   * cursor quedaría descolocado.
    */
-  const markUp = (render: (piece: string) => ReactNode): ReactNode => {
-    const from = marked ? Math.max(0, Math.min(marked.start, text.length)) : 0;
-    const to = marked ? Math.max(from, Math.min(marked.end, text.length)) : 0;
-    const at = caretAt === null ? -1 : Math.max(0, Math.min(caretAt, text.length));
-    if (at < 0 && to <= from) return render(text);
-
-    // `end` marca hasta dónde avanza el flujo tras insertar el nodo: el de la
-    // selección trae ya dentro el texto de su trozo, así que hay que saltarlo
-    // entero (si no, el resto se volvería a pintar desde el principio del
-    // trozo y la línea saldría duplicada «al costado»).
-    const marks: { at: number; end: number; node: ReactNode }[] = [];
-    if (at >= 0) {
-      marks.push({ at, end: at, node: <span key="caret" className="gus-cell-caret" /> });
-    }
-    if (to > from) {
-      marks.push({
-        at: from,
-        end: to,
-        node: (
-          <span key="mark" className="rounded-[2px] bg-gus-accent/30">
-            {render(text.slice(from, to))}
-          </span>
-        ),
-      });
-    }
-    marks.sort((a, b) => a.at - b.at);
-
-    const nodes: ReactNode[] = [];
-    let cursor = 0;
-    for (const mark of marks) {
-      if (mark.at > cursor) {
-        nodes.push(<span key={`t${cursor}`}>{render(text.slice(cursor, mark.at))}</span>);
-      }
-      nodes.push(mark.node);
-      cursor = Math.max(cursor, mark.end);
-    }
-    if (cursor < text.length) {
-      nodes.push(<span key={`t${cursor}`}>{render(text.slice(cursor))}</span>);
-    }
-    return <>{nodes}</>;
-  };
+  const markUp = (render: (piece: string) => ReactNode): ReactNode =>
+    markUpNodes(text, marked, caretAt, render);
 
   // Fondo continuo del bloque con las esquinas redondeadas arriba y abajo,
   // pero separado de los bordes del editor como la tarjeta de la vista
@@ -869,6 +952,109 @@ const PreviewLine = memo(function PreviewLine({
   );
 });
 
+/**
+ * Línea que es entera una imagen: se pinta **a tamaño real**, como en la vista
+ * de lectura, y ocupa las filas que le tocan (las que mida una vez cargada).
+ *
+ * Al crecer por encima de su markdown, el resto del overlay baja por el flujo
+ * y deja de cuadrar con el textarea: MarkdownEditor mide ese sobrante con
+ * `data-drift-line` (contra `data-line-measure`, que replica el alto que el
+ * textarea reserva para la línea) y compensa scroll, clic y cursor, igual que
+ * con las tablas envueltas. Si la línea tiene el cursor, su markdown se pinta
+ * arriba para poder editarlo y la imagen ocupa el resto.
+ */
+const ImageLine = memo(function ImageLine({
+  text,
+  index,
+  rowPitch,
+  caret,
+  spell,
+  caretAt = null,
+  marked = null,
+}: {
+  text: string;
+  /** Número de línea de origen, con el que se mide el sobrante. */
+  index: number;
+  rowPitch: number;
+  caret: boolean;
+  spell: SpellFn | null;
+  caretAt?: number | null;
+  marked?: TableSelection | null;
+}) {
+  const { notePath, vaultPath } = useContext(ImageNoteContext);
+  const partes = parseImageLine(text);
+  const destino = partes?.destination ?? "";
+  const estado = useResolvedImage(destino, notePath, vaultPath);
+  const src = estado.fase === "listo" ? estado.url : null;
+
+  // Altura a la que la imagen queda renderizada (con sus topes de ancho y de
+  // 70vh ya aplicados): de ella salen las filas que la línea ocupa. Mientras
+  // carga, o si no existe, la línea se queda en su fila.
+  const imgRef = useRef<HTMLImageElement | null>(null);
+  const [medida, setMedida] = useState<{ src: string; alto: number } | null>(null);
+  const alto = src && medida?.src === src ? medida.alto : 0;
+  const filasImagen = alto > 0 ? Math.max(1, Math.ceil(alto / rowPitch)) : 1;
+  const filas = filasImagen + (caret ? 1 : 0);
+
+  const medir = () => {
+    const el = imgRef.current;
+    if (!src || !el) return;
+    const altoAhora = el.getBoundingClientRect().height;
+    setMedida((prev) =>
+      prev && prev.src === src && prev.alto === altoAhora ? prev : { src, alto: altoAhora },
+    );
+  };
+
+  // Una imagen que ya venía cacheada puede montarse sin disparar `onLoad`:
+  // se mide igual al aparecer en el DOM.
+  useEffect(() => {
+    const el = imgRef.current;
+    if (src && el?.complete && el.naturalWidth > 0) medir();
+    // `medir` lee `src` y `imgRef` del cierre, que es lo que cambia aquí.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [src]);
+
+  const alt = partes?.alt ?? "";
+
+  return (
+    <div
+      className="relative min-h-[var(--gus-row-h)]"
+      data-drift-line={index}
+      style={filas > 1 ? { minHeight: filas * rowPitch } : undefined}
+    >
+      {/* Medidor: el alto que el textarea reserva para esta línea (su markdown
+          envuelve igual, porque es el mismo texto en el mismo ancho). */}
+      <span data-line-measure className="block invisible whitespace-break-spaces break-words">
+        {text || "\u200B"}
+      </span>
+
+      {/* Capa visible: absoluta y recortada, como en el resto de líneas. */}
+      <span className="absolute inset-0 block overflow-hidden">
+        {caret && (
+          <span className="block whitespace-break-spaces break-words">
+            {markUpNodes(text, marked, caretAt, (piece) =>
+              spell ? spellNodes(piece, spell, "c") : piece,
+            )}
+          </span>
+        )}
+        {src ? (
+          <img
+            ref={imgRef}
+            src={src}
+            alt={alt}
+            onLoad={medir}
+            className="mx-auto block max-h-[70vh] max-w-full object-contain"
+          />
+        ) : (
+          <span className="block text-gus-muted italic">
+            {alt ? spellNodes(`🖼 ${alt}`, spell, "i") : "🖼 imagen"}
+          </span>
+        )}
+      </span>
+    </div>
+  );
+});
+
 export interface InlinePreviewProps {
   lines: SourceLine[];
   caretLine: number;
@@ -901,6 +1087,10 @@ export interface InlinePreviewProps {
   copiedLine?: number | null;
   /** Primera línea del bloque que tiene el cursor encima (resalta su botón). */
   hoverLine?: number | null;
+  /** Nota en la que se edita: con ella y `vaultPath` se resuelven las imágenes. */
+  notePath?: string;
+  /** Raíz del vault (null = aún sin vault) para resolver las imágenes. */
+  vaultPath?: string | null;
 }
 
 export default function InlinePreview({
@@ -924,6 +1114,8 @@ export default function InlinePreview({
   caretSel = null,
   copiedLine = null,
   hoverLine = null,
+  notePath = "",
+  vaultPath = null,
 }: InlinePreviewProps) {
   // La interlínea real la fija MarkdownEditor (medida sobre el textarea): al
   // escalar, el motor redondea las filas a píxeles enteros y el overlay debe
@@ -939,6 +1131,10 @@ export default function InlinePreview({
     () => sourceSegments(lines, raw, tableCols),
     [lines, raw, tableCols],
   );
+
+  // Nota y vault de las imágenes de las líneas: memoizados para que los
+  // InlineImage no se repinten en cada repintado del overlay.
+  const imageCtx = useMemo(() => ({ notePath, vaultPath }), [notePath, vaultPath]);
 
   // Cada línea sabe a qué bloque de código pertenece: así el fondo sale
   // continuo (primera/última línea redondeadas) y el botón «copiar» solo se
@@ -972,12 +1168,13 @@ export default function InlinePreview({
   }, [lines]);
 
   return (
-    <div
-      ref={overlayRef}
-      aria-hidden="true"
-      style={rootStyle}
-      className="gus-source-overlay pointer-events-none absolute inset-y-0 left-0 overflow-hidden bg-gus-bg px-10 py-4 font-mono text-sm"
-    >
+    <ImageNoteContext.Provider value={imageCtx}>
+      <div
+        ref={overlayRef}
+        aria-hidden="true"
+        style={rootStyle}
+        className="gus-source-overlay pointer-events-none absolute inset-y-0 left-0 overflow-hidden bg-gus-bg px-10 py-4 font-mono text-sm"
+      >
       {segments.map((segment) => {
         if (segment.kind === "table") {
           return (
@@ -1005,7 +1202,6 @@ export default function InlinePreview({
           );
         }
 
-        const block = blockLines.get(segment.index);
         const lineStart = offsets[segment.index];
         const lineLen = lines[segment.index].text.length;
         // La selección se recorta a esta línea: el overlay pinta solo su trozo.
@@ -1015,12 +1211,32 @@ export default function InlinePreview({
               end: Math.max(0, Math.min(caretSel.end - lineStart, lineLen)),
             }
           : null;
+
+        const linea = lines[segment.index];
+        // Una línea que es entera una imagen se pinta a tamaño real (y no en
+        // modo fuente, donde va el markdown tal cual como en el textarea).
+        if (!raw && !linea.code && parseImageLine(linea.text)) {
+          return (
+            <ImageLine
+              key={segment.index}
+              text={linea.text}
+              index={segment.index}
+              rowPitch={rowHeight}
+              caret={segment.index === caretLine}
+              spell={spell}
+              caretAt={segment.index === caretLine ? caretAt : null}
+              marked={marked}
+            />
+          );
+        }
+
+        const block = blockLines.get(segment.index);
         return (
           <PreviewLine
             key={segment.index}
-            text={lines[segment.index].text}
-            code={lines[segment.index].code}
-            fence={lines[segment.index].fence}
+            text={linea.text}
+            code={linea.code}
+            fence={linea.fence}
             caret={!raw && segment.index === caretLine}
             raw={raw}
             hint={slashHint}
@@ -1033,6 +1249,7 @@ export default function InlinePreview({
           />
         );
       })}
-    </div>
+      </div>
+    </ImageNoteContext.Provider>
   );
 }

@@ -8,7 +8,9 @@ import {
   imageDest,
   imageFolderLabel,
   imageMarkdown,
+  isImageLine,
   isImagePath,
+  parseImageLine,
   relativePath,
   type VaultImage,
 } from "./imageLinks";
@@ -162,5 +164,34 @@ describe("clase de archivo", () => {
     expect(isImagePath("/vault/foto.jpeg")).toBe(true);
     expect(isImagePath("/vault/nota.md")).toBe(false);
     expect(isImagePath("/vault/manual.pdf")).toBe(false);
+  });
+});
+
+describe("línea que es entera una imagen", () => {
+  it("lee el texto alternativo y el destino", () => {
+    expect(parseImageLine("![Aventura](vault/Aventura.png)")).toEqual({
+      alt: "Aventura",
+      destination: "vault/Aventura.png",
+    });
+    // El destino viene escapado por imageMarkdown: se deja tal cual (lo
+    // descodifica `decodeImageDest` al resolver la imagen).
+    expect(parseImageLine(imageMarkdown("cumpleaños", "/vault/cumplea 1.png"))).toEqual({
+      alt: "cumpleaños",
+      destination: "/vault/cumplea%201.png",
+    });
+    expect(parseImageLine("  ![subida](../fotos/subida.png)  ")).toEqual({
+      alt: "subida",
+      destination: "../fotos/subida.png",
+    });
+  });
+
+  it("no confunde con texto alrededor ni con otras sintaxis", () => {
+    expect(parseImageLine("hola ![foto](a.png) adiós")).toBeNull();
+    expect(parseImageLine("# Título ![foto](a.png)")).toBeNull();
+    expect(parseImageLine("![foto][referencia]")).toBeNull();
+    expect(parseImageLine("![foto](ruta con paréntesis (1).png)")).toBeNull();
+    expect(parseImageLine("no es imagen")).toBeNull();
+    expect(isImageLine("![foto](a.png)")).toBe(true);
+    expect(isImageLine("![foto](a.png) y texto")).toBe(false);
   });
 });

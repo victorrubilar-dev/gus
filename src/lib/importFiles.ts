@@ -80,6 +80,28 @@ export interface ImportSummary {
   message: string;
 }
 
+/** Qué ha dado de sí meter un lote de imágenes en la nota. */
+export interface ImageInsertResult {
+  /** Imágenes que acabaron enlazadas. */
+  inserted: number;
+  /** Las que no se pudieron copiar ni resolver. */
+  failed: number;
+}
+
+/** Frase del aviso tras insertar imágenes en la nota. */
+export function summarizeImageInsert(result: ImageInsertResult): ImportSummary {
+  if (result.inserted === 0) {
+    return { ok: false, message: activeT("editor.imagesFailed", { count: result.failed }) };
+  }
+
+  const head = activeT("editor.imagesInserted", { count: result.inserted });
+  if (result.failed === 0) return { ok: true, message: head };
+  return {
+    ok: false,
+    message: `${head} ${activeT("editor.imagesFailed", { count: result.failed })}`,
+  };
+}
+
 /**
  * Frase corta para avisar del resultado: cuántos entraron, en qué carpeta y,
  * si hubo, el motivo (solo los distintos, que un lote grande dice lo mismo).

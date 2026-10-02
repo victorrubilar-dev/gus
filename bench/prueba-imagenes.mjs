@@ -6,13 +6,17 @@
 // Cubre las tres vías: el menú «/» → imagen del vault (con buscador y
 // miniaturas), el menú «/» → imagen del equipo (diálogo simulado) y el
 // arrastre de archivos sobre el editor, además de la vista de lectura.
+import { readFileSync } from "node:fs";
 import { chromium } from "playwright-core";
 
 const EXECUTABLE = "/home/korossuh/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome";
-const URL = "http://localhost:5199/bench/index.html";
+const BANCO_URL = "http://localhost:5199/bench/index.html";
 
-// PNG de 1×1 px con un píxel rojo: vale como miniatura y como imagen real.
-const IMG1 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+// PNG real de 128×128 (el icono de la app): con dimensiones de verdad se puede
+// comprobar que en el modo edición la imagen ocupa su tamaño y no una tira.
+const IMG1 = `data:image/png;base64,${readFileSync(
+  new URL("../src-tauri/icons/128x128.png", import.meta.url),
+).toString("base64")}`;
 
 let fallos = 0;
 let total = 0;
@@ -112,7 +116,7 @@ await page.addInitScript(
   [IMG1],
 );
 
-await page.goto(URL);
+await page.goto(BANCO_URL);
 const montado = await page
   .waitForSelector("textarea", { timeout: 15000 })
   .then(() => true)
@@ -220,6 +224,15 @@ chequeo(
 );
 chequeo("no deja restos de la consulta", !valor.includes("/ima") && !valor.includes("ima]"), valor.slice(-80));
 
+const avisoSelector = await page.evaluate(() =>
+  [...document.querySelectorAll('[role="status"]')].map((el) => el.textContent ?? "").join(" | "),
+);
+chequeo(
+  "avisa «Se insertó 1 imagen» al elegir del selector",
+  avisoSelector.includes("Se insertó 1 imagen"),
+  avisoSelector,
+);
+
 console.log("· regresión: la consulta no se queda pegada");
 await teclear("\n/cita");
 await page.keyboard.press("Enter");
@@ -297,6 +310,183 @@ chequeo(
 chequeo(
   "el anillo de soltar desaparece",
   !(await page.evaluate(() => document.querySelector("textarea").className.includes("ring-gus-accent"))),
+);
+
+const avisoDrop = await page.evaluate(() =>
+  [...document.querySelectorAll('[role="status"]')].map((el) => el.textContent ?? "").join(" | "),
+);
+chequeo(
+  "avisa «Se insertó 1 imagen» al soltar del explorador",
+  avisoDrop.includes("Se insertó 1 imagen"),
+  avisoDrop,
+);
+
+console.log("· modo edición: la imagen a tamaño real");
+// Cursor al principio con un clic real (un evento «select» sintético no arrastra
+// el estado de React): la línea de la imagen deja de ser la del cursor y el
+// overlay debe pintar la imagen completa.
+const puntoInicial = await page.evaluate(() => {
+  const overlay = document.querySelector(".gus-source-overlay");
+  const primera = [...overlay.children].find((el) => el.tagName === "DIV");
+  const r = primera.getBoundingClientRect();
+  return { x: r.left + 120, y: r.top + 8 };
+});
+await page.mouse.click(puntoInicial.x, puntoInicial.y);
+await page.waitForTimeout(700);
+
+const edicion = await page.evaluate(() => {
+  const overlay = document.querySelector(".gus-source-overlay");
+  if (!overlay) return { overlay: false };
+  const lineas = [...overlay.children].filter((el) => el.tagName === "DIV");
+  const fila = lineas.findIndex((el) => el.matches("[data-drift-line]"));
+  if (fila < 0) return { overlay: true, fila: -1 };
+  const linea = lineas[fila];
+  const img = linea.querySelector("img");
+  const rowH = parseFloat(getComputedStyle(overlay).getPropertyValue("--gus-row-h"));
+  const alto = linea.getBoundingClientRect().height;
+  const sig = lineas[fila + 1]?.getBoundingClientRect() ?? null;
+  return {
+    overlay: true,
+    rowH,
+    alto: Math.round(alto),
+    multipoDeFila: Math.abs(alto - Math.round(alto / rowH) * rowH) <= 1,
+    imgAlto: img ? Math.round(img.getBoundingClientRect().height) : 0,
+    imgCargada: img ? img.naturalWidth > 0 && img.src.startsWith("data:image/png") : false,
+    hueco: sig ? Math.round(sig.top - linea.getBoundingClientRect().bottom) : null,
+  };
+});
+chequeo(
+  "en modo edición la imagen se pinta a tamaño real",
+  edicion.overlay && edicion.imgCargada && edicion.imgAlto >= 100,
+  JSON.stringify(edicion),
+);
+chequeo(
+  "la línea ocupa sus filas y la de debajo sigue pegada",
+  edicion.alto > edicion.rowH * 2 && edicion.multipoDeFila && Math.abs(edicion.hueco ?? 99) <= 1,
+  `alto=${edicion.alto} fila=${edicion.rowH} hueco=${edicion.hueco}`,
+);
+await page.screenshot({ path: "/tmp/opencode/edicion.png" });
+
+// Sobre la imagen: su línea lleva el cursor, el markdown se pinta arriba para
+// poder editarlo y la imagen sigue debajo (la línea crece una fila).
+const puntoImagen = await page.evaluate(() => {
+  const linea = document.querySelector("[data-drift-line]");
+  const r = linea.getBoundingClientRect();
+  return { x: r.left + r.width / 2, y: r.top + (r.height * 3) / 4 };
+});
+await page.mouse.click(puntoImagen.x, puntoImagen.y);
+await page.waitForTimeout(400);
+const conCursor = await page.evaluate(() => {
+  const overlay = document.querySelector(".gus-source-overlay");
+  const area = document.querySelector("textarea");
+  const linea = overlay.querySelector("[data-drift-line]");
+  const pintado = [...linea.children].find((h) => h.className.includes("absolute"));
+  const lineas = area.value.split("\n");
+  const cursorLinea = area.value.slice(0, area.selectionStart).split("\n").length - 1;
+  const rowH = parseFloat(getComputedStyle(overlay).getPropertyValue("--gus-row-h"));
+  return {
+    cursorLinea,
+    cursorEnImagen: (lineas[cursorLinea] ?? "").includes("![Aventura]"),
+    crudoVisible: pintado ? pintado.innerText.includes("![Aventura]") : false,
+    imgs: linea.querySelectorAll("img").length,
+    filas: linea.getBoundingClientRect().height / rowH,
+  };
+});
+chequeo(
+  "al pulsar la imagen se ve su markdown arriba y la imagen debajo",
+  conCursor.cursorEnImagen &&
+    conCursor.crudoVisible &&
+    conCursor.imgs >= 1 &&
+    conCursor.filas >= 7,
+  JSON.stringify({ ...conCursor, filas: Math.round(conCursor.filas * 10) / 10 }),
+);
+
+console.log("· compensación de la imagen crecida (clic, arrastre y scroll)");
+// Clic sobre la línea que viene justo debajo de la imagen: el textarea cree
+// que esa línea está N filas más arriba, así que tiene que mandar el drift.
+const puntoClic = await page.evaluate(() => {
+  const overlay = document.querySelector(".gus-source-overlay");
+  const lineas = [...overlay.children].filter((el) => el.tagName === "DIV");
+  const fila = lineas.findIndex((el) => el.matches("[data-drift-line]"));
+  const r = lineas[fila + 1].getBoundingClientRect();
+  return { x: r.left + 60, y: r.top + r.height / 2 };
+});
+const lineaEsperada = await page.evaluate(() => {
+  const el = document.querySelector("textarea");
+  return el.value.split("\n").findIndex((texto) => texto.includes("![Aventura]")) + 1;
+});
+await page.mouse.click(puntoClic.x, puntoClic.y);
+await page.waitForTimeout(300);
+const trasClic = await page.evaluate(() => {
+  const el = document.querySelector("textarea");
+  const antes = el.value.slice(0, el.selectionStart);
+  return antes.split("\n").length - 1;
+});
+chequeo(
+  "el clic bajo la imagen cae en su línea, no en una anterior",
+  trasClic === lineaEsperada,
+  `línea ${trasClic}, se esperaba ${lineaEsperada}`,
+);
+
+// El motor no arrastra con la geometría del overlay (se le canceló su clic):
+// mientras el botón sigue bajo, la selección la lleva el editor. El punto se
+// vuelve a medir: al irse el cursor de la imagen, su línea encoge una fila y
+// lo que queda debajo sube.
+const puntoArrastre = await page.evaluate(() => {
+  const overlay = document.querySelector(".gus-source-overlay");
+  const lineas = [...overlay.children].filter((el) => el.tagName === "DIV");
+  const fila = lineas.findIndex((el) => el.matches("[data-drift-line]"));
+  const r = lineas[fila + 1].getBoundingClientRect();
+  return { x: r.left + 60, y: r.top + r.height / 2 };
+});
+await page.mouse.move(puntoArrastre.x, puntoArrastre.y);
+await page.mouse.down();
+await page.mouse.move(puntoArrastre.x, puntoArrastre.y + edicion.rowH, { steps: 6 });
+await page.mouse.up();
+await page.waitForTimeout(300);
+const trasArrastre = await page.evaluate(() => {
+  const el = document.querySelector("textarea");
+  const value = el.value;
+  const total = value.split("\n").length;
+  return {
+    inicio: value.slice(0, el.selectionStart).split("\n").length - 1,
+    fin: total - value.slice(el.selectionEnd).split("\n").length,
+    seleccion: el.selectionEnd - el.selectionStart,
+  };
+});
+chequeo(
+  "el arrastre bajo la imagen selecciona hasta la línea de destino",
+  trasArrastre.inicio === lineaEsperada &&
+    trasArrastre.fin === lineaEsperada + 1 &&
+    trasArrastre.seleccion > 0,
+  `${JSON.stringify(trasArrastre)}; se esperaba desde la línea ${lineaEsperada}`,
+);
+
+// El editor tiene que tener scroll para probarlo: se alarga la nota.
+await area();
+await page.keyboard.type("\n".repeat(60));
+await page.waitForTimeout(400);
+await page.evaluate(() => {
+  const el = document.querySelector("textarea");
+  el.scrollTop = el.scrollHeight;
+});
+await page.waitForTimeout(500);
+const alFondo = await page.evaluate(() => {
+  const overlay = document.querySelector(".gus-source-overlay");
+  const lineas = [...overlay.children].filter((el) => el.tagName === "DIV");
+  const ultima = lineas[lineas.length - 1];
+  return {
+    // Hueco entre el borde inferior del overlay y la última línea: con el
+    // scroll compensado es solo su relleno (16 px); si no llegara, es negativo.
+    hueco: Math.round(overlay.getBoundingClientRect().bottom - ultima.getBoundingClientRect().bottom),
+    scrollArea: document.querySelector("textarea").scrollTop,
+    scrollOverlay: overlay.scrollTop,
+  };
+});
+chequeo(
+  "al llegar al fondo, el overlay también llega",
+  alFondo.hueco >= -1 && alFondo.hueco <= 30 && alFondo.scrollOverlay > 0,
+  JSON.stringify(alFondo),
 );
 
 console.log("· vista de lectura");
