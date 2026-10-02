@@ -90,9 +90,15 @@ function spellNodes(text: string, spell: SpellFn | null, key: string): ReactNode
   const segments = spell(text);
   const nodes: ReactNode[] = [];
   let plain = "";
+  // Identidad de cada segmento: su desplazamiento de carácter en el texto,
+  // no su posición en el array (que cambia cuando se corrige una falta
+  // anterior y los segmentos se fusionan).
+  let offset = 0;
 
   for (let i = 0; i < segments.length; i++) {
     const segment = segments[i];
+    const start = offset;
+    offset += segment.text.length;
     if (!segment.bad) {
       plain += segment.text;
       continue;
@@ -102,7 +108,7 @@ function spellNodes(text: string, spell: SpellFn | null, key: string): ReactNode
       plain = "";
     }
     nodes.push(
-      <span key={`${key}.${i}`} className="gus-misspelled">
+      <span key={`${key}.${start}`} className="gus-misspelled">
         {segment.text}
       </span>,
     );
@@ -561,6 +567,13 @@ function TableBlock({
                 ? selection
                 : null;
 
+            // La identidad de la celda es su coordenada (fila, columna) en
+            // la rejilla: la lista no se reordena ni se filtra (las filas
+            // salen de los offsets del documento) y las celdas no tienen
+            // estado interno que pueda quedar pegado a otra celda. La regla
+            // señala la línea del `key`, que no admite comentarios dentro de
+            // la etiqueta, así que se desactiva en bloque solo aquí.
+            /* eslint-disable react-doctor/no-array-index-as-key */
             return (
               <div
                 key={`${i}.${c}`}
@@ -591,6 +604,7 @@ function TableBlock({
                 {resizeHandle(c + colSpan - 1)}
               </div>
             );
+            /* eslint-enable react-doctor/no-array-index-as-key */
           });
         })}
 

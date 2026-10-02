@@ -35,6 +35,8 @@ import {
 GlobalWorkerOptions.workerSrc = workerSrc;
 
 interface PageSize {
+  /** Número de página (1-based): su identidad estable en el documento. */
+  num: number;
   w: number;
   h: number;
 }
@@ -261,7 +263,7 @@ export default function PdfViewer({
         for (let i = 1; i <= doc.numPages; i += 1) {
           const page = await doc.getPage(i);
           const viewport = page.getViewport({ scale: 1 });
-          sizes.push({ w: viewport.width, h: viewport.height });
+          sizes.push({ num: i, w: viewport.width, h: viewport.height });
           if (cancelled) return;
         }
 
@@ -753,29 +755,29 @@ export default function PdfViewer({
               className="flex flex-col items-center gap-4 pb-4"
               style={{ filter: FILTER_CSS[doc.filter] }}
             >
-              {pages.map((size, i) => (
+              {pages.map((size) => (
                 <div
-                  key={i}
+                  key={size.num}
                   className="relative shrink-0 overflow-hidden rounded-lg border border-white/10 bg-white shadow-2xl"
                   style={{ width: size.w * zoom, height: size.h * zoom }}
                 >
                   <canvas
                     ref={(element) => {
-                      canvasesRef.current[i] = element;
+                      canvasesRef.current[size.num - 1] = element;
                     }}
-                    aria-label={`Página ${i + 1}`}
+                    aria-label={`Página ${size.num}`}
                     className="block h-full w-full"
                   />
                   <PageOverlay
-                    page={i + 1}
+                    page={size.num}
                     width={size.w * zoom}
                     height={size.h * zoom}
                     dpr={dpr}
-                    strokes={strokesByPage.get(i + 1) ?? EMPTY_STROKES}
+                    strokes={strokesByPage.get(size.num) ?? EMPTY_STROKES}
                     tool={tool}
                     color={penColor}
                     onCommit={commitStroke}
-                    onErase={(x, y, radiusNorm) => eraseAt(i + 1, x, y, radiusNorm)}
+                    onErase={(x, y, radiusNorm) => eraseAt(size.num, x, y, radiusNorm)}
                   />
                 </div>
               ))}
