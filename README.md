@@ -38,6 +38,16 @@ Una aplicación de escritorio **100 % local** para tomar notas y gestionar tarea
 
 Disponible en las [ releases ](https://github.com/korossuh/gus/releases) de GitHub. La primera vez que se ejecuta, Tauri solicita permisos de acceso a la carpeta de notas.
 
+> ⚠️ **Nota para usuarios de Windows (SmartScreen):**
+>
+> Al ser un proyecto independiente y de código abierto sin certificado de firma digital comercial, **Windows SmartScreen** puede mostrar el mensaje *"Windows protegió su PC"* o *"Editor desconocido"*. 
+>
+> **Para ejecutar la aplicación:**
+> 1. Haz clic en **"Más información"** en la ventana flotante de Windows.
+> 2. Selecciona **"Ejecutar de todos modos"**.
+>
+> *El código ejecutable es 100% transparente, seguro y compilado automáticamente en GitHub.*
+
 ---
 
 ## Desarrollo
