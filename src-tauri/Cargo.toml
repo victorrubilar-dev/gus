@@ -1,6 +1,6 @@
 [package]
 name = "gus"
-version = "0.1.0"
+version = "0.1.1"
 description = "Gus — notas y tareas locales en Markdown (escritorio con Tauri v2)"
 authors = ["victorrubilar-dev"]
 license = "GPL-3.0-or-later"
