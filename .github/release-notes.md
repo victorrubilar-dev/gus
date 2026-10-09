@@ -1,13 +1,13 @@
-## Gus v0.1.0 🚀
+## Gus v0.1.2 🚀
 
-Primera release estable de Gus: app de escritorio **100 % local** para notas en Markdown y tareas privadas. Sin nube, sin cuentas.
+Actualización centrada en **cómo se relacionan tus notas**: referencias cruzadas, un grafo interactivo del vault y notas diarias con plantilla.
 
 ### ✨ Qué incluye
 
-- ✍️ Editor de notas con tablas, código, fórmulas y diagramas
-- 📄 Visor de PDF e imágenes integrado
-- 🔍 Corrector ortográfico (7 idiomas)
-- 🏷️ Etiquetas, menú `/` y autoguardado local
+- 🔗 **Backlinks**: panel con las notas que enlazan a la que estás leyendo, referencias salientes y un contador en cada enlace `[[wiki]]` con cuántas veces se usa
+- 🕸️ **Vista de grafo**: mapa interactivo de todas las notas, con nodos arrastrables, zoom, paneo y filtros por carpeta y etiqueta; un clic abre la nota
+- 📅 **Notas diarias**: carpeta `Diario/AAAA-MM-DD.md` con plantilla configurable, atajo **Ctrl+Shift+D**, botón en la barra lateral y navegación al día anterior/siguiente
+- ⚙️ **Ajustes nuevos**: carpeta y plantilla de las notas diarias, con los huecos `{title}`, `{date}`, `{weekday}`, `{month}` y `{year}`
 
 ### 📦 Instaladores
 
