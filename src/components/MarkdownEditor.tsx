@@ -573,17 +573,13 @@ function lineRangeAt(value: string, at: number): [number, number] {
 function measureRowPitch(area: HTMLTextAreaElement | null): number | null {
   if (!area) return null;
   const prev = area.value;
-  const prevScrollTop = area.scrollTop;
   const selStart = area.selectionStart;
   const selEnd = area.selectionEnd;
-  const selDirection = area.selectionDirection;
   try {
     const rows = Math.ceil((area.clientHeight + 4) / 16) + 8;
     area.value = Array(rows).fill("X").join("\n");
-    area.scrollTop = 0;
     const first = area.scrollHeight;
     area.value = Array(rows + 10).fill("X").join("\n");
-    area.scrollTop = 0;
     const second = area.scrollHeight;
     const pitch = (second - first) / 10;
     return Number.isFinite(pitch) && pitch > 0 ? pitch : null;
@@ -591,9 +587,8 @@ function measureRowPitch(area: HTMLTextAreaElement | null): number | null {
     return null;
   } finally {
     area.value = prev;
-    area.scrollTop = prevScrollTop;
     try {
-      area.setSelectionRange(selStart, selEnd, selDirection);
+      area.setSelectionRange(selStart, selEnd);
     } catch {
       // selección no aplicable
     }
@@ -2349,9 +2344,6 @@ export default function MarkdownEditor({
       kind === "paste" ? { from: start, to: start + text.length } : undefined;
     editBody(`${current.slice(0, start)}${text}${current.slice(cursor)}`, paste);
     setMenu(null);
-    // Tras insertar una imagen (o cualquier bloque) el cursor debe quedar visible:
-    // si la inserción empuja el cursor fuera de la vista, el scroll lo acompaña.
-    if (area) revealCaret(area);
   }
 
   function insertWikiNote(note: WikiNote) {
