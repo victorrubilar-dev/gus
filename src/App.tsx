@@ -17,6 +17,7 @@ import {
   LayoutDashboard,
   ListTodo,
   LogOut,
+  Network,
   Settings as SettingsIcon,
   StickyNote,
   Trash2,
@@ -28,6 +29,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import clsx from "clsx";
 import CalendarView from "./components/CalendarView";
 import BacklinksPanel from "./components/BacklinksPanel";
+import GraphView from "./components/GraphView";
 import CommandPalette from "./components/CommandPalette";
 import NewTaskDialog from "./components/NewTaskDialog";
 import DashboardView from "./components/DashboardView";
@@ -79,7 +81,7 @@ import UpdateNotice from "./components/UpdateNotice";
 import gusIcon from "./assets/gus-icon-512.png";
 import "./App.css";
 
-type TabId = "home" | "notes" | "tasks" | "calendar" | "settings" | "trash";
+type TabId = "home" | "notes" | "tasks" | "calendar" | "graph" | "settings" | "trash";
 type NoteStatus = "idle" | "loading" | "ready" | "error";
 
 interface OpenNote {
@@ -107,6 +109,7 @@ const TABS: { id: TabId; labelKey: MessageKey; Icon: LucideIcon }[] = [
   { id: "notes", labelKey: "app.tab.notes", Icon: StickyNote },
   { id: "tasks", labelKey: "app.tab.tasks", Icon: ListTodo },
   { id: "calendar", labelKey: "app.tab.calendar", Icon: CalendarDays },
+  { id: "graph", labelKey: "app.tab.graph", Icon: Network },
 ];
 
 const DEFAULT_BASE_DIR = "~/Documents/gus-vaults";
@@ -1603,6 +1606,19 @@ function App({
                       onOpenTasks={() => setActiveTab("tasks")}
                       onNewTask={openNewTask}
                       showCompleted={settings.calendarShowCompleted}
+                    />
+                  ) : activeTab === "graph" ? (
+                    <GraphView
+                      vaultPath={currentVault}
+                      refreshKey={vaultRefresh}
+                      onOpenNote={(file) => {
+                        setActiveTab("notes");
+                        handleSelectNote({
+                          id: file.path,
+                          name: file.name.split("/").pop() ?? file.name,
+                          kind: "note",
+                        });
+                      }}
                     />
                   ) : activeTab === "trash" ? (
                     <TrashView onRestore={() => setVaultRefresh((key) => key + 1)} />
