@@ -13,6 +13,7 @@ import {
 } from "react";
 import { AnimatePresence, domMax, LazyMotion, m, MotionConfig } from "framer-motion";
 import {
+  CalendarClock,
   CalendarDays,
   LayoutDashboard,
   ListTodo,
@@ -39,11 +40,13 @@ import MarkdownEditor, {
   type MarkdownEditorHandle,
 } from "./components/MarkdownEditor";
 import SettingsPanel from "./components/SettingsPanel";
+import DailyNoteBar from "./components/DailyNoteBar";
 import TaskList from "./components/TaskList";
 import TrashView from "./components/TrashView";
 import VaultPicker, { type VaultAppConfig, type VaultInfo } from "./components/VaultPicker";
 import WelcomePanel from "./components/WelcomePanel";
 import { baseName, isInsidePath, joinPath, safeFileName } from "./lib/fileName";
+import { dailyNoteDateFor, dailyRelativePath, renderDailyTemplate } from "./lib/dailyNotes";
 import { isImagePath } from "./lib/imageLinks";
 import {
   importFilesIntoVault,
@@ -66,7 +69,7 @@ import {
 } from "./lib/updateCheck";
 import { APP_VERSION } from "./lib/version";
 import { setPersonalWords } from "./lib/spellCheck";
-import { globalShortcutFor } from "./lib/shortcuts";
+import { comboFor, comboLabel, globalShortcutFor } from "./lib/shortcuts";
 import {
   I18nProvider,
   readStoredLanguage,
@@ -241,6 +244,12 @@ function App({
   const [note, setNote] = useState<OpenNote | null>(null);
   const [noteStatus, setNoteStatus] = useState<NoteStatus>("idle");
   const [noteError, setNoteError] = useState<string | null>(null);
+  /**
+   * Mientras se abre o se crea la nota de un día, los botones de día esperan
+   * (el ref corta el segundo clic en el mismo instante, antes de que React pinte).
+   */
+  const [dailyBusy, setDailyBusy] = useState(false);
+  const dailyBusyRef = useRef(false);
   /** Nota que debe abrir el diálogo de exportación a PDF en cuanto cargue. */
   const [pendingExport, setPendingExport] = useState<string | null>(null);
   const [image, setImage] = useState<OpenImage | null>(null);
@@ -451,6 +460,9 @@ function App({
   // efecto con useEffectEvent evita meterlo en las deps (re-registraría el
   // listener en cada render) y siempre ejecuta la última versión.
   const onSettingsChangeEvent = useEffectEvent(handleSettingsChange);
+  // La nota del día usa los últimos ajustes (carpeta/plantilla) sin volver a
+  // registrar el listener de teclado en cada render.
+  const openDailyNoteEvent = useEffectEvent(openDailyNote);
 
   useEffect(() => {
     function handleGlobalKey(event: KeyboardEvent) {
@@ -475,6 +487,11 @@ function App({
           if (!currentVault) return;
           event.preventDefault();
           openNewTask();
+          return;
+        case "openDailyNote":
+          if (!currentVault) return;
+          event.preventDefault();
+          void openDailyNoteEvent();
           return;
         case "focusSearch":
           // «Buscar nota» de la pantalla de bienvenida, con atajo propio.
@@ -859,6 +876,41 @@ function App({
     }
   }
 
+  /**
+   * Abre la nota de un día (la de hoy si no se pasa fecha). Si todavía no
+   * existe se crea con la plantilla de Ajustes y se abre recién nacida.
+   */
+  async function openDailyNote(date: Date = new Date()) {
+    if (!currentVault || dailyBusyRef.current) return;
+
+    dailyBusyRef.current = true;
+    setDailyBusy(true);
+    try {
+      const activePath = notePathRef.current;
+      if (activePath) await handleBeforeFileAction(activePath);
+
+      const path = joinPath(currentVault, dailyRelativePath(settings.dailyNotesFolder, date));
+      let target = path;
+
+      try {
+        await invoke<string>("read_vault_file", { path });
+      } catch {
+        // No existe todavía: se crea con la plantilla del día.
+        const content = renderDailyTemplate(settings.dailyNotesTemplate, date, language);
+        target = await invoke<string>("create_vault_file", { path, content });
+        setVaultRefresh((key) => key + 1);
+      }
+
+      setActiveTab("notes");
+      handleSelectNote({ id: target, name: baseName(target), kind: "note" });
+    } catch (error: unknown) {
+      showLinkError(String(error));
+    } finally {
+      dailyBusyRef.current = false;
+      setDailyBusy(false);
+    }
+  }
+
   function saveVaultConfig(next: VaultConfig) {
     setVaultConfig(next);
     invoke("save_app_config", { config: next }).catch((error: unknown) => {
@@ -1203,6 +1255,15 @@ function App({
       noteStatus === "loading" ||
       noteStatus === "error");
 
+  /**
+   * Día de la nota abierta, o `null` si lo que hay abierto no es una nota
+   * diaria (entonces la barra de navegación no aparece).
+   */
+  const dailyNoteDate =
+    note && currentVault
+      ? dailyNoteDateFor(note.path, currentVault, settings.dailyNotesFolder)
+      : null;
+
   const notesView = currentVault === null ? null : (
     <div className="flex h-full w-full">
       <FileExplorer
@@ -1326,6 +1387,14 @@ function App({
 
               {noteStatus === "ready" && note && (
                 <div className="flex min-h-0 flex-1 flex-col">
+                  {dailyNoteDate && (
+                    <DailyNoteBar
+                      date={dailyNoteDate}
+                      busy={dailyBusy}
+                      onNavigate={(date) => void openDailyNote(date)}
+                    />
+                  )}
+
                   <MarkdownEditor
                     ref={editorRef}
                     path={note.path}
@@ -1410,6 +1479,18 @@ function App({
                 draggable={false}
                 className="h-9 w-9 select-none"
               />
+
+              <div aria-hidden="true" className="my-1 h-px w-8 bg-gus-border" />
+
+              <button
+                type="button"
+                title={`${t("daily.openToday")} (${comboLabel(comboFor(settings.shortcuts, "openDailyNote"))})`}
+                aria-label={t("daily.openToday")}
+                onClick={() => void openDailyNote()}
+                className="flex h-11 w-11 items-center justify-center rounded-xl text-gus-muted outline-none transition-colors hover:bg-gus-card hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60"
+              >
+                <CalendarClock className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
+              </button>
 
               <div aria-hidden="true" className="my-1 h-px w-8 bg-gus-border" />
 

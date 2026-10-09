@@ -12,6 +12,7 @@ export type ShortcutId =
   | "newNote"
   | "newFolder"
   | "newTask"
+  | "openDailyNote"
   | "exportPdf"
   | "toggleView"
   | "undo"
@@ -287,6 +288,7 @@ export const SHORTCUT_LIST: readonly ShortcutDefinition[] = [
   // General
   { id: "commandPalette", labelKey: "shortcut.commandPalette", group: "global", defaultCombo: "ctrl+k" },
   { id: "newTask", labelKey: "shortcut.newTask", group: "global", defaultCombo: "ctrl+shift+n" },
+  { id: "openDailyNote", labelKey: "shortcut.openDailyNote", group: "global", defaultCombo: "ctrl+shift+d" },
   { id: "zoomIn", labelKey: "shortcut.zoomIn", group: "global", defaultCombo: "ctrl+=" },
   { id: "zoomOut", labelKey: "shortcut.zoomOut", group: "global", defaultCombo: "ctrl+-" },
   { id: "zoomReset", labelKey: "shortcut.zoomReset", group: "global", defaultCombo: "ctrl+0" },
@@ -433,6 +435,7 @@ const GLOBAL_IDS = [
   "zoomOut",
   "zoomReset",
   "newTask",
+  "openDailyNote",
   "commandPalette",
   "focusSearch",
   "togglePanel",

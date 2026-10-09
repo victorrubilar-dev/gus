@@ -131,6 +131,15 @@ const en: Record<keyof typeof es, string> = {
   "settings.autoSave": "Autosave",
   "settings.autoSave.desc":
     "Saves the note after a short delay while you type. If you turn it off, it saves with Ctrl+S, and also when you switch notes or close the window.",
+  "settings.dailyNotesFolder": "Daily notes folder",
+  "settings.dailyNotesFolder.desc":
+    "Inside the vault one note is created per day, named after the day (2026-10-09.md). If you change the folder, older notes stay where they were.",
+  "settings.dailyNotesTemplate": "Daily notes template",
+  "settings.dailyNotesTemplate.desc":
+    "Content used to create the note for a day that does not exist yet.",
+  "settings.dailyNotesTemplate.hint":
+    "Available placeholders: {title} (long date), {date} (2026-10-09), {weekday}, {month} and {year}.",
+  "settings.dailyNotesFolderPlaceholder": "Diary",
   "settings.hideCompletedTasks": "Hide completed",
   "settings.hideCompletedTasks.desc": "The task list only shows the pending ones.",
   "settings.calendarShowCompleted": "Show completed in the calendar",
@@ -167,6 +176,7 @@ const en: Record<keyof typeof es, string> = {
   "shortcut.newNote": "New note",
   "shortcut.newFolder": "New folder",
   "shortcut.newTask": "New task",
+  "shortcut.openDailyNote": "Open today's note",
   "shortcut.savePdf": "Export to PDF",
   "shortcut.toggleView": "Switch between editor and preview",
   "shortcut.undo": "Undo",
@@ -325,6 +335,15 @@ const en: Record<keyof typeof es, string> = {
   "backlinks.error": "The vault links could not be read",
   "backlinks.mentions": "{count} mentions",
   "backlinks.mentions__one": "{count} mention",
+
+  /* ---------------- daily notes ---------------- */
+  "daily.today": "Today's note",
+  "daily.openToday": "Open today's note",
+  "daily.previousDay": "Previous day",
+  "daily.nextDay": "Next day",
+  "daily.backToToday": "Back to today",
+  "daily.onThisDay": "You are viewing the note for {date}",
+  "daily.badge": "Daily",
 
   /* ---------------- block menu ---------------- */
   "menu.search": "Search block…",

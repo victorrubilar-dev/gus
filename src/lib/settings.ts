@@ -1,6 +1,12 @@
 import { isLanguage, DEFAULT_LANGUAGE, type Language } from "./i18n/core";
 import type { MessageKey } from "./i18n/core";
 import {
+  DAILY_DEFAULT_FOLDER,
+  DAILY_DEFAULT_TEMPLATE,
+  normalizeDailyTemplate,
+  sanitizeDailyFolder,
+} from "./dailyNotes";
+import {
   DEFAULT_SPELL_LANGS,
   SPELL_LANGUAGES,
   normalizeSpellLangs,
@@ -30,6 +36,10 @@ export interface AppSettings {
   spellWords: string[];
   /** Atajos de teclado cambiados a mano por la persona. */
   shortcuts: ShortcutMap;
+  /** Carpeta del vault donde viven las notas diarias. */
+  dailyNotesFolder: string;
+  /** Plantilla con la que se crea la nota de un día nuevo. */
+  dailyNotesTemplate: string;
 }
 
 /**
@@ -63,6 +73,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   spellLangs: [...DEFAULT_SPELL_LANGS],
   spellWords: [],
   shortcuts: { ...DEFAULT_SHORTCUTS },
+  dailyNotesFolder: DAILY_DEFAULT_FOLDER,
+  dailyNotesTemplate: DAILY_DEFAULT_TEMPLATE,
 };
 
 function asBool(value: unknown, fallback: boolean): boolean {
@@ -102,6 +114,8 @@ export function normalizeSettings(raw: unknown): AppSettings {
     spellLangs: normalizeSpellLangs(data.spellLangs ?? legacySpellLangs(data.spellLang)),
     spellWords: normalizeSpellWords(data.spellWords),
     shortcuts: normalizeShortcuts(data.shortcuts),
+    dailyNotesFolder: sanitizeDailyFolder(data.dailyNotesFolder),
+    dailyNotesTemplate: normalizeDailyTemplate(data.dailyNotesTemplate),
   };
 }
 
@@ -217,6 +231,16 @@ export type SettingDefinition = DefinitionBase &
     | { kind: "accent"; key: "accent" }
     | { kind: "theme"; key: "theme" }
     | { kind: "shortcuts"; key: "shortcuts" }
+    /** Campo de una línea (p. ej. la carpeta de las notas diarias). */
+    | { kind: "text"; key: "dailyNotesFolder"; maxLength: number; placeholderKey: MessageKey }
+    /** Campo de varias líneas (p. ej. la plantilla de las notas diarias). */
+    | {
+        kind: "textarea";
+        key: "dailyNotesTemplate";
+        maxLength: number;
+        rows: number;
+        hintKey: MessageKey;
+      }
     /** Botón con efecto propio (no guarda nada en los ajustes del vault). */
     | { kind: "action"; key: "tour" | "updateCheck" }
   );
@@ -323,6 +347,29 @@ export const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     labelKey: "settings.autoSave",
     descriptionKey: "settings.autoSave.desc",
     keywords: "guardar automatico debounce escribir autosave automatic writing",
+  },
+  {
+    kind: "text",
+    category: "notes",
+    key: "dailyNotesFolder",
+    labelKey: "settings.dailyNotesFolder",
+    descriptionKey: "settings.dailyNotesFolder.desc",
+    maxLength: 64,
+    placeholderKey: "settings.dailyNotesFolderPlaceholder",
+    keywords:
+      "diario daily nota dia fecha carpeta folder journal day daily note",
+  },
+  {
+    kind: "textarea",
+    category: "notes",
+    key: "dailyNotesTemplate",
+    labelKey: "settings.dailyNotesTemplate",
+    descriptionKey: "settings.dailyNotesTemplate.desc",
+    maxLength: 4000,
+    rows: 5,
+    hintKey: "settings.dailyNotesTemplate.hint",
+    keywords:
+      "plantilla template diario daily estructura scaffold plantilla diaria",
   },
   {
     kind: "toggle",

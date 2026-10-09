@@ -1095,6 +1095,10 @@ pub struct AppSettings {
     pub spell_words: Vec<String>,
     /// Atajos de teclado cambiados a mano (id → combinación).
     pub shortcuts: std::collections::BTreeMap<String, String>,
+    /// Carpeta del vault donde viven las notas diarias.
+    pub daily_notes_folder: String,
+    /// Plantilla con la que se crea la nota de un día nuevo.
+    pub daily_notes_template: String,
 }
 
 impl Default for AppSettings {
@@ -1112,6 +1116,8 @@ impl Default for AppSettings {
             spell_langs: vec!["es".into()],
             spell_words: Vec::new(),
             shortcuts: Default::default(),
+            daily_notes_folder: "Diario".into(),
+            daily_notes_template: "# {title}\n\n## Tareas\n\n- [ ] \n\n## Notas\n\n".into(),
         }
     }
 }
@@ -1121,6 +1127,20 @@ const NAMED_KEYS: [&str; 13] = [
     "arrowup", "arrowdown", "arrowleft", "arrowright", "escape", "enter", "backspace", "delete",
     "tab", "space", "home", "end", "insert",
 ];
+
+/// Un segmento de carpeta sin caracteres prohibidos en nombres de archivo
+/// (equivalente a `safeFileName` del frontend). Devuelve vacío si no queda
+/// nada utilizable, para que el llamador lo descarte.
+fn sanitize_folder_segment(raw: &str) -> String {
+    let without_ext = raw.strip_suffix(".md").unwrap_or(raw);
+    let cleaned: String = without_ext
+        .chars()
+        .filter(|c| !matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|'))
+        .collect();
+    let collapsed = cleaned.split_whitespace().collect::<Vec<_>>().join(" ");
+    let trimmed = collapsed.trim_matches('.');
+    trimmed.to_string()
+}
 
 impl AppSettings {
     /// Colores de acento aceptados (deben coincidir con los del frontend).
@@ -1132,11 +1152,12 @@ impl AppSettings {
 
     /// Acciones con atajo conocido. Lo que no esté aquí se descarta, para que
     /// un `config.json` escrito a mano no guarde combinaciones huérfanas.
-    const SHORTCUT_IDS: [&'static str; 26] = [
-        "commandPalette", "saveNote", "newNote", "newFolder", "newTask", "exportPdf",
-        "toggleView", "undo", "redo", "zoomIn", "zoomOut", "zoomReset", "focusSearch",
-        "togglePanel", "back", "forward", "parentFolder", "bold", "italic", "underline",
-        "strikethrough", "inlineCode", "copyCell", "cutCell", "moveLineUp", "moveLineDown",
+    const SHORTCUT_IDS: [&'static str; 27] = [
+        "commandPalette", "saveNote", "newNote", "newFolder", "newTask", "openDailyNote",
+        "exportPdf", "toggleView", "undo", "redo", "zoomIn", "zoomOut", "zoomReset",
+        "focusSearch", "togglePanel", "back", "forward", "parentFolder", "bold", "italic",
+        "underline", "strikethrough", "inlineCode", "copyCell", "cutCell", "moveLineUp",
+        "moveLineDown",
     ];
 
     /// Corrige valores escritos a mano en el `config.json` (nunca falla).
@@ -1198,6 +1219,33 @@ impl AppSettings {
             words.push(word);
         }
         self.spell_words = words;
+
+        // Carpeta de diarios: segmentos sin caracteres prohibidos y con un
+        // tope de profundidad; lo que no deje nada usable vuelve al default.
+        let segments: Vec<String> = self
+            .daily_notes_folder
+            .replace('\\', "/")
+            .split('/')
+            .map(|segment| sanitize_folder_segment(segment.trim()))
+            .filter(|segment| !segment.is_empty())
+            .take(4)
+            .collect();
+        self.daily_notes_folder = if segments.is_empty() {
+            Self::default().daily_notes_folder
+        } else {
+            segments.join("/")
+        };
+
+        // Plantilla: saltos de línea normalizados y longitud topada. Una
+        // plantilla vacía es válida (nota en blanco).
+        let template: String = self
+            .daily_notes_template
+            .replace("\r\n", "\n")
+            .replace('\r', "\n")
+            .chars()
+            .take(4000)
+            .collect();
+        self.daily_notes_template = template;
     }
 }
 
@@ -4048,6 +4096,41 @@ mod config_tests {
         // por defecto, así que aquí simplemente no se guarda.
         assert!(!settings.shortcuts.contains_key("undo"));
         assert!(!settings.shortcuts.contains_key("redo"));
+        // La nota del día tiene atajo propio y se reconoce.
+        assert!(AppSettings::SHORTCUT_IDS.contains(&"openDailyNote"));
+    }
+
+    /// La carpeta y la plantilla de las notas diarias se corrigen a mano.
+    #[test]
+    fn sanea_la_configuracion_del_diario() {
+        let mut settings = AppSettings {
+            daily_notes_folder: "  /Notas:diarias/  ".into(),
+            daily_notes_template: "# Título\r\n\r\n".into(),
+            ..AppSettings::default()
+        };
+        settings.sanitize();
+        // Segmentos vacíos fuera, caracteres prohibidos fuera.
+        assert_eq!(settings.daily_notes_folder, "Notasdiarias");
+        assert_eq!(settings.daily_notes_template, "# Título\n\n");
+
+        // Lo que no deje nada usable vuelve al valor por defecto.
+        let mut empty = AppSettings {
+            daily_notes_folder: "   ".into(),
+            daily_notes_template: String::new(),
+            ..AppSettings::default()
+        };
+        empty.sanitize();
+        assert_eq!(empty.daily_notes_folder, AppSettings::default().daily_notes_folder);
+        // Una plantilla vacía es una decisión, no un error.
+        assert!(empty.daily_notes_template.is_empty());
+
+        // La plantilla no puede crecer sin límite.
+        let mut long = AppSettings {
+            daily_notes_template: "x".repeat(9000),
+            ..AppSettings::default()
+        };
+        long.sanitize();
+        assert_eq!(long.daily_notes_template.chars().count(), 4000);
     }
 
     /// Los enlaces se leen con y sin alias, y las repeticiones se agrupan.

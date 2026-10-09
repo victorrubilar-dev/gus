@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CalendarDays,
   Check,
@@ -353,6 +353,101 @@ function ShortcutsEditor({
   );
 }
 
+/**
+ * Campo de texto (una o varias líneas) con guardado con retardo: el config
+ * del vault se reescribe en disco en cada guardado, así que no se manda cada
+ * tecla, sino al parar de escribir o al salir del campo.
+ */
+function TextSetting({
+  value,
+  onChange,
+  maxLength,
+  placeholder,
+  label,
+  rows,
+  hint,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  maxLength: number;
+  placeholder?: string;
+  label: string;
+  rows?: number;
+  hint?: string;
+}) {
+  const [draft, setDraft] = useState(value);
+  const onChangeRef = useRef(onChange);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  });
+
+  // El valor de fuera manda (p. ej. al pulsar «Restablecer»).
+  useEffect(() => {
+    setDraft(value);
+  }, [value]);
+
+  useEffect(
+    () => () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    },
+    [],
+  );
+
+  function schedule(next: string) {
+    setDraft(next);
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null;
+      onChangeRef.current(next.slice(0, maxLength));
+    }, 400);
+  }
+
+  function commitNow() {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    const next = draft.slice(0, maxLength);
+    if (next !== value) onChangeRef.current(next);
+  }
+
+  const field = rows ? (
+    <textarea
+      value={draft}
+      rows={rows}
+      maxLength={maxLength}
+      aria-label={label}
+      spellCheck={false}
+      onChange={(event) => schedule(event.target.value)}
+      onBlur={commitNow}
+      className={clsx(INPUT_CLASS, "w-full min-w-[18rem] resize-y font-mono text-xs leading-relaxed")}
+    />
+  ) : (
+    <input
+      type="text"
+      value={draft}
+      maxLength={maxLength}
+      aria-label={label}
+      placeholder={placeholder}
+      spellCheck={false}
+      onChange={(event) => schedule(event.target.value)}
+      onBlur={commitNow}
+      className={clsx(INPUT_CLASS, "w-64")}
+    />
+  );
+
+  if (!hint) return field;
+
+  return (
+    <div className="flex w-full max-w-[24rem] flex-col gap-1.5">
+      {field}
+      <p className="text-[11px] leading-snug text-gus-muted">{hint}</p>
+    </div>
+  );
+}
+
 export default function SettingsPanel({
   settings,
   onChange,
@@ -616,6 +711,31 @@ export default function SettingsPanel({
       );
     }
 
+    if (definition.kind === "text") {
+      return (
+        <TextSetting
+          value={settings[definition.key]}
+          onChange={(next) => update(definition.key, next)}
+          maxLength={definition.maxLength}
+          label={t(definition.labelKey)}
+          placeholder={t(definition.placeholderKey)}
+        />
+      );
+    }
+
+    if (definition.kind === "textarea") {
+      return (
+        <TextSetting
+          value={settings[definition.key]}
+          onChange={(next) => update(definition.key, next)}
+          maxLength={definition.maxLength}
+          rows={definition.rows}
+          label={t(definition.labelKey)}
+          hint={t(definition.hintKey)}
+        />
+      );
+    }
+
     if (definition.kind === "theme") {
       return (
         <div className="grid w-full grid-cols-[repeat(auto-fit,minmax(7.5rem,1fr))] gap-2">
@@ -815,7 +935,9 @@ export default function SettingsPanel({
 
                         <div
                           className={
-                            definition.kind === "theme" || definition.kind === "shortcuts"
+                            definition.kind === "theme" ||
+                            definition.kind === "shortcuts" ||
+                            definition.kind === "textarea"
                               ? "w-full"
                               : "shrink-0"
                           }

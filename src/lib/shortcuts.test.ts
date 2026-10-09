@@ -5,6 +5,7 @@ import {
   comboFor,
   comboFromEvent,
   comboLabel,
+  globalShortcutFor,
   isEditableShortcut,
   matchesCombo,
   normalizeShortcuts,
@@ -126,6 +127,22 @@ describe("catálogo de atajos", () => {
       const editable = isEditableShortcut(entry.id);
       expect(editable).toBe(!entry.system);
     }
+  });
+
+  it("la nota del día tiene atajo global y no choca con ningún otro", () => {
+    const entry = SHORTCUT_LIST.find((item) => item.id === "openDailyNote");
+    expect(entry?.defaultCombo).toBe("ctrl+shift+d");
+    expect(entry?.group).toBe("global");
+
+    // Se resuelve en App, fuera del editor, como el resto de los globales.
+    expect(globalShortcutFor(key("d", { ctrl: true, shift: true }), {})).toBe("openDailyNote");
+    // Y con la combinación cambiada a mano también.
+    expect(
+      globalShortcutFor(key("d", { ctrl: true, shift: true }), { openDailyNote: "ctrl+alt+j" }),
+    ).toBeNull();
+    expect(
+      globalShortcutFor(key("j", { ctrl: true, alt: true }), { openDailyNote: "ctrl+alt+j" }),
+    ).toBe("openDailyNote");
   });
 });
 

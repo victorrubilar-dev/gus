@@ -68,4 +68,28 @@ describe("ajustes", () => {
       "atajoRetirado",
     );
   });
+
+  it("las notas diarias traen carpeta y plantilla de siempre", () => {
+    expect(DEFAULT_SETTINGS.dailyNotesFolder).toBe("Diario");
+    expect(normalizeSettings(null).dailyNotesFolder).toBe("Diario");
+    expect(normalizeSettings(null).dailyNotesTemplate).toContain("{title}");
+  });
+
+  it("corrige la carpeta de diarios escrita a mano y no deja la vacía", () => {
+    expect(normalizeSettings({ dailyNotesFolder: " Notas/diarias " }).dailyNotesFolder).toBe(
+      "Notas/diarias",
+    );
+    expect(normalizeSettings({ dailyNotesFolder: "///" }).dailyNotesFolder).toBe("Diario");
+    // Lo que no es texto tampoco se cuela.
+    expect(normalizeSettings({ dailyNotesFolder: 42 } as never).dailyNotesFolder).toBe("Diario");
+  });
+
+  it("la plantilla se guarda tal cual, con los saltos de línea del sistema quitados", () => {
+    expect(normalizeSettings({ dailyNotesTemplate: "a\r\nb" }).dailyNotesTemplate).toBe("a\nb");
+    // Una plantilla vacía es una decisión: nota en blanco.
+    expect(normalizeSettings({ dailyNotesTemplate: "" }).dailyNotesTemplate).toBe("");
+    expect(normalizeSettings({ dailyNotesTemplate: 7 } as never).dailyNotesTemplate).toBe(
+      DEFAULT_SETTINGS.dailyNotesTemplate,
+    );
+  });
 });

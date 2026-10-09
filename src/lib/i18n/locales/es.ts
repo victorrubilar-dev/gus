@@ -129,6 +129,15 @@ export default {
   "settings.autoSave": "Autoguardado",
   "settings.autoSave.desc":
     "Guarda la nota con un pequeño retardo mientras escribes. Si lo desactivas, se guarda con Ctrl+S y también al cambiar de nota o al cerrar la ventana.",
+  "settings.dailyNotesFolder": "Carpeta de las notas diarias",
+  "settings.dailyNotesFolder.desc":
+    "Dentro del vault se crea una nota por día, con el nombre del día (2026-10-09.md). Si cambias la carpeta, las notas anteriores quedan donde estaban.",
+  "settings.dailyNotesTemplate": "Plantilla de las notas diarias",
+  "settings.dailyNotesTemplate.desc":
+    "Contenido con el que se crea la nota de un día que todavía no existe.",
+  "settings.dailyNotesTemplate.hint":
+    "Huecos disponibles: {title} (fecha larga), {date} (2026-10-09), {weekday}, {month} y {year}.",
+  "settings.dailyNotesFolderPlaceholder": "Diario",
   "settings.hideCompletedTasks": "Ocultar completadas",
   "settings.hideCompletedTasks.desc": "La lista de tareas solo muestra las pendientes.",
   "settings.calendarShowCompleted": "Mostrar completadas en el calendario",
@@ -165,6 +174,7 @@ export default {
   "shortcut.newNote": "Nueva nota",
   "shortcut.newFolder": "Nueva carpeta",
   "shortcut.newTask": "Nueva tarea",
+  "shortcut.openDailyNote": "Abrir la nota del día",
   "shortcut.savePdf": "Exportar a PDF",
   "shortcut.toggleView": "Alternar editor y vista previa",
   "shortcut.undo": "Deshacer",
@@ -322,6 +332,15 @@ export default {
   "backlinks.error": "No se pudieron leer los enlaces del vault",
   "backlinks.mentions": "{count} menciones",
   "backlinks.mentions__one": "{count} mención",
+
+  /* ---------------- notas diarias ---------------- */
+  "daily.today": "Nota de hoy",
+  "daily.openToday": "Abrir la nota de hoy",
+  "daily.previousDay": "Día anterior",
+  "daily.nextDay": "Día siguiente",
+  "daily.backToToday": "Volver a hoy",
+  "daily.onThisDay": "Estás viendo la nota del {date}",
+  "daily.badge": "Diario",
 
   /* ---------------- menú de bloques ---------------- */
   "menu.search": "Buscar bloque…",
