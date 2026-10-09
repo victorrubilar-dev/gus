@@ -309,6 +309,18 @@ export default {
   "editor.codeCopied": "Código copiado",
   "editor.selectAll": "Seleccionar todo",
   "editor.emptyNote": "Escribe algo para empezar…",
+  "editor.linkRefs": "{count} enlaces hacia esta nota",
+
+  /* ---------------- backlinks ---------------- */
+  "backlinks.title": "Referencias",
+  "backlinks.incoming": "Enlaces entrantes",
+  "backlinks.outgoing": "Enlaces salientes",
+  "backlinks.emptyIncoming": "Ninguna nota enlaza todavía a esta",
+  "backlinks.emptyOutgoing": "Esta nota todavía no enlaza a otras",
+  "backlinks.loading": "Leyendo los enlaces del vault…",
+  "backlinks.error": "No se pudieron leer los enlaces del vault",
+  "backlinks.mentions": "{count} menciones",
+  "backlinks.mentions__one": "{count} mención",
 
   /* ---------------- menú de bloques ---------------- */
   "menu.search": "Buscar bloque…",

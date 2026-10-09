@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useEffectEvent,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -26,6 +27,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import clsx from "clsx";
 import CalendarView from "./components/CalendarView";
+import BacklinksPanel from "./components/BacklinksPanel";
 import CommandPalette from "./components/CommandPalette";
 import NewTaskDialog from "./components/NewTaskDialog";
 import DashboardView from "./components/DashboardView";
@@ -49,6 +51,7 @@ import {
   type ImportSummary,
 } from "./lib/importFiles";
 import { findWikiNote, wikiTargetToPath, type WikiNote } from "./lib/wikiLink";
+import { incomingCountMap, type LinkGraph } from "./lib/linkGraph";
 import { accentHex, DEFAULT_SETTINGS, normalizeSettings, type AppSettings } from "./lib/settings";
 import { applyTheme, themeDefinition, type ThemeScheme } from "./lib/themes";
 import {
@@ -244,6 +247,13 @@ function App({
   const [vaultRefresh, setVaultRefresh] = useState(0);
   const [linkError, setLinkError] = useState<string | null>(null);
   const linkErrorTimerRef = useRef<number | null>(null);
+  /**
+   * Grafo de enlaces del vault (parseado en Rust): alimenta el panel de
+   * backlinks y el contador de cada enlace [[wiki]] de la vista previa.
+   */
+  const [linkGraph, setLinkGraph] = useState<LinkGraph | null>(null);
+  const [linkGraphStatus, setLinkGraphStatus] = useState<NoteStatus>("idle");
+  const [linkGraphError, setLinkGraphError] = useState<string | null>(null);
   /** Aviso del resultado de arrastrar archivos desde el explorador del sistema. */
   const [importNotice, setImportNotice] = useState<ImportSummary | null>(null);
   const importNoticeTimerRef = useRef<number | null>(null);
@@ -354,6 +364,49 @@ function App({
     if (!readTourPending()) return;
     setTourOpen(true);
   }, [bootStatus, currentVault]);
+
+  /**
+   * Grafo de enlaces del vault: se recalcula al cambiar de vault, al abrir
+   * otra nota y al crecer el contador de refresco (archivos nuevos o en la
+   * papelera). El retardo evita repetir el barrido mientras se guardan varios
+   * cambios seguidos.
+   */
+  useEffect(() => {
+    if (!currentVault) {
+      setLinkGraph(null);
+      setLinkGraphStatus("idle");
+      setLinkGraphError(null);
+      return;
+    }
+
+    let cancelled = false;
+    setLinkGraphStatus("loading");
+
+    const timer = window.setTimeout(() => {
+      invoke<LinkGraph>("build_link_graph", { path: currentVault })
+        .then((graph) => {
+          if (cancelled) return;
+          setLinkGraph(graph);
+          setLinkGraphStatus("ready");
+          setLinkGraphError(null);
+        })
+        .catch((error: unknown) => {
+          if (cancelled) return;
+          // El grafo anterior se conserva: el panel sigue siendo útil aunque
+          // falle la última lectura.
+          setLinkGraphStatus("error");
+          setLinkGraphError(String(error));
+        });
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [currentVault, vaultRefresh, note?.path]);
+
+  /** Contador por nota para cada enlace [[wiki]] de la vista previa. */
+  const linkRefs = useMemo(() => incomingCountMap(linkGraph), [linkGraph]);
 
   /** Comprobación de versión nueva al arrancar: nunca frena ni rompe la app. */
   useEffect(() => {
@@ -1269,25 +1322,44 @@ function App({
               )}
 
               {noteStatus === "ready" && note && (
-                <MarkdownEditor
-                  ref={editorRef}
-                  path={note.path}
-                  title={note.title}
-                  content={note.content}
-                  vaultPath={currentVault}
-                  onOpenWikiLink={handleOpenWikiLink}
-                  autoSave={handleAutoSave}
-                  autoSaveEnabled={settings.autoSave}
-                  fontSize={settings.editorFontSize}
-                  spellLangs={settings.spellLangs}
-                  shortcuts={settings.shortcuts}
-                  spellWords={settings.spellWords}
-                  onSpellWordsChange={(words) =>
-                    handleSettingsChange({ ...settings, spellWords: words })
-                  }
-                  autoExportPath={pendingExport}
-                  onAutoExportShown={() => setPendingExport(null)}
-                />
+                <div className="flex min-h-0 flex-1 flex-col">
+                  <MarkdownEditor
+                    ref={editorRef}
+                    path={note.path}
+                    title={note.title}
+                    content={note.content}
+                    vaultPath={currentVault}
+                    onOpenWikiLink={handleOpenWikiLink}
+                    linkRefs={linkRefs}
+                    autoSave={handleAutoSave}
+                    autoSaveEnabled={settings.autoSave}
+                    fontSize={settings.editorFontSize}
+                    spellLangs={settings.spellLangs}
+                    shortcuts={settings.shortcuts}
+                    spellWords={settings.spellWords}
+                    onSpellWordsChange={(words) =>
+                      handleSettingsChange({ ...settings, spellWords: words })
+                    }
+                    autoExportPath={pendingExport}
+                    onAutoExportShown={() => setPendingExport(null)}
+                    className="min-h-0 flex-1"
+                  />
+
+                  <BacklinksPanel
+                    graph={linkGraph}
+                    status={linkGraphStatus}
+                    error={linkGraphError}
+                    notePath={note.path}
+                    onOpenNote={(selected) =>
+                      handleSelectNote({
+                        id: selected.path,
+                        name: selected.name,
+                        kind: "note",
+                      })
+                    }
+                    onOpenWikiTarget={(target) => void handleOpenWikiLink(target)}
+                  />
+                </div>
               )}
             </>
           )}

@@ -312,6 +312,18 @@ const en: Record<keyof typeof es, string> = {
   "editor.codeCopied": "Code copied",
   "editor.selectAll": "Select all",
   "editor.emptyNote": "Start writing…",
+  "editor.linkRefs": "{count} links point here",
+
+  /* ---------------- backlinks ---------------- */
+  "backlinks.title": "References",
+  "backlinks.incoming": "Backlinks",
+  "backlinks.outgoing": "Outgoing links",
+  "backlinks.emptyIncoming": "No note links here yet",
+  "backlinks.emptyOutgoing": "This note does not link anywhere yet",
+  "backlinks.loading": "Reading the vault links…",
+  "backlinks.error": "The vault links could not be read",
+  "backlinks.mentions": "{count} mentions",
+  "backlinks.mentions__one": "{count} mention",
 
   /* ---------------- block menu ---------------- */
   "menu.search": "Search block…",

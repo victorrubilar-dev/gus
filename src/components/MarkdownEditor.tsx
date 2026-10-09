@@ -202,6 +202,11 @@ export interface MarkdownEditorProps {
   content: string;
   vaultPath?: string | null;
   onOpenWikiLink?: (target: string) => void;
+  /**
+   * «Ruta de nota → cuántas veces se la enlaza», del grafo que parsea el
+   * backend. Cada enlace [[wiki]] de la vista previa enseña su contador.
+   */
+  linkRefs?: Record<string, number> | null;
   autoSave?: (draft: EditorDraft) => void;
   debounceMs?: number;
   fontSize?: number;
@@ -633,6 +638,7 @@ export default function MarkdownEditor({
   content: initialContent,
   vaultPath,
   onOpenWikiLink,
+  linkRefs,
   autoSave,
   debounceMs = DEFAULT_DEBOUNCE,
   fontSize,
@@ -4756,16 +4762,22 @@ export default function MarkdownEditor({
       const wikiTarget = href ? decodeWikiUrl(href) : null;
 
       if (wikiTarget !== null) {
-        const known = findWikiNote(wikiNotes, wikiTarget) !== null;
+        const match = findWikiNote(wikiNotes, wikiTarget);
+        const known = match !== null;
+        // Contador de referencias: cuántas notas del vault enlazan aquí.
+        const refs = match ? linkRefs?.[match.path] : undefined;
+        const openLabel = known
+          ? t("editor.wikiOpen", { name: wikiTarget })
+          : t("editor.wikiCreate", { name: wikiTarget });
 
         return (
           <button
             type="button"
             onClick={() => onOpenWikiLink?.(wikiTarget)}
             title={
-              known
-                ? t("editor.wikiOpen", { name: wikiTarget })
-                : t("editor.wikiCreate", { name: wikiTarget })
+              refs
+                ? `${openLabel} · ${t("editor.linkRefs", { count: refs })}`
+                : openLabel
             }
             className={clsx(
               "inline cursor-pointer rounded text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-gus-accent/60",
@@ -4775,6 +4787,14 @@ export default function MarkdownEditor({
             )}
           >
             {children}
+            {refs !== undefined && refs > 0 && (
+              <sup
+                className="ml-0.5 rounded-full border border-gus-accent/30 bg-gus-accent/10 px-1 text-[9px] leading-4 tabular-nums text-gus-accent/90"
+                aria-label={t("editor.linkRefs", { count: refs })}
+              >
+                {refs}
+              </sup>
+            )}
           </button>
         );
       }
