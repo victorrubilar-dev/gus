@@ -569,29 +569,33 @@ function lineRangeAt(value: string, at: number): [number, number] {
   return [start, newline === -1 ? value.length : newline + 1];
 }
 
-/** Altura real de fila del textarea en unidades locales (el motor la redondea al escalar). */
+/**
+ * Altura real de fila del textarea en unidades locales (el motor la redondea al
+ * escalar). Se mide en un clon invisible para no tocar el valor real del
+ * textarea: escribir en él fuerza un re-render y desincroniza el overlay,
+ * sobre todo al bajar el zoom (la interfaz se queda «rara»).
+ */
 function measureRowPitch(area: HTMLTextAreaElement | null): number | null {
   if (!area) return null;
-  const prev = area.value;
-  const selStart = area.selectionStart;
-  const selEnd = area.selectionEnd;
   try {
     const rows = Math.ceil((area.clientHeight + 4) / 16) + 8;
-    area.value = Array(rows).fill("X").join("\n");
-    const first = area.scrollHeight;
-    area.value = Array(rows + 10).fill("X").join("\n");
-    const second = area.scrollHeight;
+    const clon = area.cloneNode() as HTMLTextAreaElement;
+    // El clon no está en el DOM: no dispara eventos ni causa re-renders.
+    clon.style.position = "absolute";
+    clon.style.visibility = "hidden";
+    clon.style.height = "auto";
+    clon.style.overflow = "hidden";
+    clon.removeAttribute("rows");
+    clon.value = Array(rows).fill("X").join("\n");
+    document.body.appendChild(clon);
+    const first = clon.scrollHeight;
+    clon.value = Array(rows + 10).fill("X").join("\n");
+    const second = clon.scrollHeight;
+    clon.remove();
     const pitch = (second - first) / 10;
     return Number.isFinite(pitch) && pitch > 0 ? pitch : null;
   } catch {
     return null;
-  } finally {
-    area.value = prev;
-    try {
-      area.setSelectionRange(selStart, selEnd);
-    } catch {
-      // selección no aplicable
-    }
   }
 }
 

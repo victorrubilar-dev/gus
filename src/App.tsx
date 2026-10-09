@@ -330,7 +330,11 @@ function App({
 
   /** Escala global de la interfaz (Ajustes o atajos Ctrl + «+»/«−»/0). */
   useEffect(() => {
-    document.documentElement.style.setProperty("zoom", String(settings.uiZoom / 100));
+    const factor = settings.uiZoom / 100;
+    document.documentElement.style.setProperty("zoom", String(factor));
+    // Los vw/vh no se reescalan con el zoom raíz: la caja raíz los divide
+    // por este factor para seguir llenando la ventana a cualquier escala.
+    document.documentElement.style.setProperty("--gus-zoom", String(factor));
     window.dispatchEvent(new Event("gus:zoom"));
   }, [settings.uiZoom]);
 
@@ -1311,7 +1315,7 @@ function App({
       <MotionConfig reducedMotion={settings.animations ? "user" : "always"}>
         <div
           className={clsx(
-            "flex h-screen w-screen overflow-hidden bg-gus-bg text-gus-text",
+            "flex gus-app-root overflow-hidden bg-gus-bg text-gus-text",
             !settings.animations && "gus-no-motion",
           )}
           style={

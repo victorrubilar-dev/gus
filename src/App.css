@@ -14,6 +14,10 @@
 :root {
   color-scheme: dark;
 
+  /* Factor de escala de la interfaz (1 = 100%): lo sincroniza App.tsx con la
+     configuración y lo usa .gus-app-root para compensar los vw/vh. */
+  --gus-zoom: 1;
+
   /* Paleta de resaltado de código, con los mismos tonos que usa Obsidian en
      su tema oscuro: los tokens de Prism se pintan con estas variables. */
   --gus-code-comment: var(--color-gus-muted);
@@ -61,6 +65,16 @@ body {
   user-select: none;
   overflow: hidden;
   margin: 0;
+}
+
+/* Caja raíz de la app: el `zoom` del <html> escala visualmente todo, pero
+   los vw/vh no se reescalan con él, así que `h-screen w-screen` dibujaba la
+   interfaz a solo el N% de la ventana (hueco a la derecha y abajo al bajar
+   la escala). Dividiendo vw/vh por --gus-zoom la caja vuelve a medir el
+   tamaño real de la ventana y, al escalarla, llena la ventana exacta. */
+.gus-app-root {
+  width: calc(100vw / var(--gus-zoom));
+  height: calc(100vh / var(--gus-zoom));
 }
 
 .gus-scrollbar {
