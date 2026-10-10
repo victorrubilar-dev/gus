@@ -221,6 +221,67 @@ npx -y react-doctor@latest --json   # Reporte de calidad React
 
 ---
 
+## Flujo de Trabajo: Ramas y Releases
+
+### Ramas
+
+| Rama | Para qué sirve |
+|---|---|
+| `develop` | **Rama de trabajo.** Aquí vive el día a día: cada commit de funcionalidad, arreglo o refactor va a `develop`. |
+| `main` | **Rama de publicación.** Solo avanza cuando se prepara una release; es lo que empaqueta la CI y lo que instala quien descarga la app. |
+
+**Regla principal:** se trabaja **siempre en `develop`**. Nunca se commitea en `main` fuera del paso de release descrito más abajo. Como consecuencia, `main` es siempre la suma de lo ya publicado más la release que se esté preparando, y `develop` puede ir por delante con trabajo en curso.
+
+> El verificador de actualizaciones (`src/lib/updateCheck.ts`) consulta la API de releases de GitHub, así que **todo lo que llegue a `main` y se publique es código que verán las personas que ya tienen Gus instalado**. Por eso `main` solo se toca con algo que ya ha pasado por `develop` y está verificado.
+
+### Commits en `develop`
+
+- **Un requisito o cambio = un commit**, con estilo convencional y en español: `feat(scope): descripción`, `fix(scope): descripción`, `chore(scope): descripción`, `docs: descripción`.
+- **Nunca `git add -A`**: se listan explícitamente los ficheros del cambio (`git add ruta1 ruta2 ...`). Ficheros que no suelen entrar en un commit de funcionalidad: `.gitignore` (si el usuario lo tiene modificado), `task/` (está en `.gitignore`) y `src-tauri/Cargo.lock` salvo que el cambio de versión sea justo lo que se commitea.
+- **Verificación antes de cerrar cada commit**: `npx tsc --noEmit`, `pnpm test` y `pnpm build` en verde.
+- Si el cambio toca Rust (`src-tauri/src/lib.rs`) y el entorno no tiene toolchain, **no se da por compilado**: se avisa al usuario para que ejecute `cargo test` dentro de `src-tauri`.
+- Subida a origin al terminar la unidad de trabajo: `git push origin develop`. Los pushes a `main` solo en release.
+
+### Release: de `develop` a `main`
+
+Se hace **solo cuando hay algo que publicar** (una versión nueva: `v0.1.3`, `v0.1.4`, …). El guion, en este orden:
+
+1. **Verificar `develop` en verde**: `npx tsc --noEmit && pnpm test && pnpm build`.
+2. **Pasar todo a `main`**:
+   ```bash
+   git checkout main
+   git pull origin main
+   git merge --ff-only develop     # o `git merge develop` si main avanzó por su cuenta
+   ```
+3. **Subir la versión en todos estos ficheros a la vez** (tienen que coincidir):
+   | Fichero | Campo |
+   |---|---|
+   | `package.json` | `"version"` (es la fuente de `APP_VERSION`) |
+   | `src-tauri/tauri.conf.json` | `"version"` (la que ven los bundles) |
+   | `src-tauri/Cargo.toml` | `version` |
+   | `src-tauri/Cargo.lock` | `version` del paquete `gus` |
+   | `AGENTS.md` | línea **Versión** |
+4. **Reescribir `.github/release-notes.md`** con lo nuevo de esta versión. El workflow lo usa tal cual (`--notes-file`) para el cuerpo de la release: si no se toca, la release sale con las notas de la versión anterior.
+5. **Commit de release y etiqueta** (tag **ligero**, como `v0.1.0`, `v0.1.1` y `v0.1.2`):
+   ```bash
+   git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml \
+           src-tauri/Cargo.lock .github/release-notes.md AGENTS.md
+   git commit -m "chore(release): v0.1.3"
+   git tag v0.1.3
+   git push origin main v0.1.3
+   ```
+6. **La CI hace el resto**: el push del tag dispara `.github/workflows/release.yml`, que compila en Linux/Windows/macOS, sube los instaladores (`.deb`, `.rpm`, `.AppImage`, `.exe`, `.msi`, `.dmg`) y deja un **draft release** con las notas nuevas. Hay que publicarlo a mano en GitHub, marcándolo como *pre-release* para ser coherente con las anteriores.
+7. **Volver a `develop` y ponerla al día** con lo publicado:
+   ```bash
+   git checkout develop
+   git merge main                  # o `git rebase main`
+   git push origin develop
+   ```
+
+La siguiente función nueva vuelve a empezar en `develop`.
+
+---
+
 ## Configuración
 
 ### Configuración Tauri (`src-tauri/tauri.conf.json`)
