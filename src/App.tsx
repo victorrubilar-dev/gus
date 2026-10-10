@@ -19,6 +19,7 @@ import {
   ListTodo,
   LogOut,
   Network,
+  Search,
   Settings as SettingsIcon,
   StickyNote,
   Trash2,
@@ -31,6 +32,7 @@ import clsx from "clsx";
 import CalendarView from "./components/CalendarView";
 import BacklinksPanel from "./components/BacklinksPanel";
 import GraphView from "./components/GraphView";
+import SearchView from "./components/SearchView";
 import CommandPalette from "./components/CommandPalette";
 import NewTaskDialog from "./components/NewTaskDialog";
 import DashboardView from "./components/DashboardView";
@@ -56,6 +58,7 @@ import {
   type ImportSummary,
 } from "./lib/importFiles";
 import { findWikiNote, wikiTargetToPath, type WikiNote } from "./lib/wikiLink";
+import { relativeNotePath } from "./lib/searchIndex";
 import { incomingCountMap, type LinkGraph } from "./lib/linkGraph";
 import { accentHex, DEFAULT_SETTINGS, normalizeSettings, type AppSettings } from "./lib/settings";
 import { applyTheme, themeDefinition, type ThemeScheme } from "./lib/themes";
@@ -84,7 +87,7 @@ import UpdateNotice from "./components/UpdateNotice";
 import gusIcon from "./assets/gus-icon-512.png";
 import "./App.css";
 
-type TabId = "home" | "notes" | "tasks" | "calendar" | "graph" | "settings" | "trash";
+type TabId = "home" | "notes" | "tasks" | "calendar" | "graph" | "search" | "settings" | "trash";
 type NoteStatus = "idle" | "loading" | "ready" | "error";
 
 interface OpenNote {
@@ -113,6 +116,7 @@ const TABS: { id: TabId; labelKey: MessageKey; Icon: LucideIcon }[] = [
   { id: "tasks", labelKey: "app.tab.tasks", Icon: ListTodo },
   { id: "calendar", labelKey: "app.tab.calendar", Icon: CalendarDays },
   { id: "graph", labelKey: "app.tab.graph", Icon: Network },
+  { id: "search", labelKey: "app.tab.search", Icon: Search },
 ];
 
 const DEFAULT_BASE_DIR = "~/Documents/gus-vaults";
@@ -266,6 +270,12 @@ function App({
   const [linkGraph, setLinkGraph] = useState<LinkGraph | null>(null);
   const [linkGraphStatus, setLinkGraphStatus] = useState<NoteStatus>("idle");
   const [linkGraphError, setLinkGraphError] = useState<string | null>(null);
+  /**
+   * El índice de búsqueda existe ya en el vault: solo entonces merece la pena
+   * mantenerlo al guardar. Si nadie ha buscado nunca, no se crea el archivo.
+   */
+  const searchIndexTimerRef = useRef<number | null>(null);
+  const searchIndexReadyRef = useRef(false);
   /** Aviso del resultado de arrastrar archivos desde el explorador del sistema. */
   const [importNotice, setImportNotice] = useState<ImportSummary | null>(null);
   const importNoticeTimerRef = useRef<number | null>(null);
@@ -631,7 +641,56 @@ function App({
     }
     notePathRef.current = draft.path;
     setNote((prev) => (prev ? { ...prev, ...draft } : prev));
+
+    // El índice se toca solo si ya existe: así buscar sigue reflejando lo que
+    // se escribe sin crear `.gus-index` en vaults donde nadie ha buscado.
+    if (!searchIndexReadyRef.current || !currentVault) return;
+
+    const vault = currentVault;
+    const notePath = draft.path;
+    const text = draft.content;
+    const relative = relativeNotePath(vault, notePath);
+    if (relative === null) return;
+
+    if (searchIndexTimerRef.current !== null) {
+      window.clearTimeout(searchIndexTimerRef.current);
+    }
+    searchIndexTimerRef.current = window.setTimeout(() => {
+      searchIndexTimerRef.current = null;
+      invoke("update_index_note", {
+        path: vault,
+        relative,
+        text,
+        modifiedMs: Date.now(),
+      }).catch(() => {
+        // Un fallo al reindexar no interrumpe el guardado: la próxima
+        // reconstrucción completa lo pone al día.
+      });
+    }, 800);
   }
+
+  /** La vista de búsqueda avisa cuando el índice ya está levantado. */
+  const handleSearchIndexReady = useCallback(() => {
+    searchIndexReadyRef.current = true;
+  }, []);
+
+  useEffect(() => {
+    // Cambiar de vault deja el índice de la anterior sesión fuera de juego.
+    searchIndexReadyRef.current = false;
+    if (searchIndexTimerRef.current !== null) {
+      window.clearTimeout(searchIndexTimerRef.current);
+      searchIndexTimerRef.current = null;
+    }
+  }, [currentVault]);
+
+  useEffect(
+    () => () => {
+      if (searchIndexTimerRef.current !== null) {
+        window.clearTimeout(searchIndexTimerRef.current);
+      }
+    },
+    [],
+  );
 
   function handleFileDeleted(path: string) {
     if (image?.path === path) {
@@ -1692,6 +1751,20 @@ function App({
                     <GraphView
                       vaultPath={currentVault}
                       refreshKey={vaultRefresh}
+                      onOpenNote={(file) => {
+                        setActiveTab("notes");
+                        handleSelectNote({
+                          id: file.path,
+                          name: file.name.split("/").pop() ?? file.name,
+                          kind: "note",
+                        });
+                      }}
+                    />
+                  ) : activeTab === "search" ? (
+                    <SearchView
+                      vaultPath={currentVault}
+                      refreshKey={vaultRefresh}
+                      onIndexReady={handleSearchIndexReady}
                       onOpenNote={(file) => {
                         setActiveTab("notes");
                         handleSelectNote({
