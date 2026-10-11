@@ -40,6 +40,10 @@ export interface AppSettings {
   dailyNotesFolder: string;
   /** Plantilla con la que se crea la nota de un día nuevo. */
   dailyNotesTemplate: string;
+  /** Avisos del sistema (vencimientos y nota del día). Opt-in. */
+  notificationsEnabled: boolean;
+  /** Días de antelación con los que se avisa del vencimiento de una tarea. */
+  notificationLeadDays: number;
 }
 
 /**
@@ -59,6 +63,19 @@ export const ACCENTS: Record<AccentKey, { labelKey: MessageKey; hex: string }> =
 
 export const FONT_SIZES = [13, 14, 16, 18] as const;
 
+/**
+ * Días de antelación con los que se avisa del vencimiento de una tarea. Es la
+ * misma lista que usa Rust al sanear el ajuste (`LEAD_DAYS` en `lib.rs`).
+ */
+export const NOTIFICATION_LEAD_DAYS = [0, 1, 3, 7, 14] as const;
+
+/** Día de antelación por defecto: el aviso llega la víspera. */
+export const DEFAULT_LEAD_DAYS = 1;
+
+export function isLeadDays(value: unknown): value is number {
+  return typeof value === "number" && NOTIFICATION_LEAD_DAYS.includes(value as 0);
+}
+
 export const DEFAULT_SETTINGS: AppSettings = {
   openLastVault: true,
   alwaysNotesTab: false,
@@ -75,6 +92,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
   shortcuts: { ...DEFAULT_SHORTCUTS },
   dailyNotesFolder: DAILY_DEFAULT_FOLDER,
   dailyNotesTemplate: DAILY_DEFAULT_TEMPLATE,
+  // Opt-in: los avisos del sistema piden permiso al SO, así que están
+  // apagados hasta que alguien los enciende.
+  notificationsEnabled: false,
+  notificationLeadDays: DEFAULT_LEAD_DAYS,
 };
 
 function asBool(value: unknown, fallback: boolean): boolean {
@@ -116,6 +137,13 @@ export function normalizeSettings(raw: unknown): AppSettings {
     shortcuts: normalizeShortcuts(data.shortcuts),
     dailyNotesFolder: sanitizeDailyFolder(data.dailyNotesFolder),
     dailyNotesTemplate: normalizeDailyTemplate(data.dailyNotesTemplate),
+    notificationsEnabled: asBool(
+      data.notificationsEnabled,
+      DEFAULT_SETTINGS.notificationsEnabled,
+    ),
+    notificationLeadDays: isLeadDays(data.notificationLeadDays)
+      ? data.notificationLeadDays
+      : DEFAULT_SETTINGS.notificationLeadDays,
   };
 }
 
@@ -210,7 +238,8 @@ export type ToggleKey =
   | "animations"
   | "autoSave"
   | "hideCompletedTasks"
-  | "calendarShowCompleted";
+  | "calendarShowCompleted"
+  | "notificationsEnabled";
 
 interface DefinitionBase {
   category: SettingsCategoryId;
@@ -224,6 +253,8 @@ export type SettingDefinition = DefinitionBase &
     | { kind: "toggle"; key: ToggleKey }
     | { kind: "choice"; key: "editorFontSize"; options: readonly number[] }
     | { kind: "zoom"; key: "uiZoom" }
+    /** Días de antelación de los avisos (una tira de valores cerrada). */
+    | { kind: "leadDays"; key: "notificationLeadDays"; options: readonly number[] }
     /** Varios diccionarios del corrector a la vez (o ninguno: queda apagado). */
     | { kind: "spell"; key: "spellLangs"; options: readonly { value: SpellLang; label: string }[] }
     /** Un solo idioma para toda la aplicación. */
@@ -386,6 +417,25 @@ export const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     labelKey: "settings.calendarShowCompleted",
     descriptionKey: "settings.calendarShowCompleted.desc",
     keywords: "calendario dias completadas mostrar ocultar calendar days completed show hide",
+  },
+  {
+    kind: "toggle",
+    category: "tasks",
+    key: "notificationsEnabled",
+    labelKey: "settings.notificationsEnabled",
+    descriptionKey: "settings.notificationsEnabled.desc",
+    keywords:
+      "avisos notificaciones recordatorios sistema push notifications reminders alerts system",
+  },
+  {
+    kind: "leadDays",
+    category: "tasks",
+    key: "notificationLeadDays",
+    labelKey: "settings.notificationLeadDays",
+    descriptionKey: "settings.notificationLeadDays.desc",
+    options: NOTIFICATION_LEAD_DAYS,
+    keywords:
+      "antelacion recordatorio vencimiento dias aviso anticipacion lead reminder due ahead days",
   },
   {
     kind: "shortcuts",

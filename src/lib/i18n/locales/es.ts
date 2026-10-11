@@ -144,6 +144,15 @@ export default {
   "settings.calendarShowCompleted": "Mostrar completadas en el calendario",
   "settings.calendarShowCompleted.desc":
     "Las tareas terminadas aparecen tachadas en los días y en el detalle del día.",
+  "settings.notificationsEnabled": "Avisos del sistema",
+  "settings.notificationsEnabled.desc":
+    "Aviso de tareas por vencer y de la nota del día cuando se abre Gus. Nada sale del equipo.",
+  "settings.notificationLeadDays": "Antelación de los recordatorios",
+  "settings.notificationLeadDays.desc":
+    "Con cuántos días de antelación se avisa del vencimiento de una tarea.",
+  "settings.leadDays.same": "El mismo día",
+  "settings.leadDays.days": "{count} días",
+  "settings.leadDays.days__one": "{count} día",
   "settings.language": "Idioma de la aplicación",
   "settings.language.desc":
     "El idioma de los menús, los botones y los mensajes. Los atajos se muestran con el tuyo.",
@@ -504,6 +513,14 @@ export default {
   "search.allTags": "Todas las etiquetas",
   "search.clearFilters": "Quitar filtros",
   "search.rootFolder": "raíz",
+
+  /* ---------------- avisos del sistema ---------------- */
+  "notify.title": "Gus",
+  "notify.tasksTitle": "Tareas por vencer",
+  "notify.tasksBody": "{count} tareas vencen pronto",
+  "notify.tasksBody__one": "«{title}» vence pronto",
+  "notify.dailyTitle": "Nota del día",
+  "notify.dailyBody": "Todavía no has escrito la nota de hoy.",
 
   /* ---------------- resumen ---------------- */
   "dashboard.greeting": "Hola",

@@ -146,6 +146,15 @@ const en: Record<keyof typeof es, string> = {
   "settings.calendarShowCompleted": "Show completed in the calendar",
   "settings.calendarShowCompleted.desc":
     "Finished tasks appear struck through in the days and in the day detail.",
+  "settings.notificationsEnabled": "System notifications",
+  "settings.notificationsEnabled.desc":
+    "Heads-up for upcoming tasks and the daily note when Gus opens. Nothing leaves your computer.",
+  "settings.notificationLeadDays": "Reminder lead time",
+  "settings.notificationLeadDays.desc":
+    "How many days in advance a task due date is announced.",
+  "settings.leadDays.same": "Same day",
+  "settings.leadDays.days": "{count} days",
+  "settings.leadDays.days__one": "{count} day",
   "settings.language": "Application language",
   "settings.language.desc":
     "The language of menus, buttons and messages. Shortcuts are shown in yours.",
@@ -507,6 +516,14 @@ const en: Record<keyof typeof es, string> = {
   "search.allTags": "All tags",
   "search.clearFilters": "Clear filters",
   "search.rootFolder": "root",
+
+  /* ---------------- system notifications ---------------- */
+  "notify.title": "Gus",
+  "notify.tasksTitle": "Tasks coming due",
+  "notify.tasksBody": "{count} tasks are due soon",
+  "notify.tasksBody__one": "“{title}” is due soon",
+  "notify.dailyTitle": "Daily note",
+  "notify.dailyBody": "You have not written today's note yet.",
 
   /* ---------------- dashboard ---------------- */
   "dashboard.greeting": "Hello",

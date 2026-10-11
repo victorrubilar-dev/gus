@@ -516,6 +516,35 @@ export default function SettingsPanel({
       );
     }
 
+    if (definition.kind === "leadDays") {
+      const current = settings[definition.key];
+      return (
+        <div className="flex items-center gap-1 rounded-lg border border-gus-border bg-gus-panel p-1">
+          {definition.options.map((days) => {
+            const isActive = current === days;
+            return (
+              <button
+                key={days}
+                type="button"
+                aria-pressed={isActive}
+                onClick={() => update(definition.key, days)}
+                className={clsx(
+                  "rounded-md px-2.5 py-1 text-xs font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-gus-accent/70",
+                  isActive
+                    ? "bg-gus-accent text-gus-bg"
+                    : "text-gus-muted hover:text-gus-text",
+                )}
+              >
+                {days === 0
+                  ? t("settings.leadDays.same")
+                  : t("settings.leadDays.days", { count: days })}
+              </button>
+            );
+          })}
+        </div>
+      );
+    }
+
     if (definition.kind === "choice") {
       const current = settings[definition.key];
       return (

@@ -1099,6 +1099,10 @@ pub struct AppSettings {
     pub daily_notes_folder: String,
     /// Plantilla con la que se crea la nota de un día nuevo.
     pub daily_notes_template: String,
+    /// Avisos del sistema (vencimientos y nota del día). Opt-in.
+    pub notifications_enabled: bool,
+    /// Días de antelación con los que se avisa del vencimiento de una tarea.
+    pub notification_lead_days: u8,
 }
 
 impl Default for AppSettings {
@@ -1118,6 +1122,10 @@ impl Default for AppSettings {
             shortcuts: Default::default(),
             daily_notes_folder: "Diario".into(),
             daily_notes_template: "# {title}\n\n## Tareas\n\n- [ ] \n\n## Notas\n\n".into(),
+            // Opt-in: la privacidad es un principio del proyecto, así que los
+            // avisos están apagados hasta que alguien los enciende.
+            notifications_enabled: false,
+            notification_lead_days: 1,
         }
     }
 }
@@ -1219,6 +1227,13 @@ impl AppSettings {
             words.push(word);
         }
         self.spell_words = words;
+
+        // Días de antelación de los avisos: rango corto y redondo. Un valor
+        // fuera de serie vuelve al default en lugar de quedarse raro.
+        const LEAD_DAYS: [u8; 5] = [0, 1, 3, 7, 14];
+        if !LEAD_DAYS.contains(&self.notification_lead_days) {
+            self.notification_lead_days = Self::default().notification_lead_days;
+        }
 
         // Carpeta de diarios: segmentos sin caracteres prohibidos y con un
         // tope de profundidad; lo que no deje nada usable vuelve al default.
@@ -2954,6 +2969,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_notification::init())
         .setup(|_app| {
             purge_expired_trash(&trash_dir());
             Ok(())
@@ -5103,6 +5119,36 @@ mod config_tests {
         };
         long.sanitize();
         assert_eq!(long.daily_notes_template.chars().count(), 4000);
+    }
+
+    /// La antelación de los recordatorios solo admite la lista cerrada.
+    #[test]
+    fn sanea_la_antelacion_de_los_avisos() {
+        let mut ok = AppSettings {
+            notification_lead_days: 7,
+            ..AppSettings::default()
+        };
+        ok.sanitize();
+        assert_eq!(ok.notification_lead_days, 7);
+
+        // Cero días es válido: el aviso suena el propio día del vencimiento.
+        let mut same_day = AppSettings {
+            notification_lead_days: 0,
+            ..AppSettings::default()
+        };
+        same_day.sanitize();
+        assert_eq!(same_day.notification_lead_days, 0);
+
+        // Un valor fuera de serie vuelve al default en lugar de quedarse raro.
+        let mut weird = AppSettings {
+            notification_lead_days: 99,
+            ..AppSettings::default()
+        };
+        weird.sanitize();
+        assert_eq!(
+            weird.notification_lead_days,
+            AppSettings::default().notification_lead_days
+        );
     }
 
     /// Los enlaces se leen con y sin alias, y las repeticiones se agrupan.
