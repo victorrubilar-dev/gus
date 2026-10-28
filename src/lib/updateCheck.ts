@@ -6,7 +6,22 @@ export interface UpdateInfo {
   version: string;
   url: string;
   publishedAt: string | null;
+  /** Instalador de esta plataforma, si la release lo tiene. */
+  installer: InstallerAsset | null;
 }
+
+/** Fichero adjunto a una release de GitHub. */
+export interface InstallerAsset {
+  name: string;
+  url: string;
+}
+
+/** Extensiones de instalador por plataforma, en orden de preferencia. */
+const INSTALLERS_BY_PLATFORM: [RegExp, string[]][] = [
+  [/Windows/i, [".exe", ".msi"]],
+  [/Mac/i, [".dmg"]],
+  [/Linux/i, [".appimage"]],
+];
 
 const API_BASE = "https://api.github.com/repos";
 const REQUEST_TIMEOUT_MS = 8000;
@@ -35,6 +50,32 @@ export function isNewerVersion(candidate: string, current: string): boolean {
     if (leftNumber !== rightNumber) return leftNumber > rightNumber;
   }
   return false;
+}
+
+/**
+ * Elige el instalador que corresponde a `userAgent`. Devuelve null si la
+ * plataforma no se reconoce o la release no tiene instalador para ella.
+ */
+export function pickInstaller(assets: InstallerAsset[], userAgent: string): InstallerAsset | null {
+  const platform = INSTALLERS_BY_PLATFORM.find(([pattern]) => pattern.test(userAgent));
+  if (!platform) return null;
+
+  for (const extension of platform[1]) {
+    const asset = assets.find((item) => item.name.toLowerCase().endsWith(extension));
+    if (asset) return asset;
+  }
+  return null;
+}
+
+/** Ficheros de la release, descartando lo que no tenga nombre y URL. */
+function parseAssets(raw: unknown): InstallerAsset[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((item) => {
+    const data = item as Record<string, unknown>;
+    return typeof data.name === "string" && typeof data.browser_download_url === "string"
+      ? [{ name: data.name, url: data.browser_download_url }]
+      : [];
+  });
 }
 
 /** Lanza la petición con tope de tiempo: sin red no se debe frenar el arranque. */
@@ -76,6 +117,10 @@ export async function fetchLatestVersion(): Promise<UpdateInfo | null> {
             ? data.html_url
             : RELEASES_URL,
         publishedAt: typeof data.published_at === "string" ? data.published_at : null,
+        installer: pickInstaller(
+          parseAssets(data.assets),
+          typeof navigator === "undefined" ? "" : navigator.userAgent,
+        ),
       };
     }
   }
@@ -89,6 +134,8 @@ export async function fetchLatestVersion(): Promise<UpdateInfo | null> {
         version: normalizeVersion(name),
         url: `${RELEASES_URL}/tag/${encodeURIComponent(name)}`,
         publishedAt: null,
+        // Una etiqueta sin release no tiene instaladores que bajar.
+        installer: null,
       };
     }
   }

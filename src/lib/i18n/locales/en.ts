@@ -983,6 +983,8 @@ const en: Record<keyof typeof es, string> = {
   /* ---------------- updates ---------------- */
   "update.available": "Gus {version} is out (you have {current}).",
   "update.openRelease": "See what is new",
+  "update.download": "Download and open the installer",
+  "update.downloading": "Downloading…",
   "update.later": "Later",
   "update.close": "Close the update notice",
   "update.checking": "Checking…",

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { m } from "framer-motion";
 import { ArrowUpCircle, X } from "lucide-react";
 import clsx from "clsx";
+import { invoke } from "@tauri-apps/api/core";
 import { useT } from "../lib/i18n";
 import { openExternal } from "../lib/externalLink";
 import type { UpdateInfo } from "../lib/updateCheck";
@@ -17,12 +18,15 @@ export interface UpdateNoticeProps {
 }
 
 /**
- * Aviso discreto de que hay una versión más nueva en el repositorio. No
- * instala nada: abre la página de la release y deja que quien use Gus decida.
+ * Aviso discreto de que hay una versión más nueva en el repositorio. Si la
+ * release trae instalador para este equipo, lo baja a Descargas y lo abre a
+ * petición de quien use Gus; si no, abre la página de la release.
  */
 export default function UpdateNotice({ info, current, offsetLeft, onDismiss }: UpdateNoticeProps) {
   const t = useT();
   const [opening, setOpening] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function openRelease() {
     if (opening) return;
@@ -32,6 +36,20 @@ export default function UpdateNotice({ info, current, offsetLeft, onDismiss }: U
     } finally {
       setOpening(false);
       onDismiss();
+    }
+  }
+
+  async function downloadInstaller() {
+    if (!info.installer || downloading) return;
+    setDownloading(true);
+    setError(null);
+    try {
+      await invoke<string>("download_update", { url: info.installer.url });
+      onDismiss();
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setDownloading(false);
     }
   }
 
@@ -60,11 +78,27 @@ export default function UpdateNotice({ info, current, offsetLeft, onDismiss }: U
           </p>
 
           <div className="mt-2.5 flex flex-wrap items-center gap-2">
+            {info.installer ? (
+              <button
+                type="button"
+                onClick={() => void downloadInstaller()}
+                disabled={downloading}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-gus-accent px-3 py-1.5 text-xs font-semibold text-gus-bg outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:ring-offset-2 focus-visible:ring-offset-gus-panel disabled:opacity-50"
+              >
+                {downloading ? t("update.downloading") : t("update.download")}
+              </button>
+            ) : null}
+
             <button
               type="button"
               onClick={() => void openRelease()}
               disabled={opening}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-gus-accent px-3 py-1.5 text-xs font-semibold text-gus-bg outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:ring-offset-2 focus-visible:ring-offset-gus-panel disabled:opacity-50"
+              className={clsx(
+                "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs outline-none transition-opacity focus-visible:ring-2 focus-visible:ring-gus-accent/60 disabled:opacity-50",
+                info.installer
+                  ? "text-gus-muted hover:text-gus-text"
+                  : "bg-gus-accent font-semibold text-gus-bg hover:opacity-90 focus-visible:ring-offset-2 focus-visible:ring-offset-gus-panel",
+              )}
             >
               {t("update.openRelease")}
             </button>
@@ -80,6 +114,12 @@ export default function UpdateNotice({ info, current, offsetLeft, onDismiss }: U
               {t("update.later")}
             </button>
           </div>
+
+          {error && (
+            <p role="alert" className="mt-2 text-xs leading-5 text-rose-300">
+              {error}
+            </p>
+          )}
         </div>
 
         <button

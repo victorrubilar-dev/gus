@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { checkForUpdate, isNewerVersion, normalizeVersion } from "./updateCheck";
+import {
+  checkForUpdate,
+  isNewerVersion,
+  normalizeVersion,
+  pickInstaller,
+  type InstallerAsset,
+} from "./updateCheck";
 
 describe("normalizeVersion", () => {
   it("quita la «v» inicial y los espacios", () => {
@@ -91,5 +97,29 @@ describe("checkForUpdate", () => {
     vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 403 })));
 
     expect(await checkForUpdate("0.1.0")).toEqual({ status: "unavailable" });
+  });
+});
+
+describe("pickInstaller", () => {
+  const assets: InstallerAsset[] = [
+    { name: "gus_0.1.4_amd64.deb", url: "https://x/deb" },
+    { name: "gus_0.1.4_x64-setup.exe", url: "https://x/exe" },
+    { name: "gus_0.1.4_x64_en-US.msi", url: "https://x/msi" },
+    { name: "gus_0.1.4_aarch64.dmg", url: "https://x/dmg" },
+    { name: "gus_0.1.4_amd64.AppImage", url: "https://x/appimage" },
+  ];
+  const WINDOWS = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)";
+  const MAC = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0)";
+  const LINUX = "Mozilla/5.0 (X11; Linux x86_64)";
+
+  it("elige el instalador de cada plataforma", () => {
+    expect(pickInstaller(assets, WINDOWS)?.url).toBe("https://x/exe");
+    expect(pickInstaller(assets, MAC)?.url).toBe("https://x/dmg");
+    expect(pickInstaller(assets, LINUX)?.url).toBe("https://x/appimage");
+  });
+
+  it("devuelve null si la plataforma no se reconoce o no hay instalador para ella", () => {
+    expect(pickInstaller(assets, "Mozilla/5.0 (iPhone)")).toBeNull();
+    expect(pickInstaller([assets[0]], WINDOWS)).toBeNull();
   });
 });

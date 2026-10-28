@@ -980,6 +980,8 @@ export default {
   /* ---------------- actualizaciones ---------------- */
   "update.available": "Gus {version} ya está disponible (tienes {current}).",
   "update.openRelease": "Ver los cambios",
+  "update.download": "Descargar y abrir el instalador",
+  "update.downloading": "Descargando…",
   "update.later": "Más tarde",
   "update.close": "Cerrar el aviso de actualización",
   "update.checking": "Comprobando…",

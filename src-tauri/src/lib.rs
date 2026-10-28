@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
+use tauri_plugin_opener::OpenerExt;
 
 fn ensure_md(path: &str) -> Result<(), String> {
     let is_md = std::path::Path::new(path)
@@ -209,6 +210,63 @@ fn write_pdf_file(path: String, data: String) -> Result<(), String> {
     }
 
     std::fs::write(&path, bytes).map_err(|err| format!("No se pudo escribir «{path}»: {err}"))
+}
+
+/// Solo se descargan instaladores de las releases del proyecto (ver PRIVACY.md).
+const UPDATE_DOWNLOAD_PREFIX: &str = "https://github.com/victorrubilar-dev/gus/releases/download/";
+const INSTALLER_EXTENSIONS: [&str; 4] = [".exe", ".msi", ".dmg", ".appimage"];
+
+/// Nombre del instalador de una URL de release, o error si no es uno de Gus.
+fn installer_name(url: &str) -> Result<&str, String> {
+    // La ruta es `<etiqueta>/<fichero>`: el fichero es lo que se guarda.
+    let rest = url
+        .strip_prefix(UPDATE_DOWNLOAD_PREFIX)
+        .ok_or("Solo se descargan instaladores de las releases de Gus")?;
+    let (tag, name) = rest
+        .split_once('/')
+        .ok_or_else(|| format!("«{rest}» no es un instalador de Gus"))?;
+    let lower = name.to_lowercase();
+    if !tag.is_empty() && !name.contains('/') && INSTALLER_EXTENSIONS.iter().any(|ext| lower.ends_with(ext)) {
+        Ok(name)
+    } else {
+        Err(format!("«{name}» no es un instalador de Gus"))
+    }
+}
+
+/// Baja el instalador de una release a Descargas y lo abre para instalarlo.
+#[tauri::command]
+async fn download_update(app: AppHandle, url: String) -> Result<String, String> {
+    let name = installer_name(&url)?;
+    let downloads = app
+        .path()
+        .download_dir()
+        .map_err(|err| format!("No se encontró la carpeta de Descargas: {err}"))?;
+
+    let bytes = reqwest::get(&url)
+        .await
+        .and_then(|response| response.error_for_status())
+        .map_err(|err| format!("No se pudo descargar la actualización: {err}"))?
+        .bytes()
+        .await
+        .map_err(|err| format!("No se pudo descargar la actualización: {err}"))?;
+
+    let target = unique_path(&downloads.join(name))?;
+    std::fs::write(&target, &bytes)
+        .map_err(|err| format!("No se pudo guardar «{}»: {err}", target.display()))?;
+
+    // Un AppImage sin bit de ejecución no se abre desde el gestor de archivos.
+    #[cfg(unix)]
+    if name.to_lowercase().ends_with(".appimage") {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o755))
+            .map_err(|err| format!("No se pudo hacer ejecutable «{name}»: {err}"))?;
+    }
+
+    let path = target.to_string_lossy().into_owned();
+    app.opener()
+        .open_path(&path, None::<&str>)
+        .map_err(|err| format!("No se pudo abrir el instalador: {err}"))?;
+    Ok(path)
 }
 
 /// Filtro de `rename_vault_file`, `move_vault_file` y `delete_vault_file`: solo
@@ -2973,6 +3031,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            download_update,
             read_vault_dir,
             get_vault_files,
             list_recent_notes,
@@ -5006,6 +5065,22 @@ mod tests {
         assert_eq!(facets.tags, vec!["examen", "importante"]);
 
         std::fs::remove_dir_all(&vault).ok();
+    }
+}
+
+#[cfg(test)]
+mod update_download_tests {
+    use super::*;
+
+    #[test]
+    fn installer_name_solo_acepta_instaladores_de_las_releases_de_gus() {
+        let base = "https://github.com/victorrubilar-dev/gus/releases/download/v0.1.4";
+        assert_eq!(installer_name(&format!("{base}/gus_0.1.4_x64-setup.exe")), Ok("gus_0.1.4_x64-setup.exe"));
+        assert_eq!(installer_name(&format!("{base}/gus_0.1.4_amd64.AppImage")), Ok("gus_0.1.4_amd64.AppImage"));
+        assert!(installer_name(&format!("{base}/notas.txt")).is_err());
+        assert!(installer_name(&format!("{base}/sub/gus.exe")).is_err());
+        assert!(installer_name("https://evil.example/gus.exe").is_err());
+        assert!(installer_name("https://github.com/victorrubilar-dev/gus/releases/download/v0.1.4").is_err());
     }
 }
 
