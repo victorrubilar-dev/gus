@@ -1,18 +1,23 @@
-## Gus v0.1.4 🚀
+## Gus v0.1.5 🚀
 
-Actualización centrada en **actualizar sin buscar**: el aviso de versión nueva ahora puede bajar el instalador de tu sistema y abrirlo por ti.
+Actualización centrada en **la papelera de cada vault** y en una app más segura: la ventana solo carga lo que Gus necesita.
 
-### ✨ Qué incluye
+### ✨ Qué cambia
 
-- ⬇️ **Descargar la actualización desde el aviso**: si hay una versión nueva, el botón «Descargar y abrir el instalador» baja el de tu sistema a tu carpeta de Descargas y lo abre. Nada se descarga si no lo pulsas, y solo desde la página de releases de este proyecto
-- 🔗 Si la versión no trae instalador para tu sistema, el aviso sigue enlazando a la página de la release, como antes
-- 🧹 **Papelera más fiable**: si no se puede guardar el registro de lo que has tirado, Gus lo dice en vez de fallar en silencio
+- 🗑️ **Papelera por vault**: lo que borras en un vault se guarda en la carpeta `.gus-trash` de ese mismo vault, así que viaja con él. Antes había una única papelera compartida por todos los vaults.
+- 🔄 **Migración automática**: al abrir esta versión, lo que quedaba en la papelera antigua (`~/gus-vault/.gus-trash`) se pasa a la papelera del vault al que pertenecía. Lo que no es de ningún vault conocido se queda donde estaba, sin tocar.
+- 🛡️ **Política de contenido activa**: la ventana solo puede cargar recursos de la propia app. No cambia nada de lo que ves, pero reduce el daño que podría causar un fallo al mostrar una nota.
+- 🧹 **Papelera más fiable**: si no se puede guardar el registro de lo que has tirado, Gus lo dice en vez de fallar en silencio.
+
+### ⚠️ A tener en cuenta
+
+- Como la papelera y el índice de búsqueda viven dentro del vault, Nextcloud, Syncthing y similares los sincronizan también. Si no quieres eso, excluye `.gus-trash` y `.gus-index` en tu herramienta de sincronización.
 
 ### 🛠️ Cambios internos
 
-- La compilación de instaladores ahora ejecuta antes los tests (TypeScript, Vitest y Rust), y no publica nada si fallan
-- Comprobación automática de que la versión es la misma en todos los ficheros del proyecto
-- Retirada la traza de depuración del editor y los recursos sin uso
+- El backend y el editor están repartidos en módulos más pequeños. No cambia el comportamiento.
+- Nuevas pruebas del teclado en tablas y de la app completa, además de las de siempre.
+- La compilación de instaladores ejecuta antes los tests y no publica nada si fallan.
 
 ### 📦 Instaladores
 
@@ -22,7 +27,7 @@ Actualización centrada en **actualizar sin buscar**: el aviso de versión nueva
 | Windows | `.exe` / `.msi` |
 | macOS | `.dmg` |
 
-**Nota para Linux:** el botón de descarga baja el `.AppImage`, que funciona en cualquier distribución. Si prefieres el `.rpm` o el `.deb`, descárgalo desde la página de la release.
+**Nota para Linux:** el botón de descarga del aviso de versión baja el `.AppImage`, que funciona en cualquier distribución. Si prefieres el `.rpm` o el `.deb`, descárgalo desde la página de la release.
 
 **Nota para Windows y macOS:** los instaladores no están firmados. Windows (SmartScreen) y macOS (Gatekeeper) pueden pedir confirmación antes de abrirlos.
 
