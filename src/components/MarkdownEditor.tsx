@@ -22,7 +22,7 @@ import { useT } from "../lib/i18n";
 import { charWidthPx, offsetAtPointer } from "../lib/pointerOffset";
 import { toLocalCoord, uiZoomFactor } from "../lib/uiZoom";
 import { adjacentTableCell, alignTableColumn, cellRect, cellRectClipboard, cellIndexAtPointer, clearTableCells, computeTableMerges, duplicateTableRow, insertTableColumn, insertTableRow, isTableMergePossible, isTableTaskCell, isTableUnmergePossible, lineIndexOf, lineStartOffset, actionRect, mergeTableCells, moveTableRow, neighbourColumn, planTableDeletion, rectSpansCells, removeTable, removeTableColumn, removeTableRow, resolveTableCaret, rowJumpAllowed, sortTableRows, sourceSegments, splitTableCells, tableBlockAt, tableCellRange, tableFromDelimited, tableIntersects, tableRows, tableSkeleton, toggleTableTask, unmergeTableCells, visualLength, wordRangeAt, type TableCellCaret, type TableCellRect, type TableCellRef, type TableEdit, type TableLine } from "../lib/tableLayout";
-import { createHistory, recordHistory, redoHistory, undoHistory, type EditorHistory, type HistorySnapshot } from "../lib/editorHistory";
+import { recordHistory, redoHistory, undoHistory, type HistorySnapshot } from "../lib/editorHistory";
 import { stripPasteFormatting } from "../lib/pasteText";
 import { frontmatterLineOffset, parseNoteTagInput, parseNoteTags, replaceBody, setNoteTags, stripFrontmatter, tagOptions, type VaultTag } from "../lib/noteTags";
 import { caretAnchor, lineAtCaret } from "../lib/caretPosition";
@@ -33,6 +33,7 @@ import InlinePreview, { classifySource, type TableBarHover, type TableResizeHove
 import MermaidDiagram from "./MermaidDiagram";
 import EditorContextMenu, { type ContextSpell, type FormatKind, type TableAction, type TableMenuInfo } from "./EditorContextMenu";
 import PdfExportDialog from "./PdfExportDialog";
+import { useEditorHistory } from "./useEditorHistory";
 import type { BlockDrift, EditorMenu, ContextMenuState, ImageResizeDrag, SaveState, SpellPopup, ViewMode } from "./markdownEditorTypes";
 import { countWords, lineRangeAt } from "../lib/editorText";
 import { measureRowPitch, measureTableCols } from "../lib/editorMeasure";
@@ -418,10 +419,8 @@ export default function MarkdownEditor({
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
-  const historyRef = useRef<EditorHistory>(createHistory());
-  const pendingRestoreRef = useRef<HistorySnapshot | null>(null);
-  const forceHistoryRef = useRef(false);
-  const skipHistoryRef = useRef(false);
+  const { historyRef, pendingRestoreRef, forceHistoryRef, skipHistoryRef, historySnapshot } =
+    useEditorHistory(textareaRef, contentRef);
   const pendingCaretRef = useRef<[number, number] | null>(null);
   const wikiRequestRef = useRef(0);
   const imagesRequestRef = useRef(0);
@@ -602,17 +601,6 @@ export default function MarkdownEditor({
   function editTitle(next: string) {
     setTitle(next);
     setSaveState("dirty");
-  }
-
-  function historySnapshot(): HistorySnapshot {
-    const area = textareaRef.current;
-    const texto = contentRef.current;
-    return {
-      content: texto,
-      start: area?.selectionStart ?? texto.length,
-      end: area?.selectionEnd ?? texto.length,
-      at: Date.now(),
-    };
   }
 
   function editContent(next: string) {
