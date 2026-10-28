@@ -58,4 +58,4 @@ Benchmarks: `pnpm bench`, `pnpm bench:menu`, `pnpm bench:images`, `pnpm bench:ex
 
 - `AGENTS.md` tiene cifras desactualizadas (líneas de `lib.rs`, número de tests, lista de componentes). No las uses como referencia exacta.
 - La CI es un único workflow, `.github/workflows/release.yml`, que se dispara con cada tag `v*`: primero tests (`tsc`, `pnpm test`, `cargo test`) y comprobación de que el tag coincide con `package.json`; luego compila, firma (si hay secrets) y deja el draft. Ver `rework.md`.
-- El CSP está deshabilitado (`src-tauri/tauri.conf.json`), y `move_to_trash` acepta cualquier ruta. Tratar esas zonas con cuidado.
+- La CSP está activa en `src-tauri/tauri.conf.json`. Si se toca, probar PDF (pdf.js), Mermaid y el corrector con `pnpm bench:app`. `move_to_trash` solo acepta rutas dentro del vault indicado. Tratar esas zonas con cuidado.

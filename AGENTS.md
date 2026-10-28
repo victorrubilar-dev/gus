@@ -303,7 +303,7 @@ La siguiente función nueva vuelve a empezar en `develop`.
 - **App identifier:** `com.gus.desktop`
 - **Dev URL:** `http://localhost:1420`
 - **Frontend dist:** `../dist`
-- **CSP:** `null` (deshabilitado)
+- **CSP:** activa en `tauri.conf.json`: `script-src 'self' 'wasm-unsafe-eval'` (Hunspell), `connect-src` con `data:`, `blob:` e IPC de Tauri (pdf.js carga el PDF con `fetch`), y `style-src 'unsafe-inline'` por los estilos de React. Verificada con `pnpm bench:app` en Chromium; falta probarla en `pnpm tauri dev` antes de cada release.
 - **Bundle targets:** todas las plataformas
 
 ### Archivo de configuración de la app (creado en runtime, depende del SO)
@@ -388,7 +388,7 @@ Gus es una app local: el usuario elige sus vaults y el backend confía en las ru
 - **Render:** el contenido de las notas se escapa; Prism escapa el código resaltado.
 
 **Lo que no se protege:**
-- **CSP deshabilitada** (`csp: null` en `tauri.conf.json`, R-03). Si una nota consiguiera ejecutar script en la webview, podría llamar a cualquier comando IPC. Es el riesgo principal y la razón por la que R-03 está pendiente.
+- **Una nota que consiguiera ejecutar script** tendría acceso a todos los comandos IPC. La CSP de `tauri.conf.json` reduce ese riesgo, pero `script-src` permite `'wasm-unsafe-eval'`, no `unsafe-eval`, y el resto del modelo sigue confiando en la webview.
 - **El backend no conoce la lista de vaults.** Por eso `move_to_trash` comprueba «dentro del vault indicado» y no «dentro de un vault registrado».
 - **Lectura de rutas arbitrarias:** `read_vault_image`, `read_vault_pdf` y `read_vault_dir` no limitan el directorio.
 
