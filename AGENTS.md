@@ -12,6 +12,8 @@
 - **Privacidad absoluta:** Sin nube, sin cuentas, sin telemetría.
 - **Las notas son archivos `.md`** en una carpeta elegida por el usuario ("vault").
 - **Las tareas** se guardan en un JSON oculto (`.gus-tasks.json`) dentro de cada vault.
+- **La búsqueda a texto completo** guarda su índice en `.gus-index/` dentro de cada vault (pestaña Buscar).
+- **La papelera** de cada vault vive en `.gus-trash/` dentro del propio vault.
 - **Idioma principal:** Español (con i18n a inglés integrado).
 
 **Repositorio:** https://github.com/victorrubilar-dev/gus  
@@ -50,7 +52,9 @@
 | image 0.25 | Thumbnails para el selector de imágenes |
 | tauri-plugin-dialog | Diálogos nativos de archivos |
 | tauri-plugin-clipboard-manager | Acceso al portapapeles |
-| tauri-plugin-opener | Abrir enlaces externos |
+| tauri-plugin-opener | Abrir enlaces externos y el instalador descargado |
+| tauri-plugin-notification | Avisos del sistema (vencimientos y nota del día) |
+| reqwest (native-tls) | Descarga del instalador de una release, solo a petición del usuario |
 
 ### Testing
 | Tecnología | Uso |
@@ -91,6 +95,11 @@ gus/
 │   │   ├── EditorMenus.tsx       # Menú slash (/) para insertar bloques
 │   │   ├── EditorContextMenu.tsx # Menú contextual clic derecho
 │   │   ├── TrashView.tsx         # Gestión de papelera/reciclaje
+│   │   ├── SearchView.tsx        # Pestaña Buscar (índice a texto completo)
+│   │   ├── GraphView.tsx         # Grafo de enlaces entre notas
+│   │   ├── BacklinksPanel.tsx    # Panel de backlinks de la nota abierta
+│   │   ├── DailyNoteBar.tsx      # Barra de la nota diaria (qué día se ve)
+│   │   ├── useResolvedImage.ts   # Resuelve imágenes del vault a datos `data:`
 │   │   ├── Tour.tsx              # Tour de onboarding guiado
 │   │   ├── UpdateNotice.tsx     # Banner de nueva versión disponible
 │   │   ├── ThemeCard.tsx         # Tarjeta de vista previa de tema
@@ -133,6 +142,11 @@ gus/
 │   │   ├── zoomShortcuts.ts      # Atajos de teclado de zoom
 │   │   ├── tableLayout.ts        # Cálculos de layout de tablas
 │   │   ├── updateCheck.ts        # Verificación de versión y elección del instalador en GitHub releases
+│   │   ├── linkGraph.ts          # Grafo de enlaces del vault (lo devuelve el backend)
+│   │   ├── graphLayout.ts        # Colocación del grafo de enlaces
+│   │   ├── searchIndex.ts        # Tipos y utilidades de la búsqueda a texto completo
+│   │   ├── dailyNotes.ts         # Notas diarias: una por día, en carpeta propia
+│   │   ├── notifications.ts      # Avisos del sistema: vencimientos y nota del día
 │   │   └── version.ts            # Versión de la app desde package.json
 │   ├── assets/                   # Iconos (gus-icon.png, gus-icon-512.png)
 │   └── types/                    # Declaraciones TypeScript
@@ -359,6 +373,23 @@ La siguiente función nueva vuelve a empezar en `develop`.
 5. **El sistema de papelera es personalizado** — no es la papelera del SO, sino una carpeta `.gus-trash` dentro de cada vault con manifiesto JSON, TTL de 30 días y capacidad de restauración. Las versiones anteriores usaban una papelera global en `~/gus-vault/.gus-trash`; al arrancar, `migrate_legacy_trash` pasa a cada vault lo que era suyo.
 
 6. **La verificación de actualizaciones es no intrusiva** — verifica la API de releases de GitHub al iniciar, nunca bloquea la app y respeta las versiones descartadas. La descarga del instalador solo ocurre si el usuario pulsa «Descargar», y solo desde `github.com/victorrubilar-dev/gus/releases/download/`.
+
+---
+
+## Modelo de amenaza
+
+Gus es una app local: el usuario elige sus vaults y el backend confía en las rutas que le llegan. Los comandos Tauri aceptan rutas absolutas (y `~`) sin limitar el directorio, porque el vault puede estar en cualquier carpeta del usuario. Eso es diseño, no un descuido.
+
+**Protecciones que existen:**
+- **Notas:** leer, crear y escribir notas exige extensión `.md` (`ensure_md`). Renombrar, mover y borrar solo admite tipos que el explorador muestra: notas, imágenes y PDF (`ensure_entry`).
+- **Papelera:** `move_to_trash` solo acepta elementos que cuelguen del vault indicado (`ensure_in_vault`). La papelera de cada vault no puede tirarse dentro de sí misma.
+- **Actualizaciones:** `download_update` solo descarga desde `github.com/victorrubilar-dev/gus/releases/download/` y solo ficheros con extensión de instalador.
+- **Render:** el contenido de las notas se escapa; Prism escapa el código resaltado.
+
+**Lo que no se protege:**
+- **CSP deshabilitada** (`csp: null` en `tauri.conf.json`, R-03). Si una nota consiguiera ejecutar script en la webview, podría llamar a cualquier comando IPC. Es el riesgo principal y la razón por la que R-03 está pendiente.
+- **El backend no conoce la lista de vaults.** Por eso `move_to_trash` comprueba «dentro del vault indicado» y no «dentro de un vault registrado».
+- **Lectura de rutas arbitrarias:** `read_vault_image`, `read_vault_pdf` y `read_vault_dir` no limitan el directorio.
 
 ---
 
