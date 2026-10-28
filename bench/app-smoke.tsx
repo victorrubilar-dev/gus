@@ -16,7 +16,11 @@ interface Entrada {
 }
 
 const ahora = 1_700_000_000_000;
-const archivos = new Map<string, string>([["/vault/bienvenida.md", "# Bienvenida\n"]]);
+const PDF_DE_PRUEBA = "data:application/pdf;base64,JVBERi0xLjQKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5kb2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUl0gL0NvdW50IDEgPj4KZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCAyMDAgMjAwXSAvQ29udGVudHMgNCAwIFIgL1Jlc291cmNlcyA8PCA+PiA+PgplbmRvYmoKNCAwIG9iago8PCAvTGVuZ3RoIDQ0ID4+CnN0cmVhbQpCVCAvRjEgMjQgVGYgMjAgMTAwIFRkIChIb2xhIFBERikgVGogRVQKZW5kc3RyZWFtCmVuZG9iagp4cmVmCjAgNQowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAwMDkgMDAwMDAgbiAKMDAwMDAwMDA1OCAwMDAwMCBuIAowMDAwMDAwMTE1IDAwMDAwIG4gCjAwMDAwMDAyMTkgMDAwMDAgbiAKdHJhaWxlcgo8PCAvU2l6ZSA1IC9Sb290IDEgMCBSID4+CnN0YXJ0eHJlZgozMDgKJSVFT0YK";
+const archivos = new Map<string, string>([
+  ["/vault/bienvenida.md", "# Bienvenida\n"],
+  ["/vault/manual.pdf", ""],
+]);
 const llamadas: { cmd: string; args: Record<string, unknown> }[] = [];
 const tareas: unknown[] = [];
 
@@ -53,6 +57,7 @@ const respuestas: Record<string, (args: Record<string, unknown>) => unknown> = {
     archivos.set(String(args.path), String(args.content));
     return args.path;
   },
+  read_vault_pdf: () => PDF_DE_PRUEBA,
   load_tasks: () => tareas,
   save_tasks: (args) => {
     tareas.splice(0, tareas.length, ...(args.tasks as unknown[]));
