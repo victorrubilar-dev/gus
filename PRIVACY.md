@@ -13,11 +13,14 @@ Gus is a **local-first** application: your notes and tasks never leave your comp
 
 ## Network requests
 
-Gus performs one kind of network request: a check against the public GitHub API to detect whether a newer version has been published, shown as an update notice. This request:
+Gus performs two kinds of network request, both only to GitHub and both only to update checks:
 
-- contains no personal data, identifiers, note contents, or usage data,
-- consists only of standard HTTP request metadata (e.g. IP address), inherent to any web request,
-- is never stored by the application.
+1. **Version check.** A request to the public GitHub API to detect whether a newer version has been published, shown as an update notice. This request:
+   - contains no personal data, identifiers, note contents, or usage data,
+   - consists only of standard HTTP request metadata (e.g. IP address), inherent to any web request,
+   - is never stored by the application.
+
+2. **Installer download.** Only when you press "Descargar" in the update notice, Gus downloads the installer of that release from the project's GitHub releases and saves it to your Downloads folder. It only downloads from `https://github.com/victorrubilar-dev/gus/releases/download/`, and it sends no data beyond the standard HTTP request. Nothing is downloaded without your action.
 
 Dictionaries for spell checking, templates, images, and all other resources are bundled with the application and loaded locally.
 

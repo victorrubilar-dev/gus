@@ -55,7 +55,7 @@
 ### Testing
 | Tecnología | Uso |
 |---|---|
-| Vitest 5 | Tests unitarios (114 tests) |
+| Vitest 5 | Tests unitarios (195 tests) |
 | playwright-core | Benchmarks / integración |
 
 ### Package Manager
@@ -71,7 +71,7 @@ gus/
 │   ├── main.tsx                  # Punto de entrada: aplica tema, monta <App/>
 │   ├── App.tsx                   # Componente raíz: gestión de vaults, tabs, routing, drag-drop
 │   ├── App.css                   # Estilos globales, tema Tailwind, resaltado, exportación PDF
-│   ├── components/               # 24 componentes React
+│   ├── components/               # 28 componentes React
 │   │   ├── MarkdownEditor.tsx    # Editor central (textarea + overlay renderizado)
 │   │   ├── FileExplorer.tsx      # Árbol de archivos del vault (crear/renombrar/mover/eliminar)
 │   │   ├── CommandPalette.tsx    # Búsqueda/ apertura rápida de notas (cmdk)
@@ -132,15 +132,15 @@ gus/
 │   │   ├── uiZoom.ts             # Factor de zoom de UI
 │   │   ├── zoomShortcuts.ts      # Atajos de teclado de zoom
 │   │   ├── tableLayout.ts        # Cálculos de layout de tablas
-│   │   ├── updateCheck.ts        # Verificación de versión en GitHub releases
+│   │   ├── updateCheck.ts        # Verificación de versión y elección del instalador en GitHub releases
 │   │   └── version.ts            # Versión de la app desde package.json
-│   ├── assets/                   # Iconos (gus-icon.png, react.svg)
+│   ├── assets/                   # Iconos (gus-icon.png, gus-icon-512.png)
 │   └── types/                    # Declaraciones TypeScript
 │       └── prism-components.d.ts
 ├── src-tauri/                    # Backend Rust
 │   ├── src/
 │   │   ├── main.rs               # Punto de entrada (6 líneas)
-│   │   └── lib.rs                # ~1700 líneas: todos los comandos Tauri
+│   │   └── lib.rs                # ~5200 líneas: todos los comandos Tauri
 │   ├── Cargo.toml                # Dependencias Rust
 │   ├── tauri.conf.json           # Configuración Tauri
 │   └── icons/                    # Iconos de la app (todas las plataformas)
@@ -202,7 +202,7 @@ pnpm build
 pnpm tauri build
 
 # Tests
-pnpm test              # Todos los tests Vitest (114 tests)
+pnpm test              # Todos los tests Vitest (195 tests)
 pnpm test:watch        # Modo watch
 
 # Type checking
@@ -336,7 +336,7 @@ La siguiente función nueva vuelve a empezar en `develop`.
 ### Patrones de Testing
 - **Vitest** con archivos `.test.ts` co-located
 - **Testing de funciones puras** — los tests se enfocan en módulos de utilidades (settings, shortcuts, tables, i18n, etc.)
-- **Sin tests de componentes** — los 8 archivos de test son para utilidades lib
+- **Sin tests de componentes** — los 15 archivos de test son para utilidades lib
 
 ### Estilo de Código
 - **TypeScript estricto** (`strict: true`, `noUnusedLocals`, `noUnusedParameters`, `noFallthroughCasesInSwitch`)
@@ -358,7 +358,7 @@ La siguiente función nueva vuelve a empezar en `develop`.
 
 5. **El sistema de papelera es personalizado** — no es la papelera del SO, sino una carpeta `.gus-trash` dentro de la base del vault con manifiesto JSON, TTL de 30 días y capacidad de restauración.
 
-6. **La verificación de actualizaciones es no intrusiva** — verifica la API de releases de GitHub al iniciar, nunca bloquea la app y respeta las versiones descartadas.
+6. **La verificación de actualizaciones es no intrusiva** — verifica la API de releases de GitHub al iniciar, nunca bloquea la app y respeta las versiones descartadas. La descarga del instalador solo ocurre si el usuario pulsa «Descargar», y solo desde `github.com/victorrubilar-dev/gus/releases/download/`.
 
 ---
 
@@ -366,5 +366,5 @@ La siguiente función nueva vuelve a empezar en `develop`.
 
 - **Extensiones VS Code recomendadas:** `tauri-apps.tauri-vscode`, `rust-analyzer.rust-analyzer`
 - **El archivo `task/` está en `.gitignore`** — es para notas personales de desarrollo
-- **La única request de red** es a la API de GitHub para verificar actualizaciones (no es obligatoria, se puede descartar)
+- **Las únicas requests de red** son a GitHub: la API para verificar actualizaciones (no es obligatoria, se puede descartar) y, solo si el usuario lo pide, la descarga del instalador desde `releases/download/` (`download_update` en `lib.rs`)
 - **Las notas nunca salen del equipo del usuario** — no hay sincronización, no hay backup en la nube

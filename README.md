@@ -36,7 +36,7 @@ Una aplicación de escritorio **100 % local** para tomar notas y gestionar tarea
 
 ## Descarga
 
-Disponible en las [ releases ](https://github.com/korossuh/gus/releases) de GitHub. La primera vez que se ejecuta, Tauri solicita permisos de acceso a la carpeta de notas.
+Disponible en las [ releases ](https://github.com/victorrubilar-dev/gus/releases) de GitHub. La primera vez que se ejecuta, Tauri solicita permisos de acceso a la carpeta de notas.
 
 > ⚠️ **Nota para usuarios de Windows (SmartScreen):**
 >
@@ -54,7 +54,7 @@ Disponible en las [ releases ](https://github.com/korossuh/gus/releases) de GitH
 
 ```bash
 npx tsc --noEmit          # TypeScript check
-npx vitest run            # tests (114 passed)
-npx vite build            # build
+npx vitest run            # tests (195 passed)
+pnpm build              # build
 npx -y react-doctor@latest --json  # reporte de calidad (react-doctor)
 ```
