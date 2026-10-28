@@ -26,6 +26,7 @@
     "bench:images": "node bench/prueba-imagenes.mjs",
     "bench:explorer": "node bench/prueba-explorador.mjs",
     "bench:app": "node bench/prueba-app.mjs",
+    "bench:tablas": "node bench/prueba-teclado-tablas.mjs",
     "traza": "node bench/colector.mjs"
   },
   "dependencies": {
