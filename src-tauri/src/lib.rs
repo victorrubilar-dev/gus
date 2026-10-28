@@ -4353,7 +4353,7 @@ mod tests {
 
         // La fecha manda: la de la carpeta es la más reciente.
         let tocar = |ruta: std::path::PathBuf, hace_segundos: u64| {
-            let mut file = std::fs::OpenOptions::new()
+            let file = std::fs::OpenOptions::new()
                 .write(true)
                 .open(&ruta)
                 .expect("open mtime");
