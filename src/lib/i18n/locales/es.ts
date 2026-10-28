@@ -791,9 +791,9 @@ export default {
   "explorer.trashItemAsk": "¿Mover ",
   "explorer.trashToBin": " a la papelera?",
   "explorer.trashFolderBody":
-    "Se irá con TODO su contenido a ~/gus-vault/.gus-trash; se puede restaurar desde el menú lateral.",
+    "Se irá con TODO su contenido a la papelera de este vault (.gus-trash); se puede restaurar desde el menú lateral.",
   "explorer.trashItemBody":
-    "Se moverá a la papelera de Gus (~/gus-vault/.gus-trash); se puede restaurar desde el menú lateral.",
+    "Se moverá a la papelera de este vault (.gus-trash); se puede restaurar desde el menú lateral.",
   "explorer.moveToTrash": "Mover a la papelera",
   "explorer.moveFolderTo": "Mover carpeta a…",
   "explorer.moveFileTo": "Mover archivo a…",

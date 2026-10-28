@@ -354,6 +354,10 @@ function App({
         if (cancelled) return;
         setVaultConfig(next);
         setCurrentVault(openPath);
+        // Sin esperar: si falla, la papelera global sigue en disco y no se pierde nada.
+        void invoke("migrate_legacy_trash", {
+          vaults: next.vaults.map((vault) => vault.path),
+        }).catch(() => {});
         setBootStatus("ready");
       } catch (error: unknown) {
         if (cancelled) return;
@@ -1857,7 +1861,10 @@ function App({
                       }}
                     />
                   ) : activeTab === "trash" ? (
-                    <TrashView onRestore={() => setVaultRefresh((key) => key + 1)} />
+                    <TrashView
+                      vaultPath={currentVault}
+                      onRestore={() => setVaultRefresh((key) => key + 1)}
+                    />
                   ) : (
                     <SettingsPanel
                       settings={settings}

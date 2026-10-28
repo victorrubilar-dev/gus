@@ -26,6 +26,8 @@ export interface TrashItem {
 }
 
 export interface TrashViewProps {
+  /** Vault cuya papelera se muestra: cada vault tiene la suya. */
+  vaultPath: string;
   onRestore?: () => void;
 }
 
@@ -78,7 +80,7 @@ function diasRestantes(trashedAtMs: number | null): number | null {
   return Math.max(0, Math.floor(restante / DIA_MS));
 }
 
-export default function TrashView({ onRestore }: TrashViewProps) {
+export default function TrashView({ vaultPath, onRestore }: TrashViewProps) {
   const t = useT();
   const [items, setItems] = useState<TrashItem[]>([]);
   const [status, setStatus] = useState<LoadState>("loading");
@@ -109,7 +111,7 @@ export default function TrashView({ onRestore }: TrashViewProps) {
     setStatus("loading");
     setError(null);
 
-    invoke<TrashItem[]>("list_trash")
+    invoke<TrashItem[]>("list_trash", { vault: vaultPath })
       .then((list) => {
         if (cancelled) return;
         setItems(list);
@@ -124,7 +126,7 @@ export default function TrashView({ onRestore }: TrashViewProps) {
     return () => {
       cancelled = true;
     };
-  }, [reloadKey]);
+  }, [reloadKey, vaultPath]);
 
   const reload = () => setReloadKey((key) => key + 1);
   const busy = busyId !== null;
@@ -134,7 +136,10 @@ export default function TrashView({ onRestore }: TrashViewProps) {
     setBusyId(item.path);
 
     try {
-      const destino = await invoke<string>("restore_from_trash", { path: item.path });
+      const destino = await invoke<string>("restore_from_trash", {
+        path: item.path,
+        vault: vaultPath,
+      });
       setConfirmId(null);
       showNotice(`Restaurado en ${destino}`);
       onRestore?.();
@@ -151,7 +156,7 @@ export default function TrashView({ onRestore }: TrashViewProps) {
     setBusyId(item.path);
 
     try {
-      await invoke("delete_from_trash", { path: item.path });
+      await invoke("delete_from_trash", { path: item.path, vault: vaultPath });
       setConfirmId(null);
       showNotice(`«${item.name}» se ha eliminado definitivamente`);
       reload();
@@ -167,7 +172,7 @@ export default function TrashView({ onRestore }: TrashViewProps) {
     setBusyId("__all__");
 
     try {
-      await invoke("empty_trash");
+      await invoke("empty_trash", { vault: vaultPath });
       setConfirmEmpty(false);
       showNotice(t("trash.emptied"));
       reload();
@@ -379,7 +384,7 @@ export default function TrashView({ onRestore }: TrashViewProps) {
             <span className="break-words">
               {t("trash.loadError")}
               <span className="block font-mono text-rose-400/80">
-                ~/gus-vault/.gus-trash
+                {vaultPath}/.gus-trash
               </span>
               {error && <span className="block text-rose-400/80">{error}</span>}
             </span>

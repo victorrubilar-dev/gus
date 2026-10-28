@@ -794,9 +794,9 @@ const en: Record<keyof typeof es, string> = {
   "explorer.trashItemAsk": "Move ",
   "explorer.trashToBin": " to the trash?",
   "explorer.trashFolderBody":
-    "It goes with EVERYTHING inside it to ~/gus-vault/.gus-trash; you can restore it from the sidebar.",
+    "It goes with EVERYTHING inside it to this vault's trash (.gus-trash); you can restore it from the sidebar.",
   "explorer.trashItemBody":
-    "It goes to Gus's trash (~/gus-vault/.gus-trash); you can restore it from the sidebar.",
+    "It goes to this vault's trash (.gus-trash); you can restore it from the sidebar.",
   "explorer.moveToTrash": "Move to the trash",
   "explorer.moveFolderTo": "Move folder to…",
   "explorer.moveFileTo": "Move file to…",

@@ -1014,7 +1014,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
     try {
       if (file.kind !== "image" && file.kind !== "pdf") await onBeforeFileAction?.(file.id);
 
-      await invoke("move_to_trash", { path: file.id });
+      await invoke("move_to_trash", { path: file.id, vault: vaultPath });
       closeMenu();
       if (currentId === file.id) onFileDeleted?.(file.id);
       reload();
@@ -1033,7 +1033,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
       const activeInside = activeId && isInsidePath(activeId, folder.path) ? activeId : null;
       if (activeInside) await onBeforeFileAction?.(activeInside);
 
-      await invoke("move_to_trash", { path: folder.path });
+      await invoke("move_to_trash", { path: folder.path, vault: vaultPath });
       closeMenu();
       if (activeInside) onFileDeleted?.(activeInside);
       reload();

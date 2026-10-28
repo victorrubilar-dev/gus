@@ -556,8 +556,35 @@ const TRASH_TTL_DAYS: u64 = 30;
 
 const TRASH_TTL_MS: u64 = TRASH_TTL_DAYS * 24 * 60 * 60 * 1_000;
 
-fn trash_dir() -> std::path::PathBuf {
+/// Papelera de un vault: oculta y dentro del propio vault (viaja con él).
+fn vault_trash(vault: &std::path::Path) -> std::path::PathBuf {
+    vault.join(".gus-trash")
+}
+
+/// Papelera global de las versiones anteriores; solo se vacía y migra.
+fn legacy_trash_dir() -> std::path::PathBuf {
     std::path::PathBuf::from(expand_home("~/gus-vault/.gus-trash"))
+}
+
+/// Ruta canónica del vault, para comparar sin trucos con `..` ni symlinks.
+fn canonical_vault(vault: &str) -> Result<std::path::PathBuf, String> {
+    let path = expand_home(vault);
+    std::fs::canonicalize(&path).map_err(|err| format!("No se encontró el vault «{path}»: {err}"))
+}
+
+/// Solo se tira lo que cuelga del vault. Se mira la carpeta padre, no el
+/// elemento, para que un symlink dentro del vault se tire como enlace.
+fn ensure_in_vault(entry: &std::path::Path, vault: &std::path::Path) -> Result<(), String> {
+    let parent = entry
+        .parent()
+        .ok_or_else(|| format!("No se puede tirar «{}»", entry.display()))?;
+    let real_parent = std::fs::canonicalize(parent)
+        .map_err(|err| format!("No existe «{}»: {err}", parent.display()))?;
+    if real_parent.starts_with(vault) {
+        Ok(())
+    } else {
+        Err(format!("«{}» está fuera del vault", entry.display()))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -761,9 +788,12 @@ fn purge_expired_trash(trash: &std::path::Path) -> usize {
 }
 
 #[tauri::command]
-fn move_to_trash(path: String) -> Result<(), String> {
+fn move_to_trash(path: String, vault: String) -> Result<(), String> {
     let path = expand_home(&path);
-    trash_entry_if_safe(std::path::Path::new(&path), &trash_dir())?;
+    let vault = canonical_vault(&vault)?;
+    let entry = std::path::Path::new(&path);
+    ensure_in_vault(entry, &vault)?;
+    trash_entry_if_safe(entry, &vault_trash(&vault))?;
     Ok(())
 }
 
@@ -825,27 +855,89 @@ fn ensure_trashable_dir(path: &std::path::Path, trash: &std::path::Path) -> Resu
 }
 
 #[tauri::command]
-fn list_trash() -> Result<Vec<TrashItem>, String> {
-    let trash = trash_dir();
+fn list_trash(vault: String) -> Result<Vec<TrashItem>, String> {
+    let trash = vault_trash(&canonical_vault(&vault)?);
     purge_expired_trash(&trash);
     list_trash_items(&trash)
 }
 
 #[tauri::command]
-fn restore_from_trash(path: String) -> Result<String, String> {
+fn restore_from_trash(path: String, vault: String) -> Result<String, String> {
     let path = expand_home(&path);
-    restore_trashed(std::path::Path::new(&path), &trash_dir())
+    restore_trashed(std::path::Path::new(&path), &vault_trash(&canonical_vault(&vault)?))
 }
 
 #[tauri::command]
-fn delete_from_trash(path: String) -> Result<(), String> {
+fn delete_from_trash(path: String, vault: String) -> Result<(), String> {
     let path = expand_home(&path);
-    delete_trashed(std::path::Path::new(&path), &trash_dir())
+    delete_trashed(std::path::Path::new(&path), &vault_trash(&canonical_vault(&vault)?))
 }
 
 #[tauri::command]
-fn empty_trash() -> Result<(), String> {
-    empty_trash_dir(&trash_dir())
+fn empty_trash(vault: String) -> Result<(), String> {
+    empty_trash_dir(&vault_trash(&canonical_vault(&vault)?))
+}
+
+/// Pasa a la papelera de cada vault lo que la global tenía de él. Lo que no es
+/// de ningún vault conocido, o no se puede mover, se queda donde estaba.
+#[tauri::command]
+fn migrate_legacy_trash(vaults: Vec<String>) -> Result<usize, String> {
+    let roots: Vec<std::path::PathBuf> = vaults
+        .iter()
+        .filter_map(|vault| canonical_vault(vault).ok())
+        .collect();
+    move_legacy_trash(&legacy_trash_dir(), &roots)
+}
+
+fn move_legacy_trash(legacy: &std::path::Path, roots: &[std::path::PathBuf]) -> Result<usize, String> {
+    if !legacy.is_dir() {
+        return Ok(0);
+    }
+
+    let mut moved = 0usize;
+    let mut kept = Vec::new();
+    for record in load_trash_manifest(legacy) {
+        let source = legacy.join(&record.name);
+        if !source.exists() {
+            continue;
+        }
+
+        let origin = std::path::Path::new(&record.origin);
+        let root = roots
+            .iter()
+            .filter(|root| origin.starts_with(root))
+            .max_by_key(|root| root.as_os_str().len());
+        let Some(root) = root else {
+            kept.push(record);
+            continue;
+        };
+
+        let trash = vault_trash(root);
+        match move_path_to_trash(&source, &trash) {
+            Ok(target) => {
+                let name = target
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or_default()
+                    .to_string();
+                let mut records = load_trash_manifest(&trash);
+                records.push(TrashRecord {
+                    name,
+                    origin: record.origin,
+                    trashed_at_ms: record.trashed_at_ms,
+                });
+                save_trash_manifest(&trash, &records)?;
+                moved += 1;
+            }
+            Err(err) => {
+                eprintln!("Gus: no se pudo migrar «{}»: {err}", source.display());
+                kept.push(record);
+            }
+        }
+    }
+
+    save_trash_manifest(legacy, &kept)?;
+    Ok(moved)
 }
 
 fn list_trash_items(trash: &std::path::Path) -> Result<Vec<TrashItem>, String> {
@@ -3027,11 +3119,12 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_notification::init())
         .setup(|_app| {
-            purge_expired_trash(&trash_dir());
+            purge_expired_trash(&legacy_trash_dir());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             download_update,
+            migrate_legacy_trash,
             read_vault_dir,
             get_vault_files,
             list_recent_notes,
@@ -3699,17 +3792,8 @@ mod tests {
     fn move_to_trash_mueve_a_la_papelera_oculta_y_la_crea() {
         let dir = temp_vault("trash");
 
-        let default_trash = trash_dir();
-        assert!(default_trash.ends_with(".gus-trash"), "{default_trash:?}");
-        assert!(
-            default_trash
-                .parent()
-                .is_some_and(|parent| parent.ends_with("gus-vault")),
-            "papelera = {}",
-            default_trash.display()
-        );
-
-        let trash = dir.join(".gus-trash");
+        let trash = vault_trash(&dir);
+        assert_eq!(trash, dir.join(".gus-trash"));
         assert!(!trash.exists(), "la papelera aún no existe");
 
         let nota = dir.join("nota.md");
@@ -5065,6 +5149,79 @@ mod tests {
         assert_eq!(facets.tags, vec!["examen", "importante"]);
 
         std::fs::remove_dir_all(&vault).ok();
+    }
+}
+
+#[cfg(test)]
+mod vault_trash_tests {
+    use super::*;
+
+    fn carpeta_temporal(label: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("gus-vt-{label}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("crear carpeta temporal");
+        std::fs::canonicalize(&dir).expect("ruta canónica")
+    }
+
+    #[test]
+    fn solo_se_tira_lo_que_cuelga_del_vault() {
+        let base = carpeta_temporal("dentro");
+        let vault = base.join("vault");
+        std::fs::create_dir_all(&vault).expect("vault");
+        let vault = std::fs::canonicalize(&vault).expect("ruta canónica");
+        let dentro = vault.join("nota.md");
+        let fuera = base.join("otra.md");
+        std::fs::write(&dentro, "a").expect("nota");
+        std::fs::write(&fuera, "b").expect("otra");
+
+        assert!(ensure_in_vault(&dentro, &vault).is_ok());
+        assert!(ensure_in_vault(&fuera, &vault).is_err());
+        assert!(ensure_in_vault(&vault, &vault).is_err(), "la raíz del vault no se tira");
+        assert!(ensure_in_vault(&vault.join("..").join("otra.md"), &vault).is_err());
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn la_migracion_manda_cada_elemento_a_su_vault() {
+        let base = carpeta_temporal("migra");
+        let vault_a = base.join("a");
+        let vault_b = base.join("b");
+        let legacy = base.join("legacy");
+        for dir in [&vault_a, &vault_b, &legacy] {
+            std::fs::create_dir_all(dir).expect("carpeta");
+        }
+        let vault_a = std::fs::canonicalize(&vault_a).expect("ruta canónica");
+        let vault_b = std::fs::canonicalize(&vault_b).expect("ruta canónica");
+
+        std::fs::write(legacy.join("nota.md"), "de a").expect("nota");
+        std::fs::write(legacy.join("suelta.md"), "de nadie").expect("suelta");
+        save_trash_manifest(
+            &legacy,
+            &[
+                TrashRecord {
+                    name: "nota.md".into(),
+                    origin: vault_a.join("nota.md").to_string_lossy().into_owned(),
+                    trashed_at_ms: now_ms(),
+                },
+                TrashRecord {
+                    name: "suelta.md".into(),
+                    origin: base.join("fuera").join("suelta.md").to_string_lossy().into_owned(),
+                    trashed_at_ms: now_ms(),
+                },
+            ],
+        )
+        .expect("manifiesto");
+
+        let moved = move_legacy_trash(&legacy, &[vault_a.clone(), vault_b]).expect("migrar");
+
+        assert_eq!(moved, 1);
+        assert!(vault_trash(&vault_a).join("nota.md").is_file());
+        assert_eq!(load_trash_manifest(&vault_trash(&vault_a)).len(), 1);
+        assert!(legacy.join("suelta.md").is_file(), "lo que no es de ningún vault se queda");
+        assert_eq!(load_trash_manifest(&legacy).len(), 1);
+
+        let _ = std::fs::remove_dir_all(&base);
     }
 }
 
