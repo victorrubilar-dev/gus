@@ -25,7 +25,7 @@ import { adjacentTableCell, alignTableColumn, cellRect, cellRectClipboard, cellI
 import { createHistory, recordHistory, redoHistory, undoHistory, type EditorHistory, type HistorySnapshot } from "../lib/editorHistory";
 import { stripPasteFormatting } from "../lib/pasteText";
 import { frontmatterLineOffset, parseNoteTagInput, parseNoteTags, replaceBody, setNoteTags, stripFrontmatter, tagOptions, type VaultTag } from "../lib/noteTags";
-import { caretAnchor, lineAtCaret, type CaretAnchor } from "../lib/caretPosition";
+import { caretAnchor, lineAtCaret } from "../lib/caretPosition";
 import { decodeWikiUrl, detectSlashQuery, detectWikiQuery, findWikiNote, wikiInsertText, wikiMatches, type WikiNote } from "../lib/wikiLink";
 import { filterSlashItems, SlashMenu, SpellSuggestMenu, VaultImageMenu, WikiLinkMenu, type SlashItem } from "./EditorMenus";
 import CopyCodeButton from "./CopyCodeButton";
@@ -33,6 +33,9 @@ import InlinePreview, { classifySource, type TableBarHover, type TableResizeHove
 import MermaidDiagram from "./MermaidDiagram";
 import EditorContextMenu, { type ContextSpell, type FormatKind, type TableAction, type TableMenuInfo } from "./EditorContextMenu";
 import PdfExportDialog from "./PdfExportDialog";
+import type { BlockDrift, EditorMenu, ContextMenuState, ImageResizeDrag, SaveState, SpellPopup, ViewMode } from "./markdownEditorTypes";
+import { countWords, lineRangeAt } from "../lib/editorText";
+import { measureRowPitch, measureTableCols } from "../lib/editorMeasure";
 import { MarkdownBody, PreviewImage, PRE_CLASS, applyPreviewMerges, readCodeBlock } from "./markdownPreview";
 
 export interface EditorDraft {
@@ -104,71 +107,11 @@ const DEFAULT_COL_WIDTH = 48;
 /** Zona de clic de la casilla de tarea (unos cinco caracteres con el relleno). */
 const TASK_CHECKBOX_PX = 36;
 
-/** Alto que un bloque ha ganado por encima de su markdown: una tabla al
- *  envolver sus celdas o una imagen de bloque a tamaño real. A partir de su
- *  última línea el overlay queda más abajo que el texto del textarea, y hay
- *  que compensarlo (scroll, clic y cursor). */
-interface BlockDrift {
-  /** Última línea del bloque de tabla. */
-  end: number;
-  /** Píxeles de más que ocupa el bloque. */
-  extra: number;
-}
-
 /** Mapa de alturas vacío reutilizable: evita re-renderizar por un Map nuevo. */
 const EMPTY_DRIFT: Map<number, BlockDrift> = new Map();
 
-/** Estado del arrastre de una imagen para redimensionarla (ver `ImageLine`). */
-interface ImageResizeDrag {
-  /** Línea de origen que se está redimensionando. */
-  line: number;
-  startX: number;
-  startY: number;
-  /** Anchura inicial de la imagen (px), para detectar clic sin arrastre. */
-  startW: number;
-  /** Anchura actual (px): es la que se guarda al soltar. */
-  width: number;
-  minW: number;
-  maxW: number;
-  move: (event: globalThis.MouseEvent) => void;
-  up: () => void;
-}
-
 /** Lista vacía de imágenes, para no crear una nueva en cada render. */
 const EMPTY_IMAGES: VaultImage[] = [];
-
-type SaveState = "idle" | "dirty" | "saved" | "error";
-
-type ViewMode = "edit" | "preview";
-
-interface EditorMenu {
-  kind: "wiki" | "slash" | "images";
-  start: number;
-  query: string;
-  index: number;
-  anchor: CaretAnchor;
-  /** Grupo del menú «/»: el normal o el de tamaños de tabla. */
-}
-
-interface ContextMenuState {
-  spell: ContextSpell | null;
-  hasSelection: boolean;
-  /** Tabla bajo el clic derecho (null si el clic no cayó en una). */
-  table: TableMenuInfo | null;
-  x: number;
-  y: number;
-}
-
-/** Cuadro de correcciones que se despliega sobre la palabra mal escrita. */
-interface SpellPopup {
-  start: number;
-  end: number;
-  word: string;
-  suggestions: string[];
-  /** Índice recorrido con ↑/↓; -1 mientras la lista no se ha tocado. */
-  index: number;
-  anchor: CaretAnchor;
-}
 
 const FORMAT_MARKERS: Record<Exclude<FormatKind, "link">, [string, string]> = {
   bold: ["**", "**"],
@@ -176,69 +119,6 @@ const FORMAT_MARKERS: Record<Exclude<FormatKind, "link">, [string, string]> = {
   strike: ["~~", "~~"],
   code: ["`", "`"],
 };
-
-function countWords(text: string): number {
-  const trimmed = text.trim();
-  return trimmed ? trimmed.split(/\s+/).length : 0;
-}
-
-/**
- * Rango completo de la línea que contiene la posición `at`, con su salto final
- * incluido: es lo que corta Ctrl+X cuando no hay selección, como en VS Code.
- */
-function lineRangeAt(value: string, at: number): [number, number] {
-  const start = at === 0 ? 0 : value.lastIndexOf("\n", at - 1) + 1;
-  const newline = value.indexOf("\n", at);
-  return [start, newline === -1 ? value.length : newline + 1];
-}
-
-/**
- * Altura real de fila del textarea en unidades locales (el motor la redondea al
- * escalar). Se mide en un clon invisible para no tocar el valor real del
- * textarea: escribir en él fuerza un re-render y desincroniza el overlay,
- * sobre todo al bajar el zoom (la interfaz se queda «rara»).
- */
-function measureRowPitch(area: HTMLTextAreaElement | null): number | null {
-  if (!area) return null;
-  try {
-    const rows = Math.ceil((area.clientHeight + 4) / 16) + 8;
-    const clon = area.cloneNode() as HTMLTextAreaElement;
-    // El clon no está en el DOM: no dispara eventos ni causa re-renders.
-    clon.style.position = "absolute";
-    clon.style.visibility = "hidden";
-    clon.style.height = "auto";
-    clon.style.overflow = "hidden";
-    clon.removeAttribute("rows");
-    clon.value = Array(rows).fill("X").join("\n");
-    document.body.appendChild(clon);
-    const first = clon.scrollHeight;
-    clon.value = Array(rows + 10).fill("X").join("\n");
-    const second = clon.scrollHeight;
-    clon.remove();
-    const pitch = (second - first) / 10;
-    return Number.isFinite(pitch) && pitch > 0 ? pitch : null;
-  } catch {
-    return null;
-  }
-}
-
-/** Columnas monoespaciadas que caben en una fila del textarea (para tablas). */
-function measureTableCols(area: HTMLTextAreaElement | null): number | null {
-  if (!area) return null;
-  const style = getComputedStyle(area);
-  const ctx = document.createElement("canvas").getContext("2d");
-  if (!ctx) return null;
-  ctx.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
-  const char = ctx.measureText("0").width;
-  const width =
-    area.clientWidth -
-    parseFloat(style.paddingLeft) -
-    parseFloat(style.paddingRight) -
-    parseFloat(style.borderLeftWidth) -
-    parseFloat(style.borderRightWidth);
-  if (!(char > 0) || !(width > 0)) return null;
-  return Math.floor(width / char);
-}
 
 /** ¿Dos mapas de alturas de bloque dicen lo mismo? (evita re-renderizar) */
 function sameDrift(a: Map<number, BlockDrift>, b: Map<number, BlockDrift>): boolean {
