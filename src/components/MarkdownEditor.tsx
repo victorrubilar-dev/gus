@@ -320,30 +320,6 @@ const FORMAT_MARKERS: Record<Exclude<FormatKind, "link">, [string, string]> = {
 
 /** Los bloques de la vista previa, al estilo Obsidian: fondo de bloque,
  *  esquinas a 4px (--code-radius) y sin borde (--code-border-width: 0px). */
-/* ------------------------------------------------------------------ */
-/* Traza temporal de tablas (se activa con /tmp/gus-tables.log)          */
-/* ------------------------------------------------------------------ */
-function traza(evento: string, datos: Record<string, unknown> = {}) {
-  try {
-    // eslint-disable-next-line no-undef
-    // Se enciende con «pnpm tauri dev -- --traza-tablas» o poniendo
-    // VITE_TRAZA_TABLAS=1; en una build normal no hay traza.
-    const existe =
-      typeof window !== "undefined" &&
-      (window.localStorage.getItem("gus-tables-log") === "1" ||
-        import.meta.env.VITE_TRAZA_TABLAS === "1");
-    if (!existe) return;
-    const linea = JSON.stringify({ evento, ...datos });
-    void fetch("http://127.0.0.1:5198/log", {
-      method: "POST",
-      body: linea,
-      mode: "no-cors",
-    }).catch(() => {});
-  } catch {
-    /* la traza nunca debe romper el editor */
-  }
-}
-
 const PRE_CLASS =
   "gus-scrollbar overflow-x-auto whitespace-pre-wrap rounded bg-gus-card px-4 py-3 text-[13px] leading-relaxed text-gus-text [&_code]:rounded-none [&_code]:bg-transparent [&_code]:px-0 [&_code]:text-inherit";
 
@@ -2193,10 +2169,6 @@ export default function MarkdownEditor({
     if (event.button === 2) {
       const area = textareaRef.current;
       rightClickSelRef.current = area ? [area.selectionStart, area.selectionEnd] : null;
-      traza("mousedown-derecho", {
-        seleccion: rightClickSelRef.current,
-        rectPintado: markedRectRef.current,
-      });
       return;
     }
     if (event.button !== 0) return;
@@ -2621,13 +2593,6 @@ export default function MarkdownEditor({
     const area = textareaRef.current;
     if (!area) return;
     contextMenuOpenRef.current = true;
-    traza("abre-menu", {
-      picked: rightClickSelRef.current,
-      rectEstado: tableRect,
-      rectEspejo: markedRectRef.current,
-      seleccionActual: area ? [area.selectionStart, area.selectionEnd] : null,
-    });
-
     const selStart = area.selectionStart;
     const selEnd = area.selectionEnd;
     let spell: ContextSpell | null = null;
@@ -2738,8 +2703,6 @@ export default function MarkdownEditor({
     // pintado, que es lo que la persona ve seleccionado en pantalla.
     const marked =
       cellRectBetween(selection[0], selection[1]) ?? tableRect ?? markedRectRef.current;
-
-    traza("info-menu", { rect: marked, line, col: resolved.col });
 
     return {
       block,
@@ -3747,7 +3710,6 @@ export default function MarkdownEditor({
 
     const edit = listEnterEdit(area.value, area.selectionStart);
     if (!edit) {
-      traza("edicion-descartada", {});
       return;
     }
 
@@ -3807,7 +3769,6 @@ export default function MarkdownEditor({
     const nextBody = edit.lines.join("\n");
     if (nextBody === current) return;
 
-    traza("aplica-edicion", { vacia: edit.lines.length === 0 });
     tableAnchorRef.current = null;
     const caretLines: TableLine[] = edit.lines.map((text) => ({ text, code: false }));
     if (edit.offset !== undefined) {
