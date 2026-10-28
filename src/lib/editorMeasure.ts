@@ -47,3 +47,13 @@ export function measureTableCols(area: HTMLTextAreaElement | null): number | nul
   if (!(char > 0) || !(width > 0)) return null;
   return Math.floor(width / char);
 }
+
+/** Anchura mínima de una columna al redimensionar, y de una que no se pueda
+ *  medir (píxeles): la celda lleva 16 de relleno, así que 24 ya deja texto. */
+export const MIN_COL_WIDTH = 24;
+export const DEFAULT_COL_WIDTH = 48;
+
+export function insideRect(element: Element, x: number, y: number): boolean {
+  const rect = element.getBoundingClientRect();
+  return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+}
