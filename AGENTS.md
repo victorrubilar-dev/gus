@@ -81,6 +81,7 @@ gus/
 │   │   ├── markdownEditorTypes.ts # Tipos internos del editor (menús, arrastres, estado de guardado)
 │   │   ├── useEditorHistory.ts   # Refs y instantánea del historial de deshacer del editor
 │   │   ├── useTableKeyboard.ts   # Teclado de tablas del editor: Tab, flechas, salir del bloque y selección con Mayús
+│   │   ├── useTableResize.ts     # Barras y redimensionado de columnas de tabla con el puntero
 │   │   ├── FileExplorer.tsx      # Árbol de archivos del vault (crear/renombrar/mover/eliminar)
 │   │   ├── CommandPalette.tsx    # Búsqueda/ apertura rápida de notas (cmdk)
 │   │   ├── DashboardView.tsx     # Pestaña de inicio
