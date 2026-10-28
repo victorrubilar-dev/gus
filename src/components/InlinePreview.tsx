@@ -640,7 +640,6 @@ function TableBlock({
             // estado interno que pueda quedar pegado a otra celda. La regla
             // señala la línea del `key`, que no admite comentarios dentro de
             // la etiqueta, así que se desactiva en bloque solo aquí.
-            /* eslint-disable react-doctor/no-array-index-as-key */
             return (
               <div
                 key={`${i}.${c}`}
@@ -1037,7 +1036,6 @@ const ImageLine = memo(function ImageLine({
     const el = imgRef.current;
     if (src && el?.complete && el.naturalWidth > 0) medir();
     // `medir` lee `src` y `imgRef` del cierre, que es lo que cambia aquí.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [src]);
 
   const alt = partes?.alt ?? "";

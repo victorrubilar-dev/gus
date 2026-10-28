@@ -309,7 +309,6 @@ export default function PdfViewer({
       // cancela `renderTaskRef.current`) y el pintado progresivo no compite
       // por el hilo principal con todas las páginas a la vez. Paralelizar con
       // Promise.all rompería esa cancelación.
-      /* eslint-disable react-doctor/async-await-in-loop */
       for (let i = 0; i < pages.length; i += 1) {
         if (cancelled || seq !== renderSeqRef.current) return;
         const canvas = canvasesRef.current[i];

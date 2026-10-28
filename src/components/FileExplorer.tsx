@@ -558,7 +558,6 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
 
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [staticMode, shortcuts]);
 
   // El manejador siempre refleja el último render (menú, confirmación y props vivos).

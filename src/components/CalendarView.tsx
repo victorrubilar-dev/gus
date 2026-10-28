@@ -525,7 +525,6 @@ export default function CalendarView({
                   instantáneo por el spinner es lo deseable. Envolverla en otra
                   AnimatePresence sería decorativo: su hijo directo es un
                   fragmento sin `exit` y saldría al instante igual. */}
-              {/* eslint-disable-next-line react-doctor/motion-animate-presence-must-outlive-child */}
               <AnimatePresence initial={false}>
                 {selectedTasks.length === 0 ? (
                   <m.div

@@ -827,7 +827,6 @@ export default function MarkdownEditor({
   useEffect(() => {
     spellSuggestCacheRef.current = null;
     if (engine) scheduleSpellPopup(0);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [engine]);
 
   /**
@@ -846,7 +845,6 @@ export default function MarkdownEditor({
     };
     document.addEventListener("selectionchange", onSelectionChange);
     return () => document.removeEventListener("selectionchange", onSelectionChange);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const [menu, setMenu] = useState<EditorMenu | null>(null);
@@ -921,7 +919,6 @@ export default function MarkdownEditor({
 
   useEffect(() => {
     if (viewMode === "preview") loadWikiNotes();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewMode, vaultPath, path]);
 
   /**
@@ -951,7 +948,6 @@ export default function MarkdownEditor({
     // Sin `refreshCaretLine` en las deps: se recrea en cada render y el
     // efecto:focus + restaurar caret se dispararía sin motivo (mismo criterio
     // que en el efecto de `viewMode` y en el de restauración de abajo).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [content]);
 
   useEffect(() => {
@@ -968,7 +964,6 @@ export default function MarkdownEditor({
     refreshCaretLine();
     const area = textareaRef.current;
     if (area) syncLineHint(area.value, area.selectionStart);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewMode, content]);
 
   // Usar el menú «/» una vez desactiva la pista para siempre.
@@ -982,7 +977,6 @@ export default function MarkdownEditor({
     } catch {
       // Sin almacenamiento: la pista solo se olvida en esta sesión.
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [menu]);
 
   // Al desmontar no queda ningún temporizador suelto (ni el de la pista del
@@ -998,7 +992,6 @@ export default function MarkdownEditor({
 
   useEffect(() => {
     syncOverlayGeometry();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [content, spell]);
 
   async function persist(): Promise<boolean> {
@@ -1307,7 +1300,6 @@ export default function MarkdownEditor({
   useEffect(() => {
     const next = measureRowPitch(textareaRef.current);
     if (next !== null) setRowPitch((current) => (Math.abs(current - next) < 0.01 ? current : next));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [zoomTick, fontSize]);
 
   // Ancho disponible en columnas para las tablas: sigue cualquier cambio del
@@ -1339,7 +1331,6 @@ export default function MarkdownEditor({
     revealCaret(area);
     refreshCaretLine();
     scheduleSpellPopup();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [content]);
 
   function taskCheckedAt(line: number): boolean | null {
@@ -4558,7 +4549,6 @@ export default function MarkdownEditor({
   // Esta medición depende de que el efecto anterior ya haya pintado los anchos
   // y de que R haya fijado la altura de fila: la cadena de efectos es el
   // propósito (medir el resultado de lo anterior), no un accidente de renders.
-  // eslint-disable-next-line react-doctor/no-effect-chain
   useEffect(() => {
     const overlay = overlayRef.current;
     if (!overlay || !inlineActive || tableCols === null) {
