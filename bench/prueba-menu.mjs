@@ -8,7 +8,6 @@ const ok = (cond, msg) => {
 };
 
 const browser = await chromium.launch({
-  executablePath: "/home/korossuh/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome",
   args: ["--no-sandbox"],
 });
 const page = await browser.newPage({ viewport: { width: 1100, height: 700 } });

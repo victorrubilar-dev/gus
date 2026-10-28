@@ -12,7 +12,6 @@ import { chromium } from "playwright-core";
 const URL = "http://localhost:5199/bench/index.html";
 
 const browser = await chromium.launch({
-  executablePath: "/home/korossuh/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome",
   args: ["--no-sandbox"],
 });
 const page = await browser.newPage({ viewport: { width: 1100, height: 700 } });

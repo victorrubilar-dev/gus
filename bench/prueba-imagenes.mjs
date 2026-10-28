@@ -9,7 +9,6 @@
 import { readFileSync } from "node:fs";
 import { chromium } from "playwright-core";
 
-const EXECUTABLE = "/home/korossuh/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome";
 const BANCO_URL = "http://localhost:5199/bench/index.html";
 
 // PNG real de 128×128 (el icono de la app): con dimensiones de verdad se puede
@@ -29,7 +28,7 @@ function chequeo(nombre, ok, detalle = "") {
   }
 }
 
-const navegador = await chromium.launch({ executablePath: EXECUTABLE });
+const navegador = await chromium.launch();
 const contexto = await navegador.newContext();
 const page = await contexto.newPage();
 page.on("pageerror", (err) => console.log(`  [error de página] ${err.message}\n${err.stack ?? ""}`));
