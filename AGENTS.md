@@ -329,7 +329,7 @@ La siguiente función nueva vuelve a empezar en `develop`.
 - **Manejo de errores** vía `Result<T, String>` — los errores son strings enviados al frontend
 - **Expansión de directorio home** — rutas `~` y `~/` resueltas vía `expand_home()`
 - **Validación de tipo de archivo** — allowlist estricto (`.md`, `.pdf`, solo imágenes)
-- **Sistema de papelera** — papelera personalizada en `~/gus-vault/.gus-trash` con TTL de 30 días y manifiesto JSON
+- **Sistema de papelera** — papelera por vault en `<vault>/.gus-trash` con TTL de 30 días y manifiesto JSON. `move_to_trash` solo acepta elementos dentro del vault indicado
 - **Generación de rutas únicas** — `unique_path()` añade `-2`, `-3`, etc. para evitar sobrescrituras
 - **Codificación/decodificación Base64** — implementación personalizada para transferencia de imagen/PDF al frontend
 
@@ -356,7 +356,7 @@ La siguiente función nueva vuelve a empezar en `develop`.
 
 4. **La internacionalización es de primera clase** — Español e inglés con soporte de reglas de plural, detección de idioma desde `navigator.language` y cadenas de fallback.
 
-5. **El sistema de papelera es personalizado** — no es la papelera del SO, sino una carpeta `.gus-trash` dentro de la base del vault con manifiesto JSON, TTL de 30 días y capacidad de restauración.
+5. **El sistema de papelera es personalizado** — no es la papelera del SO, sino una carpeta `.gus-trash` dentro de cada vault con manifiesto JSON, TTL de 30 días y capacidad de restauración. Las versiones anteriores usaban una papelera global en `~/gus-vault/.gus-trash`; al arrancar, `migrate_legacy_trash` pasa a cada vault lo que era suyo.
 
 6. **La verificación de actualizaciones es no intrusiva** — verifica la API de releases de GitHub al iniciar, nunca bloquea la app y respeta las versiones descartadas. La descarga del instalador solo ocurre si el usuario pulsa «Descargar», y solo desde `github.com/victorrubilar-dev/gus/releases/download/`.
 
