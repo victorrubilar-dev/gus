@@ -154,7 +154,7 @@ gus/
 ├── src-tauri/                    # Backend Rust
 │   ├── src/
 │   │   ├── main.rs               # Punto de entrada (6 líneas)
-│   │   ├── lib.rs                # ~2700 líneas: borrado de vault y de adjuntos, actualizaciones, `run()`, tests de la raíz
+│   │   ├── lib.rs                # ~2700 líneas: utilidades compartidas, creación de vaults, actualizaciones, `run()`, tests
 │   │   ├── archivos.rs           # Escritura del vault: crear, leer, renombrar, mover y borrar notas, carpetas y ficheros
 │   │   ├── busqueda.rs           # Búsqueda a texto completo: índice incremental en `.gus-index/`
 │   │   ├── configuracion.rs      # Vaults conocidos, ajustes y `load/save_app_config`
