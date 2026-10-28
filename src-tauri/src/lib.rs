@@ -5,11 +5,16 @@ use tauri_plugin_opener::OpenerExt;
 mod busqueda;
 mod configuracion;
 mod enlaces;
+mod importar;
+mod medios;
 mod papelera;
 mod tareas;
 
 #[cfg(test)]
 use configuracion::*;
+#[cfg(test)]
+use importar::*;
+use medios::*;
 use papelera::*;
 
 #[cfg(test)]
@@ -36,67 +41,6 @@ fn is_md_file(path: &std::path::Path) -> bool {
     path.extension()
         .and_then(|ext| ext.to_str())
         .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
-}
-
-fn image_mime(path: &std::path::Path) -> Option<&'static str> {
-    let ext = path.extension()?.to_str()?.to_ascii_lowercase();
-
-    Some(match ext.as_str() {
-        "png" | "apng" => "image/png",
-        "jpg" | "jpeg" | "jpe" | "jfif" => "image/jpeg",
-        "gif" => "image/gif",
-        "webp" => "image/webp",
-        "svg" => "image/svg+xml",
-        "bmp" => "image/bmp",
-        "avif" => "image/avif",
-        "ico" | "cur" => "image/x-icon",
-        "tif" | "tiff" => "image/tiff",
-        "heic" => "image/heic",
-        "heif" => "image/heif",
-        "jxl" => "image/jxl",
-        "pnm" | "ppm" | "pgm" | "pbm" => "image/x-portable-anymap",
-        "qoi" => "image/qoi",
-        "xbm" => "image/x-xbitmap",
-        _ => return None,
-    })
-}
-
-fn is_image_file(path: &std::path::Path) -> bool {
-    image_mime(path).is_some()
-}
-
-fn is_pdf_file(path: &std::path::Path) -> bool {
-    path.extension()
-        .and_then(|ext| ext.to_str())
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("pdf"))
-}
-
-fn base64_encode(data: &[u8]) -> String {
-    const ALPHABET: &[u8; 64] =
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
-
-    for chunk in data.chunks(3) {
-        let first = chunk[0];
-        let second = *chunk.get(1).unwrap_or(&0);
-        let third = *chunk.get(2).unwrap_or(&0);
-        let n = (u32::from(first) << 16) | (u32::from(second) << 8) | u32::from(third);
-
-        out.push(ALPHABET[(n >> 18 & 0x3F) as usize] as char);
-        out.push(ALPHABET[(n >> 12 & 0x3F) as usize] as char);
-        out.push(if chunk.len() > 1 {
-            ALPHABET[(n >> 6 & 0x3F) as usize] as char
-        } else {
-            '='
-        });
-        out.push(if chunk.len() > 2 {
-            ALPHABET[(n & 0x3F) as usize] as char
-        } else {
-            '='
-        });
-    }
-
-    out
 }
 
 fn ensure_dir_exists(path: &std::path::Path) -> Result<(), String> {
@@ -170,63 +114,6 @@ fn write_vault_file(path: String, content: String) -> Result<(), String> {
     }
 
     std::fs::write(&path, content).map_err(|err| format!("No se pudo escribir «{path}»: {err}"))
-}
-
-/// Descodifica Base64: es como viaja el PDF desde el navegador hasta aquí.
-fn decode_base64(input: &str) -> Result<Vec<u8>, String> {
-    fn digit(byte: u8) -> Option<u8> {
-        match byte {
-            b'A'..=b'Z' => Some(byte - b'A'),
-            b'a'..=b'z' => Some(byte - b'a' + 26),
-            b'0'..=b'9' => Some(byte - b'0' + 52),
-            b'+' => Some(62),
-            b'/' => Some(63),
-            _ => None,
-        }
-    }
-
-    let mut out = Vec::with_capacity(input.len() / 4 * 3);
-    let mut acc: u32 = 0;
-    let mut bits: u32 = 0;
-
-    for byte in input.bytes() {
-        if byte == b'=' || byte.is_ascii_whitespace() {
-            continue;
-        }
-        let value =
-            digit(byte).ok_or_else(|| "El contenido recibido no es Base64 válido".to_string())?;
-        acc = (acc << 6) | u32::from(value);
-        bits += 6;
-        if bits >= 8 {
-            bits -= 8;
-            out.push((acc >> bits) as u8);
-        }
-    }
-
-    Ok(out)
-}
-
-/// Escribe el PDF exportado en la ruta que haya elegido el usuario.
-#[tauri::command]
-fn write_pdf_file(path: String, data: String) -> Result<(), String> {
-    let path = expand_home(&path);
-    // Algunos diálogos no añaden la extensión que se pidió en el filtro.
-    let path = if path.to_lowercase().ends_with(".pdf") {
-        path
-    } else {
-        format!("{path}.pdf")
-    };
-    let bytes = decode_base64(&data)?;
-
-    if let Some(parent) = std::path::Path::new(&path).parent() {
-        if !parent.as_os_str().is_empty() {
-            std::fs::create_dir_all(parent).map_err(|err| {
-                format!("No se pudo crear el directorio «{}»: {err}", parent.display())
-            })?;
-        }
-    }
-
-    std::fs::write(&path, bytes).map_err(|err| format!("No se pudo escribir «{path}»: {err}"))
 }
 
 /// Solo se descargan instaladores de las releases del proyecto (ver PRIVACY.md).
@@ -432,129 +319,6 @@ fn create_vault_dir(path: String) -> Result<String, String> {
     Ok(target.to_string_lossy().into_owned())
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ImportItem {
-    /// Ruta original del archivo en el equipo.
-    pub source: String,
-    /// Dónde acabó dentro del vault (`None` si no se pudo añadir).
-    pub path: Option<String>,
-    /// Motivo del fallo o del «ya estaba ahí».
-    pub error: Option<String>,
-}
-
-/// Lo mismo que muestra el explorador: `.md`, `.pdf` e imágenes.
-fn is_importable(path: &std::path::Path) -> bool {
-    is_md_file(path) || is_pdf_file(path) || is_image_file(path)
-}
-
-/**
- * Copia archivos del equipo al vault: es lo que usan el botón «Añadir archivos»
- * del explorador y el arrastre desde el gestor de archivos del sistema.
- *
- * Se copian, no se mueven: el original se queda donde estaba. Cada archivo se
- * juzga por separado, así que un lote mixto añade los que puede y explica el
- * resto en su `error`.
- */
-#[tauri::command]
-fn import_files_to_vault(
-    sources: Vec<String>,
-    dest_dir: String,
-) -> Result<Vec<ImportItem>, String> {
-    let dest = expand_home(&dest_dir);
-    let dest_ref = std::path::Path::new(&dest);
-
-    if dest_ref.exists() && !dest_ref.is_dir() {
-        return Err(format!("«{dest}» no es una carpeta"));
-    }
-    ensure_dir_exists(dest_ref)?;
-
-    Ok(sources
-        .iter()
-        .map(|source| import_file_into(source, dest_ref))
-        .collect())
-}
-
-fn import_file_into(source: &str, dest: &std::path::Path) -> ImportItem {
-    let source = expand_home(source);
-    let src = std::path::Path::new(&source);
-
-    let falla = |error: String| ImportItem {
-        source: source.clone(),
-        path: None,
-        error: Some(error),
-    };
-
-    let nombre = src
-        .file_name()
-        .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_else(|| source.clone());
-
-    if src.is_dir() {
-        return falla(format!(
-            "«{nombre}» es una carpeta: añade sus archivos sueltos"
-        ));
-    }
-    if !src.is_file() {
-        return falla(format!("No existe el archivo «{source}»"));
-    }
-    if !is_importable(src) {
-        return falla(format!("«{nombre}» no es .md, .pdf ni una imagen"));
-    }
-
-    // El markdown tiene que ser texto: con bytes que no son UTF-8 no se podría abrir.
-    let md_bytes = if is_md_file(src) {
-        match std::fs::read(src) {
-            Ok(bytes) => {
-                if std::str::from_utf8(&bytes).is_err() {
-                    return falla(format!("«{nombre}» no es texto UTF-8 válido"));
-                }
-                Some(bytes)
-            }
-            Err(err) => return falla(format!("No se pudo leer «{source}»: {err}")),
-        }
-    } else {
-        None
-    };
-
-    // Si el archivo ya está en la carpeta de destino no se copia encima de sí mismo.
-    let candidato = dest.join(&nombre);
-    let ya_esta_aqui = std::fs::canonicalize(src)
-        .ok()
-        .zip(std::fs::canonicalize(&candidato).ok())
-        .is_some_and(|(original, copia)| original == copia);
-    if ya_esta_aqui {
-        return ImportItem {
-            source,
-            path: Some(candidato.to_string_lossy().into_owned()),
-            error: Some("ya estaba en esta carpeta".to_string()),
-        };
-    }
-
-    let target = match unique_path(&candidato) {
-        Ok(target) => target,
-        Err(err) => return falla(err),
-    };
-
-    let resultado = match md_bytes {
-        Some(bytes) => std::fs::write(&target, bytes),
-        None => std::fs::copy(src, &target).map(|_| ()),
-    };
-    if let Err(err) = resultado {
-        let _ = std::fs::remove_file(&target);
-        return falla(format!(
-            "No se pudo añadir «{nombre}» a «{}»: {err}",
-            dest.display()
-        ));
-    }
-
-    ImportItem {
-        source,
-        path: Some(target.to_string_lossy().into_owned()),
-        error: None,
-    }
-}
-
 #[tauri::command]
 fn delete_vault_file(path: String) -> Result<(), String> {
     let path = expand_home(&path);
@@ -687,109 +451,6 @@ fn delete_vault_dir(path: String) -> Result<(), String> {
 
     std::fs::remove_dir_all(target)
         .map_err(|err| format!("No se pudo eliminar la carpeta «{path}»: {err}"))
-}
-
-#[tauri::command]
-fn read_vault_image(path: String) -> Result<String, String> {
-    let path = expand_home(&path);
-    let mime = image_mime(std::path::Path::new(&path))
-        .ok_or_else(|| format!("Formato no soportado (solo imágenes): «{path}»"))?;
-
-    if !std::path::Path::new(&path).is_file() {
-        return Err(format!("No existe el archivo «{path}»"));
-    }
-
-    const MAX_BYTES: u64 = 30 * 1024 * 1024;
-    let metadata =
-        std::fs::metadata(&path).map_err(|err| format!("No se pudo leer «{path}»: {err}"))?;
-    if metadata.len() > MAX_BYTES {
-        return Err(format!(
-            "La imagen pesa {} MB y el límite son 30 MB",
-            metadata.len() / (1024 * 1024)
-        ));
-    }
-
-    let bytes =
-        std::fs::read(&path).map_err(|err| format!("No se pudo leer «{path}»: {err}"))?;
-
-    Ok(format!("data:{mime};base64,{}", base64_encode(&bytes)))
-}
-
-/**
- * Miniatura de una imagen para el selector de imágenes: PNG de lado `max_px`
- * como máximo, para que cada fila del menú no cargue la foto entera. Los
- * formatos que el codificador no entiende (HEIC, JXL, SVG…) fallan aquí y la
- * fila se queda con su icono: la imagen sigue pudiéndose insertar igual.
- */
-#[tauri::command]
-fn read_vault_image_thumb(path: String, max_px: u32) -> Result<String, String> {
-    let path = expand_home(&path);
-    let archivo = std::path::Path::new(&path);
-
-    if image_mime(archivo).is_none() {
-        return Err(format!("Formato no soportado (solo imágenes): «{path}»"));
-    }
-    if !archivo.is_file() {
-        return Err(format!("No existe el archivo «{path}»"));
-    }
-
-    const MAX_BYTES: u64 = 60 * 1024 * 1024;
-    let metadata = std::fs::metadata(archivo)
-        .map_err(|err| format!("No se pudo leer «{path}»: {err}"))?;
-    if metadata.len() > MAX_BYTES {
-        return Err(format!(
-            "La imagen pesa {} MB y el límite son 60 MB",
-            metadata.len() / (1024 * 1024)
-        ));
-    }
-
-    let bytes =
-        std::fs::read(archivo).map_err(|err| format!("No se pudo leer «{path}»: {err}"))?;
-    let imagen = image::load_from_memory(&bytes)
-        .map_err(|err| format!("No se pudo reducir «{path}»: {err}"))?;
-
-    let lado = max_px.max(16);
-    let miniatura = imagen.thumbnail(lado, lado);
-    let mut png = Vec::new();
-    miniatura
-        .write_to(
-            &mut std::io::Cursor::new(&mut png),
-            image::ImageFormat::Png,
-        )
-        .map_err(|err| format!("No se pudo guardar la miniatura de «{path}»: {err}"))?;
-
-    Ok(format!("data:image/png;base64,{}", base64_encode(&png)))
-}
-
-#[tauri::command]
-fn read_vault_pdf(path: String) -> Result<String, String> {
-    let path = expand_home(&path);
-
-    if !is_pdf_file(std::path::Path::new(&path)) {
-        return Err(format!("Formato no soportado (solo PDF): «{path}»"));
-    }
-
-    if !std::path::Path::new(&path).is_file() {
-        return Err(format!("No existe el archivo «{path}»"));
-    }
-
-    const MAX_BYTES: u64 = 60 * 1024 * 1024;
-    let metadata =
-        std::fs::metadata(&path).map_err(|err| format!("No se pudo leer «{path}»: {err}"))?;
-    if metadata.len() > MAX_BYTES {
-        return Err(format!(
-            "El PDF pesa {} MB y el límite son 60 MB",
-            metadata.len() / (1024 * 1024)
-        ));
-    }
-
-    let bytes =
-        std::fs::read(&path).map_err(|err| format!("No se pudo leer «{path}»: {err}"))?;
-
-    Ok(format!(
-        "data:application/pdf;base64,{}",
-        base64_encode(&bytes)
-    ))
 }
 
 
@@ -1396,13 +1057,13 @@ pub fn run() {
             busqueda::search_index_facets,
             read_vault_file,
             write_vault_file,
-            write_pdf_file,
+            medios::write_pdf_file,
             rename_vault_file,
             list_vault_entries,
             list_vault_dirs,
             create_vault_file,
             create_vault_dir,
-            import_files_to_vault,
+            importar::import_files_to_vault,
             delete_vault_file,
             papelera::move_to_trash,
             papelera::list_trash,
@@ -1412,9 +1073,9 @@ pub fn run() {
             delete_vault_dir,
             rename_vault_dir,
             move_vault_file,
-            read_vault_image,
-            read_vault_image_thumb,
-            read_vault_pdf,
+            medios::read_vault_image,
+            medios::read_vault_image_thumb,
+            medios::read_vault_pdf,
             configuracion::load_app_config,
             configuracion::save_app_config,
             vault_dir_exists,
