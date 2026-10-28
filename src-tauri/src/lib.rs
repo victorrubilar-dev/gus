@@ -1,11 +1,6 @@
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 
-#[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
-}
-
 fn ensure_md(path: &str) -> Result<(), String> {
     let is_md = std::path::Path::new(path)
         .extension()
@@ -645,7 +640,7 @@ fn trash_entry(
         let mut records = load_trash_manifest(trash);
         records.retain(|known| known.name != record.name);
         records.push(record);
-        let _ = save_trash_manifest(trash, &records);
+        save_trash_manifest(trash, &records)?;
     }
 
     Ok(moved)
@@ -697,8 +692,11 @@ fn purge_expired_trash(trash: &std::path::Path) -> usize {
         !borrado
     });
 
+    // Sin propagar: la purga corre al arrancar y no tiene a quién devolver el error.
     if changed {
-        let _ = save_trash_manifest(trash, &records);
+        if let Err(err) = save_trash_manifest(trash, &records) {
+            eprintln!("Gus: purga de la papelera sin guardar el manifiesto: {err}");
+        }
     }
 
     purged
@@ -868,7 +866,7 @@ fn restore_trashed(source: &std::path::Path, trash: &std::path::Path) -> Result<
     move_entry(source, &target)?;
 
     records.retain(|known| known.name != name);
-    let _ = save_trash_manifest(trash, &records);
+    save_trash_manifest(trash, &records)?;
 
     Ok(target.to_string_lossy().into_owned())
 }
@@ -890,7 +888,7 @@ fn delete_trashed(path: &std::path::Path, trash: &std::path::Path) -> Result<(),
     if let Some(name) = path.file_name().and_then(|name| name.to_str()) {
         let mut records = load_trash_manifest(trash);
         records.retain(|known| known.name != name);
-        let _ = save_trash_manifest(trash, &records);
+        save_trash_manifest(trash, &records)?;
     }
 
     Ok(())
@@ -2975,7 +2973,6 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            greet,
             read_vault_dir,
             get_vault_files,
             list_recent_notes,
