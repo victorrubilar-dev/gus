@@ -1,14 +1,18 @@
-## Gus v0.1.3 🚀
+## Gus v0.1.4 🚀
 
-Actualización centrada en **encontrar lo que ya tienes** y en que Gus te avise a tiempo: búsqueda a texto completo e indicaciones del sistema.
+Actualización centrada en **actualizar sin buscar**: el aviso de versión nueva ahora puede bajar el instalador de tu sistema y abrirlo por ti.
 
 ### ✨ Qué incluye
 
-- 🔎 **Búsqueda a texto completo**: índice incremental sobre todo el vault, con filtros por carpeta, etiqueta y fechas, resultados con el fragmento que coincide resaltado y recuento de coincidencias por nota
-- ⚡ **Índice que crece contigo**: se construye al abrir el vault y se actualiza solo mientras editas, así que buscar es inmediato aunque tu vault sea grande; vive en `.gus-index/` y nunca se sube a ninguna parte
-- 🔔 **Avisos del sistema**: recordatorios de tareas por vencer y de la nota del día que aún no has escrito, al abrir la app
-- ⏱️ **Antelación configurable**: 0, 1, 3, 7 o 14 días. Con 0 el aviso suena el propio día del vencimiento
-- 🆕 **Nueva pestaña «Buscar»** en la barra lateral, con su propio atajo desde la paleta de comandos
+- ⬇️ **Descargar la actualización desde el aviso**: si hay una versión nueva, el botón «Descargar y abrir el instalador» baja el de tu sistema a tu carpeta de Descargas y lo abre. Nada se descarga si no lo pulsas, y solo desde la página de releases de este proyecto
+- 🔗 Si la versión no trae instalador para tu sistema, el aviso sigue enlazando a la página de la release, como antes
+- 🧹 **Papelera más fiable**: si no se puede guardar el registro de lo que has tirado, Gus lo dice en vez de fallar en silencio
+
+### 🛠️ Cambios internos
+
+- La compilación de instaladores ahora ejecuta antes los tests (TypeScript, Vitest y Rust), y no publica nada si fallan
+- Comprobación automática de que la versión es la misma en todos los ficheros del proyecto
+- Retirada la traza de depuración del editor y los recursos sin uso
 
 ### 📦 Instaladores
 
@@ -18,7 +22,9 @@ Actualización centrada en **encontrar lo que ya tienes** y en que Gus te avise 
 | Windows | `.exe` / `.msi` |
 | macOS | `.dmg` |
 
-**Nota para Linux:** si el `.AppImage` no abre en tu distribución, compila desde el código fuente (instrucciones en el [README](https://github.com/victorrubilar-dev/gus#desarrollo)).
+**Nota para Linux:** el botón de descarga baja el `.AppImage`, que funciona en cualquier distribución. Si prefieres el `.rpm` o el `.deb`, descárgalo desde la página de la release.
+
+**Nota para Windows y macOS:** los instaladores no están firmados. Windows (SmartScreen) y macOS (Gatekeeper) pueden pedir confirmación antes de abrirlos.
 
 **Nota sobre los avisos:** están **apagados por defecto** y se encienden en Ajustes → Tareas. Piden permiso al sistema; nada sale de tu equipo.
 
