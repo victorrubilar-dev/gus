@@ -154,8 +154,11 @@ gus/
 ├── src-tauri/                    # Backend Rust
 │   ├── src/
 │   │   ├── main.rs               # Punto de entrada (6 líneas)
-│   │   ├── lib.rs                # ~5000 líneas: comandos del vault, importación, miniaturas, búsqueda
-│   │   └── papelera.rs           # Papelera por vault: manifiesto, TTL, restaurar y migración
+│   │   ├── lib.rs                # ~3950 líneas: vault, importación, miniaturas, PDF, configuración, actualizaciones
+│   │   ├── busqueda.rs           # Búsqueda a texto completo: índice incremental en `.gus-index/`
+│   │   ├── enlaces.rs            # Grafo de enlaces `[[wiki]]` y backlinks
+│   │   ├── papelera.rs           # Papelera por vault: manifiesto, TTL, restaurar y migración
+│   │   └── tareas.rs             # Tareas: almacén `.gus-tasks.json` y migración desde `tareas.md`
 │   ├── Cargo.toml                # Dependencias Rust
 │   ├── tauri.conf.json           # Configuración Tauri
 │   └── icons/                    # Iconos de la app (todas las plataformas)
