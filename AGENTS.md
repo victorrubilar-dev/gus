@@ -154,7 +154,8 @@ gus/
 ├── src-tauri/                    # Backend Rust
 │   ├── src/
 │   │   ├── main.rs               # Punto de entrada (6 líneas)
-│   │   └── lib.rs                # ~5200 líneas: todos los comandos Tauri
+│   │   ├── lib.rs                # ~5000 líneas: comandos del vault, importación, miniaturas, búsqueda
+│   │   └── papelera.rs           # Papelera por vault: manifiesto, TTL, restaurar y migración
 │   ├── Cargo.toml                # Dependencias Rust
 │   ├── tauri.conf.json           # Configuración Tauri
 │   └── icons/                    # Iconos de la app (todas las plataformas)
