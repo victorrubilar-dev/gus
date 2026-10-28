@@ -79,6 +79,7 @@ gus/
 │   │   ├── MarkdownEditor.tsx    # Editor central (textarea + overlay renderizado)
 │   │   ├── markdownPreview.tsx   # Vista previa del editor: render de Markdown, wiki-enlaces, KaTeX, Mermaid e imágenes
 │   │   ├── markdownEditorTypes.ts # Tipos internos del editor (menús, arrastres, estado de guardado)
+│   │   ├── useEditorHistory.ts   # Refs y instantánea del historial de deshacer del editor
 │   │   ├── FileExplorer.tsx      # Árbol de archivos del vault (crear/renombrar/mover/eliminar)
 │   │   ├── CommandPalette.tsx    # Búsqueda/ apertura rápida de notas (cmdk)
 │   │   ├── DashboardView.tsx     # Pestaña de inicio
