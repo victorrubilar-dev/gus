@@ -18,7 +18,9 @@ import {
   Folder,
   FolderPlus,
   Image as ImageIcon,
+  CalendarClock,
   Import as ImportIcon,
+  Search,
   Plus,
   RefreshCw,
 } from "lucide-react";
@@ -64,6 +66,10 @@ export interface FileExplorerProps {
   onSelect?: (file: NoteFile) => void;
   onFilesChange?: (files: NoteFile[]) => void;
   refreshKey?: number;
+  /** Abre la nota de hoy (botón de la cabecera). */
+  onOpenDailyNote?: () => void;
+  /** Abre la búsqueda a texto completo del vault. */
+  onOpenSearch?: () => void;
   onFileDeleted?: (path: string) => void;
   width?: number;
   onBeforeFileAction?: (path: string) => void | Promise<void>;
@@ -284,6 +290,8 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
     onSelect,
     onFilesChange,
     refreshKey = 0,
+    onOpenDailyNote,
+    onOpenSearch,
     onFileDeleted,
     onBeforeFileAction,
     onExportPdf,
@@ -1354,6 +1362,28 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
               </ul>
             </div>
           )}
+            {onOpenSearch && (
+              <button
+                type="button"
+                onClick={onOpenSearch}
+                title={t("app.tab.search")}
+                aria-label={t("app.tab.search")}
+                className={TRAIL_BUTTON_CLASS}
+              >
+                <Search className="h-3.5 w-3.5" aria-hidden="true" />
+              </button>
+            )}
+            {onOpenDailyNote && (
+              <button
+                type="button"
+                onClick={onOpenDailyNote}
+                title={t("daily.openToday")}
+                aria-label={t("daily.openToday")}
+                className={TRAIL_BUTTON_CLASS}
+              >
+                <CalendarClock className="h-3.5 w-3.5" aria-hidden="true" />
+              </button>
+            )}
         </nav>
       )}
 
