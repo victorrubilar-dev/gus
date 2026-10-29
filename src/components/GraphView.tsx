@@ -63,7 +63,7 @@ const SELECT_CLASS =
   "rounded-lg border border-gus-border bg-gus-panel px-2 py-1 text-xs text-gus-text outline-none transition-colors focus:border-gus-accent/60";
 
 const ZOOM_BUTTON_CLASS =
-  "flex h-6 w-6 items-center justify-center rounded-md text-gus-muted outline-none transition-colors hover:bg-gus-card hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/70";
+  "gus-btn gus-btn-ghost";
 
 /**
  * Grafo interactivo de las notas del vault: nodos arrastrables, zoom y pan,
@@ -490,7 +490,7 @@ export default function GraphView({ vaultPath, refreshKey = 0, onOpenNote }: Gra
             title={t("graph.zoomReset")}
             aria-label={t("graph.zoomReset")}
             onClick={() => setView(fitView(positions, size.width, size.height))}
-            className="rounded-md px-1.5 text-[11px] tabular-nums text-gus-muted outline-none transition-colors hover:bg-gus-card hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/70"
+            className="gus-btn gus-btn-ghost w-auto px-2 text-[11px] tabular-nums focus-visible:ring-2 focus-visible:ring-gus-accent/70"
           >
             {Math.round(view.scale * 100)}%
           </button>

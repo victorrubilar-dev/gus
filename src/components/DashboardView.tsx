@@ -319,7 +319,7 @@ export default function DashboardView({
                 <button
                   type="button"
                   onClick={() => onNavigate("tasks")}
-                  className="text-xs text-gus-accent underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
+                  className="gus-btn gus-btn-ghost w-auto px-2 text-xs text-gus-accent focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
                 >
                   {t("dashboard.openTasks")}
                 </button>
@@ -434,7 +434,7 @@ export default function DashboardView({
                 <button
                   type="button"
                   onClick={() => onNavigate("notes")}
-                  className="text-xs text-gus-accent underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
+                  className="gus-btn gus-btn-ghost w-auto px-2 text-xs text-gus-accent focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
                 >
                   Ver todas
                 </button>

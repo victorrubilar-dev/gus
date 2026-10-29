@@ -115,7 +115,7 @@ export default function WelcomePanel({
           <button
             type="button"
             onClick={onNewNote}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-gus-accent/50 bg-gus-accent/15 px-3.5 py-2 text-xs font-semibold text-gus-accent transition-colors hover:bg-gus-accent/25 focus-visible:ring-2 focus-visible:ring-gus-accent/70 focus-visible:outline-none"
+            className="gus-btn gus-btn-primary"
           >
             <Plus className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
             {t("welcome.newNote")}
@@ -124,7 +124,7 @@ export default function WelcomePanel({
           <button
             type="button"
             onClick={onOpenPalette}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-gus-border bg-gus-card px-3.5 py-2 text-xs text-gus-muted transition-colors hover:border-gus-accent/40 hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/70 focus-visible:outline-none"
+            className="gus-btn gus-btn-secondary"
           >
             <Search className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
             {t("welcome.searchNote")}

@@ -408,7 +408,7 @@ export default function TaskList({
               onClick={() => setView("board")}
               title={t("tasks.kanban")}
               className={clsx(
-                "flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] transition-colors focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none",
+                "gus-btn w-auto px-2.5 text-[11px] focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none",
                 view === "board"
                   ? "bg-gus-panel text-gus-text"
                   : "text-gus-muted hover:text-gus-text",
@@ -424,7 +424,7 @@ export default function TaskList({
               onClick={() => setView("list")}
               title={t("tasks.list")}
               className={clsx(
-                "flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] transition-colors focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none",
+                "gus-btn w-auto px-2.5 text-[11px] focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none",
                 view === "list"
                   ? "bg-gus-panel text-gus-text"
                   : "text-gus-muted hover:text-gus-text",

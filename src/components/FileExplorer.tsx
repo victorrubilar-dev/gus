@@ -148,7 +148,7 @@ const PANEL_MENU_HEIGHT = 120;
 const TRAIL_HISTORY_LIMIT = 50;
 
 const TRAIL_BUTTON_CLASS =
-  "flex h-5 w-5 shrink-0 items-center justify-center rounded text-gus-muted transition-colors hover:bg-gus-card hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-30";
+  "gus-btn gus-btn-ghost shrink-0 focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-30";
 
 /** `shrink-0` es clave: si algo no cabe, la barra prefiere ocultar tramos antes que encogerlos. */
 const TRAIL_SEGMENT_CLASS =
