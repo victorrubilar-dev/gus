@@ -1,14 +1,14 @@
 @import "tailwindcss";
 
 @theme static {
-  --color-gus-bg: #0d0e11;
-  --color-gus-panel: #16181f;
-  --color-gus-card: #1f222b;
-  --color-gus-border: #2a2e39;
-  --color-gus-accent: #e07a5f;
+  --color-gus-bg: #141414;
+  --color-gus-panel: #1c1c1c;
+  --color-gus-card: #232323;
+  --color-gus-border: #2e2e2e;
+  --color-gus-accent: #f26a4a;
   --color-gus-eyes: #81b29a;
-  --color-gus-text: #f4f1de;
-  --color-gus-muted: #8d99ae;
+  --color-gus-text: #f1ebe8;
+  --color-gus-muted: #a39c9a;
 }
 
 :root {
@@ -374,17 +374,17 @@ body {
 }
 
 .gus-pdf-window[data-theme="dark"] {
-  --color-gus-bg: #0d0e11;
-  --color-gus-panel: #16181f;
-  --color-gus-card: #1f222b;
-  --color-gus-border: #2a2e39;
-  --color-gus-text: #f4f1de;
-  --color-gus-muted: #8d99ae;
-  --color-gus-accent: #e07a5f;
+  --color-gus-bg: #141414;
+  --color-gus-panel: #1c1c1c;
+  --color-gus-card: #232323;
+  --color-gus-border: #2e2e2e;
+  --color-gus-text: #f1ebe8;
+  --color-gus-muted: #a39c9a;
+  --color-gus-accent: #f26a4a;
   --color-gus-eyes: #81b29a;
   /* Sin esto la hoja se quedaba blanca con texto crema (ilegible): el fondo
      oscuro solo lo pintaba la captura, no la previsualización. */
-  background-color: #0d0e11;
+  background-color: #141414;
   color-scheme: dark;
 }
 

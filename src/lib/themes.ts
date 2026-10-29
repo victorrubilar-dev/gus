@@ -49,16 +49,17 @@ export const THEME_LIST: ThemeDefinition[] = [
     labelKey: "theme.gus-dark",
     hintKey: "theme.gusDarkHint",
     scheme: "dark",
-    accent: "#e07a5f",
-    vars: colors("#0d0e11", "#16181f", "#1f222b", "#2a2e39", "#f4f1de", "#8d99ae", "#81b29a"),
+    // Paleta del logo: negro y blanco cálidos, con el bermellón como acento.
+    accent: "#f26a4a",
+    vars: colors("#141414", "#1c1c1c", "#232323", "#2e2e2e", "#f1ebe8", "#a39c9a", "#81b29a"),
   },
   {
     key: "gus-claro",
     labelKey: "theme.gus-light",
     hintKey: "theme.gusLightHint",
     scheme: "light",
-    accent: "#b14a31",
-    vars: colors("#f2f3f5", "#ffffff", "#e9ebf0", "#d5d9e1", "#15181f", "#5d6675", "#2f7d5f"),
+    accent: "#c83c1e",
+    vars: colors("#f8f8f8", "#ffffff", "#efeae8", "#d6cfcc", "#141414", "#5f5856", "#2f7d5f"),
   },
   {
     key: "oled",
