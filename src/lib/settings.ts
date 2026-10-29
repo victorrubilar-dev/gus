@@ -78,7 +78,7 @@ export function isLeadDays(value: unknown): value is number {
 
 export const DEFAULT_SETTINGS: AppSettings = {
   openLastVault: true,
-  alwaysNotesTab: false,
+  alwaysNotesTab: true,
   animations: true,
   accent: "tema",
   theme: DEFAULT_THEME,

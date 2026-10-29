@@ -241,7 +241,7 @@ function App({
   onLanguageChange: (lang: Language) => void;
 }) {
   const t = useT();
-  const [activeTab, setActiveTab] = useState<TabId>("home");
+  const [activeTab, setActiveTab] = useState<TabId>("notes");
   /** Con el panel derecho oculto solo se ve el explorador, a lo ancho. */
   const [rightHidden, setRightHidden] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
