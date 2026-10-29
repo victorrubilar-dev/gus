@@ -452,3 +452,56 @@ body {
   z-index: 100;
   background: var(--color-gus-bg);
 }
+/* Sistema de botones: tres tipos y una sola altura de control (28 px, la de
+   escritorio por defecto). Las vistas los usan en vez de clases sueltas. */
+.gus-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  outline: none;
+  transition: opacity 0.15s, background-color 0.15s, border-color 0.15s, color 0.15s;
+}
+.gus-btn:focus-visible {
+  box-shadow: 0 0 0 2px var(--color-gus-bg), 0 0 0 4px var(--color-gus-accent);
+}
+.gus-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+/* Una por vista: la acción que hace avanzar. Texto oscuro sobre el acento. */
+.gus-btn-primary {
+  background: var(--color-gus-accent);
+  color: var(--color-gus-bg);
+}
+.gus-btn-primary:hover:not(:disabled) {
+  opacity: 0.9;
+}
+/* Acciones de apoyo: contorno neutro, sin color. */
+.gus-btn-secondary {
+  background: var(--color-gus-card);
+  border-color: var(--color-gus-border);
+  color: var(--color-gus-text);
+}
+.gus-btn-secondary:hover:not(:disabled) {
+  border-color: color-mix(in oklab, var(--color-gus-accent) 50%, transparent);
+}
+/* Iconos de barra: cuadrados de la misma altura que el resto de controles. */
+.gus-btn-icon {
+  width: 28px;
+  padding: 0;
+  background: var(--color-gus-card);
+  border-color: var(--color-gus-border);
+  color: var(--color-gus-muted);
+}
+.gus-btn-icon:hover:not(:disabled) {
+  color: var(--color-gus-text);
+}
