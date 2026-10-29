@@ -3654,6 +3654,28 @@ export default function MarkdownEditor({
     !composing &&
     (tableCaret !== null || tableSelection !== null || driftBeforeLine(caretLine) > 0);
 
+  // El textarea reserva al final el alto que ganan los bloques crecidos: así su
+  // scroll llega hasta el final del overlay (si no, no se puede bajar al último renglón).
+  const driftTotal = [...blockDrift.values()].reduce((sum, drift) => sum + drift.extra, 0);
+
+  // El scroll nativo sigue a un cursor que va más arriba que el dibujado cuando
+  // hay un bloque crecido por encima: aquí se lleva la vista hasta el cursor del
+  // overlay. Se repite porque cada ajuste reposiciona el overlay.
+  useLayoutEffect(() => {
+    const area = textareaRef.current;
+    const caret = overlayRef.current?.querySelector<HTMLElement>(".gus-cell-caret");
+    if (!area || !caret) return;
+    const margin = 8;
+    for (let pass = 0; pass < 3; pass++) {
+      const view = area.getBoundingClientRect();
+      const at = caret.getBoundingClientRect();
+      if (at.bottom > view.bottom - margin) area.scrollTop += at.bottom - (view.bottom - margin);
+      else if (at.top < view.top + margin) area.scrollTop -= view.top + margin - at.top;
+      else return;
+      syncOverlayGeometry();
+    }
+  }, [caretMark, caretLine, overlayMark]);
+
   /** Píxeles que los bloques ya superados dejan más abajo en el overlay. */
   function driftBeforeLine(line: number): number {
     let extra = 0;
@@ -4263,10 +4285,12 @@ export default function MarkdownEditor({
             spellCheck={false}
             lang={spellLangs && spellLangs.length > 0 ? spellLangs[0] : undefined}
             style={
-              fontSize || overlayMark
+              fontSize || overlayMark || driftTotal > 0
                 ? {
                     ...(fontSize ? { fontSize: `${fontSize}px` } : {}),
                     ...(overlayMark ? { caretColor: "transparent" } : {}),
+                    // py-4 de abajo (1rem) más el alto que ganan los bloques crecidos.
+                    ...(driftTotal > 0 ? { paddingBottom: `calc(1rem + ${driftTotal}px)` } : {}),
                   }
                 : undefined
             }

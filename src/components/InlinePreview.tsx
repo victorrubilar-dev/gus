@@ -909,7 +909,11 @@ const PreviewLine = memo(function PreviewLine({
       <div className={clsx("min-h-[var(--gus-row-h)]", blockWrap)}>
         <span className="block whitespace-break-spaces break-words">
           {text === "" ? (
-            "\u200B"
+            // Línea vacía: el cursor va delante del espacio de cero anchura que da la altura.
+            <>
+              {markUp(() => "")}
+              {"\u200B"}
+            </>
           ) : (
             markUp((piece) => (spell && !code ? spellNodes(piece, spell, "c") : piece))
           )}
