@@ -452,6 +452,9 @@ body {
   z-index: 100;
   background: var(--color-gus-bg);
 }
+/* Las clases de botón van en una capa de componentes: así las utilidades de
+   Tailwind (w-auto, text-xs, text-gus-accent) pueden ajustarlas en un caso concreto. */
+@layer components {
 /* Sistema de botones: tres tipos y una sola altura de control (28 px, la de
    escritorio por defecto). Las vistas los usan en vez de clases sueltas. */
 .gus-btn {
@@ -504,4 +507,19 @@ body {
 }
 .gus-btn-icon:hover:not(:disabled) {
   color: var(--color-gus-text);
+}
+
+/* Fantasma: controles de navegación sin contorno (ruta del explorador, zoom
+   del grafo). Solo cambian al pasar el puntero; no compiten con el contenido. */
+.gus-btn-ghost {
+  width: 28px;
+  padding: 0;
+  background: transparent;
+  border-color: transparent;
+  color: var(--color-gus-muted);
+}
+.gus-btn-ghost:hover:not(:disabled) {
+  background: var(--color-gus-card);
+  color: var(--color-gus-text);
+}
 }
