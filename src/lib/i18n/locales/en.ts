@@ -960,7 +960,7 @@ const en: Record<keyof typeof es, string> = {
     "The first screen summarises your day: upcoming tasks, recently edited notes and quick actions.",
   "tour.sidebar.title": "The sidebar",
   "tour.sidebar.body":
-    "Switch sections from here: Overview, Notes, Tasks and Calendar. Drag its edge to resize it.",
+    "Switch sections from here: Overview, Notes, Tasks, Calendar and Graph. Drag its edge to resize it.",
   "tour.explorer.title": "Your notes",
   "tour.explorer.body":
     "The explorer shows the vault folder. Create notes with the “+”, rename them with a double click and move them by dragging.",

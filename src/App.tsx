@@ -13,13 +13,11 @@ import {
 } from "react";
 import { AnimatePresence, domMax, LazyMotion, m, MotionConfig } from "framer-motion";
 import {
-  CalendarClock,
   CalendarDays,
   LayoutDashboard,
   ListTodo,
   LogOut,
   Network,
-  Search,
   Settings as SettingsIcon,
   StickyNote,
   Trash2,
@@ -84,7 +82,7 @@ import {
 } from "./lib/updateCheck";
 import { APP_VERSION } from "./lib/version";
 import { setPersonalWords } from "./lib/spellCheck";
-import { comboFor, comboLabel, globalShortcutFor } from "./lib/shortcuts";
+import { globalShortcutFor } from "./lib/shortcuts";
 import {
   I18nProvider,
   readStoredLanguage,
@@ -128,14 +126,15 @@ const TABS: { id: TabId; labelKey: MessageKey; Icon: LucideIcon }[] = [
   { id: "tasks", labelKey: "app.tab.tasks", Icon: ListTodo },
   { id: "calendar", labelKey: "app.tab.calendar", Icon: CalendarDays },
   { id: "graph", labelKey: "app.tab.graph", Icon: Network },
-  { id: "search", labelKey: "app.tab.search", Icon: Search },
 ];
 
 const DEFAULT_BASE_DIR = "~/Documents/gus-vaults";
 
 const SIDEBAR_MIN_WIDTH = 64;
 const SIDEBAR_MAX_WIDTH = 320;
-const SIDEBAR_DEFAULT_WIDTH = 96;
+const SIDEBAR_DEFAULT_WIDTH = 200;
+/** Desde este ancho la barra muestra el nombre de cada sección junto al icono. */
+const SIDEBAR_LABEL_MIN = 160;
 const SIDEBAR_WIDTH_KEY = "gus.sidebar-width";
 
 /**
@@ -308,6 +307,7 @@ function App({
   }>({ folder: () => null, editor: () => false, drop: async () => {} });
 
   const [sidebarWidth, setSidebarWidth] = useState(readStoredSidebarWidth);
+  const sidebarLabeled = sidebarWidth >= SIDEBAR_LABEL_MIN;
   const sidebarWidthRef = useRef(sidebarWidth);
   const [explorerWidth, setExplorerWidth] = useState(readStoredExplorerWidth);
   const explorerWidthRef = useRef(explorerWidth);
@@ -1418,6 +1418,8 @@ function App({
         activeId={note?.path ?? image?.path ?? pdf?.path ?? null}
         onSelect={handleSelectNote}
         refreshKey={vaultRefresh}
+        onOpenDailyNote={() => void openDailyNote()}
+        onOpenSearch={() => setActiveTab("search")}
         onFileDeleted={handleFileDeleted}
         onBeforeFileAction={handleBeforeFileAction}
         onExportPdf={handleExportPdf}
@@ -1615,7 +1617,7 @@ function App({
             <aside
               data-tour="sidebar"
               style={{ width: sidebarWidth }}
-              className="relative flex h-full shrink-0 flex-col items-center gap-2 border-r border-gus-border bg-gus-panel py-4"
+              className="relative flex h-full shrink-0 flex-col items-center gap-2 border-r border-gus-border bg-gus-panel px-2 py-4"
             >
               <img
                 src={gusIcon}
@@ -1626,16 +1628,6 @@ function App({
               />
 
               <div aria-hidden="true" className="my-1 h-px w-8 bg-gus-border" />
-
-              <button
-                type="button"
-                title={`${t("daily.openToday")} (${comboLabel(comboFor(settings.shortcuts, "openDailyNote"))})`}
-                aria-label={t("daily.openToday")}
-                onClick={() => void openDailyNote()}
-                className="flex h-11 w-11 items-center justify-center rounded-xl text-gus-muted outline-none transition-colors hover:bg-gus-card hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60"
-              >
-                <CalendarClock className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
-              </button>
 
               <div aria-hidden="true" className="my-1 h-px w-8 bg-gus-border" />
 
@@ -1652,8 +1644,9 @@ function App({
                     aria-pressed={isActive}
                     onClick={() => setActiveTab(id)}
                     className={clsx(
-                      "relative flex h-11 w-11 items-center justify-center rounded-xl outline-none transition-colors",
+                      "relative flex items-center rounded-xl outline-none transition-colors",
                       "focus-visible:ring-2 focus-visible:ring-gus-accent/60",
+                      sidebarLabeled ? "h-10 w-full gap-3 px-3" : "h-11 w-11 justify-center",
                       isActive
                         ? "text-gus-accent"
                         : "text-gus-muted hover:bg-gus-card hover:text-gus-text",
@@ -1666,7 +1659,8 @@ function App({
                         transition={{ type: "spring", stiffness: 400, damping: 32 }}
                       />
                     )}
-                    <Icon className="relative h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
+                    <Icon className="relative h-5 w-5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
+                    {sidebarLabeled && <span className="relative truncate text-sm">{label}</span>}
                   </button>
                 );
               })}
@@ -1677,15 +1671,16 @@ function App({
               >
                 <div aria-hidden="true" className="h-px w-8 bg-gus-border" />
 
-                <div className="flex flex-col items-center gap-2">
+                <div className="flex w-full flex-col items-center gap-2">
                   <button
                     type="button"
                     title={t("app.leaveVault")}
                     aria-label={t("app.leaveVault")}
                     onClick={leaveVault}
-                    className="flex h-11 w-11 items-center justify-center rounded-xl text-gus-muted outline-none transition-colors hover:bg-rose-400/10 hover:text-rose-300 focus-visible:ring-2 focus-visible:ring-gus-accent/60"
+                    className={`flex items-center rounded-xl text-gus-muted ${sidebarLabeled ? "h-10 w-full gap-3 px-3" : "h-11 w-11 justify-center"} outline-none transition-colors hover:bg-rose-400/10 hover:text-rose-300 focus-visible:ring-2 focus-visible:ring-gus-accent/60`}
                   >
                     <LogOut className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
+                    {sidebarLabeled && <span className="truncate text-sm">{t("app.leaveVault")}</span>}
                   </button>
 
                   <button
@@ -1695,8 +1690,9 @@ function App({
                     aria-pressed={activeTab === "trash"}
                     onClick={() => setActiveTab("trash")}
                     className={clsx(
-                      "relative flex h-11 w-11 items-center justify-center rounded-xl outline-none transition-colors",
+                      "relative flex items-center rounded-xl outline-none transition-colors",
                       "focus-visible:ring-2 focus-visible:ring-gus-accent/60",
+                      sidebarLabeled ? "h-10 w-full gap-3 px-3" : "h-11 w-11 justify-center",
                       activeTab === "trash"
                         ? "text-gus-accent"
                         : "text-gus-muted hover:bg-gus-card hover:text-gus-text",
@@ -1710,6 +1706,7 @@ function App({
                       />
                     )}
                     <Trash2 className="relative h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
+                    {sidebarLabeled && <span className="relative truncate text-sm">{t("app.trash")}</span>}
                   </button>
 
                   <button
@@ -1719,8 +1716,9 @@ function App({
                     aria-pressed={activeTab === "settings"}
                     onClick={() => setActiveTab("settings")}
                     className={clsx(
-                      "relative flex h-11 w-11 items-center justify-center rounded-xl outline-none transition-colors",
+                      "relative flex items-center rounded-xl outline-none transition-colors",
                       "focus-visible:ring-2 focus-visible:ring-gus-accent/60",
+                      sidebarLabeled ? "h-10 w-full gap-3 px-3" : "h-11 w-11 justify-center",
                       activeTab === "settings"
                         ? "text-gus-accent"
                         : "text-gus-muted hover:bg-gus-card hover:text-gus-text",
@@ -1738,6 +1736,7 @@ function App({
                       strokeWidth={1.75}
                       aria-hidden="true"
                     />
+                    {sidebarLabeled && <span className="relative truncate text-sm">{t("app.settings")}</span>}
                   </button>
                 </div>
               </div>

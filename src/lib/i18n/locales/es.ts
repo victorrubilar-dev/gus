@@ -957,7 +957,7 @@ export default {
     "La primera pantalla resume tu día: próximas tareas, últimas notas editadas y los accesos rápidos.",
   "tour.sidebar.title": "El menú lateral",
   "tour.sidebar.body":
-    "Desde aquí cambias de sección: Resumen, Notas, Tareas y Calendario. Arrastra su borde para agrandarlo o achicarlo.",
+    "Desde aquí cambias de sección: Resumen, Notas, Tareas, Calendario y Grafo. Arrastra su borde para agrandarlo o achicarlo.",
   "tour.explorer.title": "Tus notas",
   "tour.explorer.body":
     "El explorador muestra la carpeta del vault. Crea notas con el «+», renómbralas con doble clic y muévelas arrastrando.",
