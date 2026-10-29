@@ -447,7 +447,7 @@ export default function TaskList({
           type="button"
           onClick={onNewTask}
           disabled={status === "loading" || status === "error"}
-          className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-gus-accent px-3 py-2 text-sm font-medium text-gus-bg transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none disabled:opacity-50"
+          className="gus-btn gus-btn-primary w-full"
         >
           <Plus className="h-4 w-4" aria-hidden="true" />
           {t("tasks.new")}

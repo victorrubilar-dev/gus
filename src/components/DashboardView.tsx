@@ -262,7 +262,7 @@ export default function DashboardView({
             onClick={() => setReloadKey((key) => key + 1)}
             title={t("dashboard.reload")}
             aria-label={t("dashboard.reload")}
-            className="flex h-9 w-9 items-center justify-center rounded-lg border border-gus-border bg-gus-card text-gus-muted transition-colors hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
+            className="gus-btn gus-btn-icon"
           >
             <RefreshCw className="h-4 w-4" aria-hidden="true" />
           </button>
@@ -355,7 +355,7 @@ export default function DashboardView({
                   <button
                     type="button"
                     onClick={onNewTask}
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-gus-accent px-3 py-1.5 text-xs font-medium text-gus-bg transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
+                    className="gus-btn gus-btn-primary"
                   >
                     <Plus className="h-3.5 w-3.5" aria-hidden="true" />
                     {t("dashboard.createTask")}
@@ -526,7 +526,7 @@ export default function DashboardView({
               <button
                 type="button"
                 onClick={onNewTask}
-                className="mt-1 flex items-center justify-center gap-1.5 rounded-lg bg-gus-accent px-3 py-2 text-sm font-medium text-gus-bg transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
+                className="mt-1 gus-btn gus-btn-primary w-full"
               >
                 <Plus className="h-4 w-4" aria-hidden="true" />
                 {t("tasks.new")}
