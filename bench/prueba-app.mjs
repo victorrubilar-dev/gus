@@ -96,6 +96,21 @@ await page.getByText("manual.pdf", { exact: true }).first().click();
 await page.locator("canvas").first().waitFor({ timeout: 15000 });
 ok(true, "el visor PDF pinta la página (worker de pdf.js bajo la CSP)");
 
+// Subtareas (REQ-11): crear una desde el panel de relaciones de una tarea.
+await page.getByRole("button", { name: "Tareas", exact: true }).first().click();
+await page.getByRole("tab", { name: "Lista" }).click();
+await page.getByRole("button", { name: "Subtareas y dependencias de «Tarea base»" }).click();
+await page.getByLabel("Nueva subtarea de «Tarea base»").fill("Paso uno");
+await page.keyboard.press("Enter");
+await page.waitForFunction(
+  () => window.__smoke.llamadas.some(
+    (c) => c.cmd === "save_tasks" && c.args.tasks?.some((t) => t.title === "Paso uno" && t.parentId === "base"),
+  ),
+  null,
+  { timeout: 8000 },
+);
+ok(true, "una subtarea se guarda con su parentId (save_tasks)");
+
 // Checkboxes de las notas en la lista de tareas (REQ-09).
 await page.getByRole("button", { name: "Tareas", exact: true }).first().click();
 await page.getByRole("tab", { name: "Notas" }).click();

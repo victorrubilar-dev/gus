@@ -1,6 +1,6 @@
-import { useEffect, useLayoutEffect, useEffectEvent, useRef, useState, type KeyboardEvent } from "react";
+import { Fragment, useEffect, useLayoutEffect, useEffectEvent, useRef, useState, type KeyboardEvent } from "react";
 import { AnimatePresence, m } from "framer-motion";
-import { Calendar, Flag, ListTodo, Plus, RefreshCw, SquareKanban, StickyNote, Trash2, X } from "lucide-react";
+import { Calendar, Flag, GitBranch, ListTodo, Lock, Plus, RefreshCw, SquareKanban, StickyNote, Trash2, X } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import clsx from "clsx";
@@ -19,6 +19,8 @@ import EmptyState from "./EmptyState";
 import SegmentedControl from "./SegmentedControl";
 import ViewHeader from "./ViewHeader";
 import CheckboxVisual from "./CheckboxVisual";
+import TaskRelations from "./TaskRelations";
+import { flattenTree, pendingBlockers, removeWithRelations, setParent, subtaskProgress, toggleBlocker } from "../lib/taskTree";
 import NoteTasksView from "./NoteTasksView";
 import type { NoteTask } from "../lib/noteTasks";
 import KanbanBoard, { type KanbanColumnId } from "./KanbanBoard";
@@ -131,6 +133,7 @@ export default function TaskList({
 
   const [reloadKey, setReloadKey] = useState(0);
 
+  const [relationsId, setRelationsId] = useState<string | null>(null);
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [view, setView] = useState<"list" | "board" | "notes">("board");
 
@@ -357,12 +360,21 @@ export default function TaskList({
     const row = items.find((task) => task.id === id);
     if (!row) return;
 
-    commitTasks(items.filter((task) => task.id !== id));
+    commitTasks(removeWithRelations(items, id));
+    if (relationsId === id) setRelationsId(null);
   }
 
-  const visible = [...items]
-    .filter((task) => (!hideCompleted || !task.completes) && matchesTag(task.tags))
-    .sort((a, b) => Number(a.completes) - Number(b.completes));
+  function addSubtask(parentId: string, title: string) {
+    const child: Task = { id: createTaskId(), title, tags: [], completes: false, parentId };
+    // Al final: las subtareas conservan el orden en que se crean bajo su padre.
+    commitTasks([...items, child]);
+  }
+
+  const visible = flattenTree(
+    [...items]
+      .filter((task) => (!hideCompleted || !task.completes) && matchesTag(task.tags))
+      .sort((a, b) => Number(a.completes) - Number(b.completes)),
+  );
   const done = items.filter((task) => task.completes).length;
 
   const boardItems = items.filter((task) => matchesTag(task.tags));
@@ -518,13 +530,15 @@ export default function TaskList({
 
         {view === "list" && (
         <ul key="list" className="space-y-2">
-            {visible.map((task) => {
+            {visible.map(({ task, depth }) => {
               const isEditing = editingId === task.id;
               const plazo = dueState(task, t);
+              const progress = subtaskProgress(items, task.id);
+              const waiting = pendingBlockers(items, task);
 
               return (
+                <Fragment key={task.id}>
                 <m.li
-                  key={task.id}
                   layout
                   initial={{ opacity: 0, y: -8 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -534,6 +548,7 @@ export default function TaskList({
                     ease: "easeOut",
                     layout: { type: "spring", stiffness: 500, damping: 45 },
                   }}
+                  style={{ marginLeft: depth * 24 }}
                   className={clsx(
                     "group relative flex items-center gap-3 overflow-hidden rounded-xl border border-gus-border bg-gus-card px-3 py-2.5",
                     isEditing && "z-30",
@@ -566,6 +581,31 @@ export default function TaskList({
                       )}
                     </span>
                   </label>
+
+                  {progress.total > 0 && (
+                    <span
+                      title={t("tasks.subtaskProgress", { done: progress.done, total: progress.total })}
+                      className="flex shrink-0 items-center gap-1.5 rounded-full border border-gus-border bg-gus-panel px-2 py-0.5 text-meta text-gus-muted"
+                    >
+                      <span aria-hidden="true" className="h-1 w-8 overflow-hidden rounded-full bg-gus-border">
+                        <span
+                          className="block h-full bg-gus-accent"
+                          style={{ width: `${(progress.done / progress.total) * 100}%` }}
+                        />
+                      </span>
+                      {progress.done}/{progress.total}
+                    </span>
+                  )}
+
+                  {waiting.length > 0 && (
+                    <span
+                      title={t("tasks.waitingFor", { names: waiting.map((blocker) => blocker.title).join(", ") })}
+                      className="flex shrink-0 items-center gap-1 rounded-full border border-amber-400/40 bg-amber-400/10 px-2 py-0.5 text-meta text-amber-300"
+                    >
+                      <Lock className="h-3 w-3" aria-hidden="true" />
+                      {waiting.length}
+                    </span>
+                  )}
 
                   <button
                     type="button"
@@ -686,6 +726,17 @@ export default function TaskList({
 
                   <button
                     type="button"
+                    onClick={() => setRelationsId((current) => (current === task.id ? null : task.id))}
+                    aria-expanded={relationsId === task.id}
+                    aria-label={t("tasks.relationsOf", { title: task.title })}
+                    title={t("tasks.relations")}
+                    className="shrink-0 rounded-md p-1.5 text-gus-muted opacity-0 transition hover:bg-gus-panel hover:text-gus-accent focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none group-hover:opacity-100"
+                  >
+                    <GitBranch className="h-4 w-4" aria-hidden="true" />
+                  </button>
+
+                  <button
+                    type="button"
                     onClick={() => remove(task.id)}
                     aria-label={t("tasks.deleteNamed", { title: task.title })}
                     className="shrink-0 rounded-md p-1.5 text-gus-muted opacity-0 transition hover:bg-rose-400/10 hover:text-rose-400 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-rose-400/60 focus-visible:outline-none group-hover:opacity-100"
@@ -693,6 +744,18 @@ export default function TaskList({
                     <Trash2 className="h-4 w-4" aria-hidden="true" />
                   </button>
                 </m.li>
+                {relationsId === task.id && (
+                  <li style={{ marginLeft: depth * 24 }}>
+                    <TaskRelations
+                      task={task}
+                      tasks={items}
+                      onSetParent={(parentId) => commitTasks(setParent(items, task.id, parentId))}
+                      onToggleBlocker={(blockerId) => commitTasks(toggleBlocker(items, task.id, blockerId))}
+                      onAddSubtask={(title) => addSubtask(task.id, title)}
+                    />
+                  </li>
+                )}
+                </Fragment>
               );
             })}
 

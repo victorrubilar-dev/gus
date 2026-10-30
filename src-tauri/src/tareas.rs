@@ -31,6 +31,12 @@ pub(crate) struct StoredTask {
     pub(crate) priority: Option<TaskPriority>,
     #[serde(default)]
     pub(crate) doing: bool,
+    /// Tarea de la que esta es subtarea (REQ-11).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) parent_id: Option<String>,
+    /// Ids de las tareas que deben completarse antes que esta.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) blocked_by: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -76,8 +82,81 @@ pub(crate) fn load_tasks(vault_path: String) -> Result<Vec<StoredTask>, String> 
     Ok(store.tasks)
 }
 
+/// Comprueba las relaciones del REQ-11 antes de guardar: que los ids existan,
+/// que nadie dependa de sí mismo y que ni la jerarquía ni las dependencias
+/// formen ciclos. La interfaz ya lo evita; esto protege el archivo de todo lo demás.
+pub(crate) fn validate_task_relations(tasks: &[StoredTask]) -> Result<(), String> {
+    use std::collections::{HashMap, HashSet};
+
+    let by_id: HashMap<&str, &StoredTask> = tasks.iter().map(|task| (task.id.as_str(), task)).collect();
+    if by_id.len() != tasks.len() {
+        return Err("Hay tareas con el mismo id".to_string());
+    }
+
+    for task in tasks {
+        let title = &task.title;
+        if let Some(parent) = &task.parent_id {
+            if parent == &task.id {
+                return Err(format!("«{title}» no puede ser subtarea de sí misma"));
+            }
+            if !by_id.contains_key(parent.as_str()) {
+                return Err(format!("«{title}» cuelga de una tarea que no existe"));
+            }
+        }
+        for blocker in &task.blocked_by {
+            if blocker == &task.id {
+                return Err(format!("«{title}» no puede bloquearse a sí misma"));
+            }
+            if !by_id.contains_key(blocker.as_str()) {
+                return Err(format!("«{title}» depende de una tarea que no existe"));
+            }
+        }
+
+        // Subir por los padres: si se vuelve a pasar por la misma tarea, hay ciclo.
+        let mut seen = HashSet::new();
+        let mut current = task.parent_id.as_deref();
+        while let Some(id) = current {
+            if !seen.insert(id) || id == task.id {
+                return Err(format!("«{title}» forma un ciclo de subtareas"));
+            }
+            current = by_id[id].parent_id.as_deref();
+        }
+    }
+
+    // Dependencias: búsqueda en profundidad con pila de visita (grafo dirigido).
+    fn has_cycle<'a>(
+        id: &'a str,
+        by_id: &HashMap<&'a str, &'a StoredTask>,
+        visiting: &mut HashSet<&'a str>,
+        done: &mut HashSet<&'a str>,
+    ) -> bool {
+        if done.contains(id) {
+            return false;
+        }
+        if !visiting.insert(id) {
+            return true;
+        }
+        let cyclic = by_id[id]
+            .blocked_by
+            .iter()
+            .any(|next| has_cycle(next.as_str(), by_id, visiting, done));
+        visiting.remove(id);
+        done.insert(id);
+        cyclic
+    }
+
+    let mut done = HashSet::new();
+    for task in tasks {
+        if has_cycle(task.id.as_str(), &by_id, &mut HashSet::new(), &mut done) {
+            return Err(format!("«{}» forma un ciclo de dependencias", task.title));
+        }
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub(crate) fn save_tasks(vault_path: String, tasks: Vec<StoredTask>) -> Result<(), String> {
+    validate_task_relations(&tasks)?;
     let path = task_store_path(&vault_path)?;
     let store = TaskStore {
         version: 1,

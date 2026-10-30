@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { scanTaskLines } from "./markdownTasks";
+import { cleanRelations } from "./taskTree";
 import { isTaskPriority, type TaskPriority } from "./taskPriority";
 
 export interface Task {
@@ -11,6 +12,10 @@ export interface Task {
   due?: string;
   priority?: TaskPriority;
   doing?: boolean;
+  /** Tarea de la que esta es subtarea (REQ-11). */
+  parentId?: string;
+  /** Ids de las tareas que deben completarse antes que esta. */
+  blockedBy?: string[];
 }
 
 export function createTaskId(): string {
@@ -41,7 +46,7 @@ function normalizeStored({ priority, doing, ...rest }: Task): Task {
 
 export async function loadTaskStore(vaultPath: string): Promise<Task[]> {
   const stored = await invoke<Task[]>("load_tasks", { vaultPath });
-  if (stored.length > 0) return stored.map(normalizeStored);
+  if (stored.length > 0) return cleanRelations(stored.map(normalizeStored));
 
   const legacyMarkdown = await invoke<string | null>("read_legacy_tasks", { vaultPath });
   if (!legacyMarkdown) return [];

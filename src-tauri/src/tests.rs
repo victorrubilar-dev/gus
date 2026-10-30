@@ -1449,6 +1449,8 @@ fn task_store_es_un_json_oculto_y_persiste_tareas() {
         due: Some("2026-09-30".into()),
         priority: None,
         doing: false,
+        parent_id: None,
+        blocked_by: Vec::new(),
     }];
 
     save_tasks(dir.to_string_lossy().into_owned(), tasks.clone()).expect("debe guardarse");
@@ -1630,6 +1632,8 @@ fn task_store_lee_prioridad_sin_cambiar_los_archivos_antiguos() {
         due: None,
         priority: Some(TaskPriority::Urgente),
         doing: true,
+        parent_id: None,
+        blocked_by: Vec::new(),
     }];
     save_tasks(dir.to_string_lossy().into_owned(), tasks.clone()).expect("save");
     assert_eq!(
@@ -1990,6 +1994,60 @@ fn list_notes_with_checkboxes_solo_trae_notas_con_checkbox() {
 
     assert_eq!(relativas, vec!["con.md", "sub/hecha.md"]);
     assert!(notas[0].text.contains("pendiente"));
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+fn tarea_de_prueba(id: &str, parent: Option<&str>, blocked_by: &[&str]) -> StoredTask {
+    StoredTask {
+        id: id.into(),
+        title: id.into(),
+        tags: Vec::new(),
+        completes: false,
+        description: None,
+        due: None,
+        priority: None,
+        doing: false,
+        parent_id: parent.map(String::from),
+        blocked_by: blocked_by.iter().map(|id| id.to_string()).collect(),
+    }
+}
+
+#[test]
+fn las_relaciones_validas_se_aceptan_y_se_guardan() {
+    let dir = temp_vault("relaciones-ok");
+    let tasks = vec![
+        tarea_de_prueba("a", None, &[]),
+        tarea_de_prueba("b", Some("a"), &[]),
+        tarea_de_prueba("c", None, &["a", "b"]),
+    ];
+    save_tasks(dir.to_string_lossy().into_owned(), tasks.clone()).expect("válidas");
+    assert_eq!(load_tasks(dir.to_string_lossy().into_owned()).expect("recarga"), tasks);
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn las_relaciones_invalidas_se_rechazan_y_no_tocan_el_archivo() {
+    let dir = temp_vault("relaciones-mal");
+    let vault = dir.to_string_lossy().into_owned();
+
+    let casos = [
+        vec![tarea_de_prueba("a", Some("a"), &[])],
+        vec![tarea_de_prueba("a", Some("fantasma"), &[])],
+        vec![tarea_de_prueba("a", None, &["a"])],
+        vec![tarea_de_prueba("a", None, &["fantasma"])],
+        vec![tarea_de_prueba("a", Some("b"), &[]), tarea_de_prueba("b", Some("a"), &[])],
+        vec![
+            tarea_de_prueba("a", None, &["b"]),
+            tarea_de_prueba("b", None, &["c"]),
+            tarea_de_prueba("c", None, &["a"]),
+        ],
+        vec![tarea_de_prueba("a", None, &[]), tarea_de_prueba("a", None, &[])],
+    ];
+    for caso in casos {
+        assert!(save_tasks(vault.clone(), caso).is_err());
+    }
+    assert!(!dir.join(TASK_STORE_FILE).exists(), "ningún rechazo escribe el archivo");
 
     std::fs::remove_dir_all(&dir).ok();
 }

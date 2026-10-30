@@ -22,11 +22,15 @@ const archivos = new Map<string, string>([
   ["/vault/manual.pdf", ""],
 ]);
 /** Sin `?semilla`: una nota con un checkbox para el smoke test de la lista de tareas. */
-if (!location.search.includes("semilla")) archivos.set("/vault/pendientes.md", "# Pendientes\n\n- [ ] comprar pan\n");
+if (!location.search.includes("semilla")) {
+  archivos.set("/vault/pendientes.md", "# Pendientes\n\n- [ ] comprar pan\n");
+}
 /** `?tema=<clave>` fija el tema de la configuración simulada (ver `bench/capturas.mjs`). */
 const tema = new URLSearchParams(location.search).get("tema");
 const llamadas: { cmd: string; args: Record<string, unknown> }[] = [];
-const tareas: unknown[] = [];
+const tareas: unknown[] = location.search.includes("semilla")
+  ? []
+  : [{ id: "base", title: "Tarea base", tags: [], completes: false }];
 const biblioteca: { shelves: string[]; assign: Record<string, string> } = { shelves: [], assign: {} };
 
 /**
