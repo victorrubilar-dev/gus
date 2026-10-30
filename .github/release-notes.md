@@ -1,23 +1,28 @@
-## Gus v0.1.5 🚀
+## Gus v0.2.0 🎨
 
-Actualización centrada en **la papelera de cada vault** y en una app más segura: la ventana solo carga lo que Gus necesita.
+Un **re-diseño completo**: nueva paleta, navegación más clara y un editor con pestañas. Tus notas y tareas no cambian: es el mismo vault, con otra cara.
 
 ### ✨ Qué cambia
 
-- 🗑️ **Papelera por vault**: lo que borras en un vault se guarda en la carpeta `.gus-trash` de ese mismo vault, así que viaja con él. Antes había una única papelera compartida por todos los vaults.
-- 🔄 **Migración automática**: al abrir esta versión, lo que quedaba en la papelera antigua (`~/gus-vault/.gus-trash`) se pasa a la papelera del vault al que pertenecía. Lo que no es de ningún vault conocido se queda donde estaba, sin tocar.
-- 🛡️ **Política de contenido activa**: la ventana solo puede cargar recursos de la propia app. No cambia nada de lo que ves, pero reduce el daño que podría causar un fallo al mostrar una nota.
-- 🧹 **Papelera más fiable**: si no se puede guardar el registro de lo que has tirado, Gus lo dice en vez de fallar en silencio.
+- 🎨 **Paleta nueva**, sacada del logo: negros y blancos cálidos con el bermellón como acento. El acento queda para acciones, selección y foco; etiquetas e insignias pasan a neutro.
+- 📝 **Pestañas de notas abiertas**: cada nota queda en su pestaña, con cierre propio (también con clic central). Al cambiar de pestaña se guarda lo pendiente.
+- 📖 **Editor con medida de lectura** de 680 px centrada, y cabecera con el nombre, el estado de guardado y un menú ⋯.
+- 🧭 **Barra lateral con nombres** (Resumen, Notas, Tareas, Calendario, Grafo), de ancho ajustable y con un botón para contraerla a solo iconos.
+- 🏠 **Notas es la pantalla de inicio.** La búsqueda y la nota de hoy pasan a la fila del recorrido de Notas, y `Ctrl K` ofrece buscar en el vault.
+- 🔤 **Texto más legible**: tres tamaños en toda la app, contraste AA en los siete temas, y el texto sigue el tamaño de fuente del sistema.
+- ♿ **Accesibilidad de escritorio**: foco visible en todos los controles, y respeto a «reducir movimiento» y «reducir transparencia» del sistema.
+- 🧩 **Tareas, Calendario y Grafo** comparten cabecera, selector de vistas y estados vacíos.
+- 🍎 **Menú nativo en macOS** (Gus, Archivo, Edición, Ver), en español o inglés según el idioma de la app.
 
 ### ⚠️ A tener en cuenta
 
-- Como la papelera y el índice de búsqueda viven dentro del vault, Nextcloud, Syncthing y similares los sincronizan también. Si no quieres eso, excluye `.gus-trash` y `.gus-index` en tu herramienta de sincronización.
+- Quien ya tenía la barra lateral estrecha la sigue viendo en modo iconos; puedes ensancharla arrastrando su borde o con el botón de la parte de abajo.
+- El menú nativo de macOS no se ha podido probar en un Mac antes de publicar.
 
 ### 🛠️ Cambios internos
 
-- El backend y el editor están repartidos en módulos más pequeños. No cambia el comportamiento.
-- Nuevas pruebas del teclado en tablas y de la app completa, además de las de siempre.
-- La compilación de instaladores ejecuta antes los tests y no publica nada si fallan.
+- El editor está repartido en módulos más pequeños (vista previa, etiquetas, imágenes, corrector y portapapeles). No cambia el comportamiento.
+- Nuevas pruebas: regresión visual en los temas oscuro y claro, foco con teclado, corrector, portapapeles y pestañas.
 
 ### 📦 Instaladores
 

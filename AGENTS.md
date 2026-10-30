@@ -18,7 +18,7 @@
 
 **Repositorio:** https://github.com/victorrubilar-dev/gus  
 **Licencia:** GPL-3.0-or-later  
-**Versión:** 0.1.5
+**Versión:** 0.2.0
 
 ---
 
