@@ -4,7 +4,7 @@ import type { Components } from "react-markdown";
 import { invoke } from "@tauri-apps/api/core";
 import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
 import clsx from "clsx";
-import { Check, ChevronDown, Eye, FileDown, Pencil, X } from "lucide-react";
+import { Check, Ellipsis, Eye, FileDown, Pencil, X } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { isInsidePath, parentPath, pathWithTitle, safeFileName } from "../lib/fileName";
 import { imageFilters, importFilesIntoVault, summarizeImageInsert, type ImageInsertResult, type ImportSummary } from "../lib/importFiles";
@@ -4021,7 +4021,7 @@ export default function MarkdownEditor({
             }}
             aria-label={t(viewMode === "edit" ? "editor.previewAria" : "editor.editAria")}
             title={t(viewMode === "edit" ? "editor.preview" : "editor.edit")}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-gus-border bg-gus-card px-3 py-1.5 text-body text-gus-muted outline-none transition-colors hover:border-gus-accent/50 hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60"
+            className="gus-btn gus-btn-secondary shrink-0"
           >
             {viewMode === "edit" ? (
               <>
@@ -4044,9 +4044,9 @@ export default function MarkdownEditor({
               aria-expanded={headerMenu}
               aria-label={t("editor.moreOptionsAria")}
               title={t("editor.moreOptions")}
-              className="inline-flex h-[30px] items-center rounded-lg border border-gus-border bg-gus-card px-2 text-body text-gus-muted outline-none transition-colors hover:border-gus-accent/50 hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60"
+              className="gus-btn gus-btn-icon"
             >
-              <ChevronDown className="h-4 w-4" aria-hidden="true" />
+              <Ellipsis className="h-4 w-4" aria-hidden="true" />
             </button>
 
             {headerMenu && (
