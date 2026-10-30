@@ -4003,7 +4003,7 @@ export default function MarkdownEditor({
 
   return (
     <div data-tour="editor" className={clsx("flex h-full min-h-0 flex-col bg-gus-bg", className)}>
-      <header className="shrink-0 border-b border-gus-border px-6 py-4">
+      <header className="shrink-0 border-b border-gus-border gus-editor-pad py-4">
         <div className="flex items-start gap-3">
           <input
             value={title}

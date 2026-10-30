@@ -2,7 +2,7 @@
  * Regresión de la medida del editor: a 1280 y 1600 px el texto mide 680 px y
  * está centrado, y el overlay y el textarea comparten el mismo margen (si
  * difirieran, el cursor y el texto dibujado se desalinearían). Además el
- * título del explorador no se trunca. Requiere `vite --port 5199`.
+ * título del explorador no se trunca, y la cabecera del editor sigue la medida. Requiere `vite --port 5199`.
  */
 import { chromium } from "playwright-core";
 
@@ -46,12 +46,13 @@ for (const ancho of [1280, 1600]) {
     const titulo = [...document.querySelectorAll("*")].find((e) => e.children.length === 0 && e.textContent?.trim().toUpperCase() === "NOTAS");
     return titulo ? titulo.scrollWidth > titulo.clientWidth : true;
   });
-  const resumen = await page.evaluate(() => {
-    const el = [...document.querySelectorAll("p,span,div")].find((e) => e.children.length === 0 && /carpeta.*·/.test(e.textContent ?? ""));
-    return el ? { cortado: el.scrollWidth > el.clientWidth, texto: el.textContent } : null;
-  });
   comprobar(!truncado, `${ancho} px: el título del explorador no se trunca`);
-  comprobar(resumen !== null && !resumen.cortado, `${ancho} px: el subtítulo del explorador no se trunca (${resumen?.texto})`);
+  const cabecera = await page.evaluate(() => {
+    const h = document.querySelector('[data-tour="editor"] header');
+    const a = document.querySelector('textarea[data-drop-editor="nota"]');
+    return { cab: parseFloat(getComputedStyle(h).paddingLeft), area: parseFloat(getComputedStyle(a).paddingLeft) };
+  });
+  comprobar(Math.abs(cabecera.cab - cabecera.area) <= 0.5, `${ancho} px: la cabecera del editor sigue la misma medida que el texto (${cabecera.cab} / ${cabecera.area})`);
   await page.screenshot({ path: `${process.argv[2] ?? "."}/medida-${ancho}.png` });
 }
 

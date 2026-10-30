@@ -1052,21 +1052,6 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
   }
 
   const busy = busyId !== null;
-  const noteCount = items.filter((file) => file.kind !== "image" && file.kind !== "pdf").length;
-  const imageCount = items.length - noteCount;
-  const summary =
-    status === "loading"
-      ? t("common.loading")
-      : status === "error"
-        ? t("explorer.readError")
-        : [
-            t("explorer.folderCount", { count: folders.length }),
-            t("explorer.noteCount", { count: noteCount }),
-            imageCount > 0 ? t("explorer.images", { count: imageCount }) : "",
-          ]
-            .filter(Boolean)
-            .join(" · ");
-
   const menuItemClass =
     "flex w-full items-center gap-2 px-3 py-1.5 text-left text-body transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-gus-accent/60 focus-visible:outline-none";
 
@@ -1211,12 +1196,9 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
           <h2 className="text-sm font-semibold uppercase tracking-wider text-gus-muted">
             Notas
           </h2>
-          <p
-            className="text-meta leading-snug text-gus-muted"
-            title={staticMode ? "lista estática" : currentDir}
-          >
-            {summary}
-          </p>
+          {status === "error" && (
+            <p className="text-meta leading-snug text-gus-muted">{t("explorer.readError")}</p>
+          )}
         </div>
         <div className="flex shrink-0 gap-1.5">
           {!staticMode && (
