@@ -9,11 +9,11 @@
   --color-gus-eyes: #81b29a;
   --color-gus-text: #f1ebe8;
   --color-gus-muted: #a39c9a;
-  --text-body: 13px;
+  --text-body: 0.8125rem;
   --text-body--line-height: 1.4;
-  --text-meta: 11px;
-  --text-title: 15px;
-  --text-display: 20px;
+  --text-meta: 0.6875rem;
+  --text-title: 0.9375rem;
+  --text-display: 1.25rem;
 }
 
 :root {
@@ -385,11 +385,11 @@ body {
   --color-gus-border: #2e2e2e;
   --color-gus-text: #f1ebe8;
   --color-gus-muted: #a39c9a;
-  --text-body: 13px;
+  --text-body: 0.8125rem;
   --text-body--line-height: 1.4;
-  --text-meta: 11px;
-  --text-title: 15px;
-  --text-display: 20px;
+  --text-meta: 0.6875rem;
+  --text-title: 0.9375rem;
+  --text-display: 1.25rem;
   --color-gus-accent: #f26a4a;
   --color-gus-eyes: #81b29a;
   /* Sin esto la hoja se quedaba blanca con texto crema (ilegible): el fondo
@@ -479,11 +479,11 @@ body {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  height: 28px;
+  min-height: 28px;
   padding: 0 12px;
   border: 1px solid transparent;
   border-radius: 8px;
-  font-size: 13px;
+  font-size: var(--text-body);
   font-weight: 500;
   line-height: 1;
   white-space: nowrap;
@@ -551,4 +551,17 @@ body {
   color: var(--color-gus-muted);
   font-size: var(--text-meta);
 }
+}
+
+/* «Reducir transparencia» del sistema: sin desenfoque y con los paneles
+   flotantes opacos. El velo oscuro detrás de los diálogos se queda. */
+@media (prefers-reduced-transparency: reduce) {
+  [class*="backdrop-blur"] {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+  .bg-gus-panel\/95,
+  .bg-gus-bg\/95 {
+    background-color: var(--color-gus-panel) !important;
+  }
 }
