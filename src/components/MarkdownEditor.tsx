@@ -3,7 +3,7 @@ import { AnimatePresence } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
 import clsx from "clsx";
-import { Ellipsis, Eye, FileDown, Pencil, X } from "lucide-react";
+import { Ellipsis, Eye, FileDown, Pencil } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { isInsidePath, parentPath, pathWithTitle, safeFileName } from "../lib/fileName";
 import { imageFilters, importFilesIntoVault, summarizeImageInsert, type ImageInsertResult, type ImportSummary } from "../lib/importFiles";
@@ -22,7 +22,8 @@ import { toLocalCoord, uiZoomFactor } from "../lib/uiZoom";
 import { alignTableColumn, cellRectClipboard, cellIndexAtPointer, clearTableCells, computeTableMerges, duplicateTableRow, insertTableColumn, insertTableRow, isTableMergePossible, isTableTaskCell, isTableUnmergePossible, lineIndexOf, lineStartOffset, actionRect, mergeTableCells, moveTableRow, planTableDeletion, removeTable, removeTableColumn, removeTableRow, resolveTableCaret, sortTableRows, sourceSegments, splitTableCells, tableBlockAt, tableCellRange, tableFromDelimited, tableIntersects, tableSkeleton, toggleTableTask, unmergeTableCells, visualLength, wordRangeAt, type TableCellCaret, type TableCellRect, type TableEdit, type TableLine } from "../lib/tableLayout";
 import { recordHistory, redoHistory, undoHistory, type HistorySnapshot } from "../lib/editorHistory";
 import { stripPasteFormatting } from "../lib/pasteText";
-import { frontmatterLineOffset, parseNoteTagInput, parseNoteTags, replaceBody, setNoteTags, stripFrontmatter, tagOptions, type VaultTag } from "../lib/noteTags";
+import { frontmatterLineOffset, replaceBody, stripFrontmatter } from "../lib/noteTags";
+import NoteTagBar from "./NoteTagBar";
 import { caretAnchor, lineAtCaret } from "../lib/caretPosition";
 import { detectSlashQuery, detectWikiQuery, wikiInsertText, wikiMatches, type WikiNote } from "../lib/wikiLink";
 import { filterSlashItems, SlashMenu, SpellSuggestMenu, VaultImageMenu, WikiLinkMenu, type SlashItem } from "./EditorMenus";
@@ -411,10 +412,6 @@ export default function MarkdownEditor({
     () => (imagesQuery === null ? EMPTY_IMAGES : filterVaultImages(vaultImages, imagesQuery)),
     [imagesQuery, vaultImages],
   );
-  const [tagInput, setTagInput] = useState("");
-  const [vaultTags, setVaultTags] = useState<VaultTag[]>([]);
-  const [tagMenuOpen, setTagMenuOpen] = useState(false);
-  const [tagIndex, setTagIndex] = useState(0);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -450,7 +447,6 @@ export default function MarkdownEditor({
     });
   const wikiRequestRef = useRef(0);
   const imagesRequestRef = useRef(0);
-  const tagRequestRef = useRef(0);
 
   const ownPathRef = useRef(path);
   const sequenceRef = useRef(0);
@@ -885,93 +881,6 @@ export default function MarkdownEditor({
     const nextState = match[2] === " " ? "x" : " ";
     lines[line - 1] = `${match[1]}${nextState}${match[3]}${source.slice(match[0].length)}`;
     editContent(lines.join("\n"));
-  }
-
-  function applyNoteTags(next: string[]) {
-    const updated = setNoteTags(content, next);
-    if (updated === content) return;
-    editContent(updated);
-  }
-
-  function loadVaultTags() {
-    if (!vaultPath) return;
-
-    const request = ++tagRequestRef.current;
-    invoke<VaultTag[]>("list_vault_tags", { path: vaultPath })
-      .then((tags) => {
-        if (request === tagRequestRef.current) setVaultTags(tags);
-      })
-      .catch(() => {
-      });
-  }
-
-  function pickTag(tag: string) {
-    applyNoteTags([...parseNoteTags(content), tag]);
-    setTagInput("");
-    setTagIndex(0);
-  }
-
-  function commitTagInput() {
-    const parsed = parseNoteTagInput(tagInput);
-    if (parsed.length === 0) return;
-
-    applyNoteTags([...parseNoteTags(content), ...parsed]);
-    setTagInput("");
-  }
-
-  function handleTagInputKeyDown(event: KeyboardEvent<HTMLInputElement>) {
-    const options = tagOptions(vaultTags, tagInput, parseNoteTags(content));
-
-    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-      if (!tagMenuOpen || options.length === 0) return;
-      event.preventDefault();
-
-      const current = Math.min(tagIndex, options.length - 1);
-      const next =
-        event.key === "ArrowDown"
-          ? (current + 1) % options.length
-          : current <= 0
-            ? options.length - 1
-            : current - 1;
-      setTagIndex(next);
-      return;
-    }
-
-    if (event.key === "Escape") {
-      if (!tagMenuOpen) return;
-      event.preventDefault();
-      setTagMenuOpen(false);
-      return;
-    }
-
-    if (event.key === "Enter") {
-      if (tagMenuOpen && options.length > 0) {
-        pickTag(options[Math.min(tagIndex, options.length - 1)].tag);
-        return;
-      }
-      const parsed = parseNoteTagInput(tagInput);
-      if (parsed.length > 0) {
-        event.preventDefault();
-        applyNoteTags([...parseNoteTags(content), ...parsed]);
-        setTagInput("");
-      }
-      return;
-    }
-
-    if (event.key === "Backspace" && tagInput === "") {
-      const tags = parseNoteTags(content);
-      if (tags.length > 0) applyNoteTags(tags.slice(0, -1));
-    }
-  }
-
-  function handleTagInputChange(value: string) {
-    if (/[,，]/.test(value)) {
-      applyNoteTags([...parseNoteTags(content), ...parseNoteTagInput(value)]);
-      setTagInput("");
-      return;
-    }
-    setTagInput(value);
-    setTagIndex(0);
   }
 
   function loadWikiNotes() {
@@ -3770,8 +3679,6 @@ export default function MarkdownEditor({
       window.removeEventListener("blur", stop);
     };
   }, []);
-  const noteTags = parseNoteTags(content);
-  const tagOptionList = tagOptions(vaultTags, tagInput, noteTags);
 
 
   return (
@@ -3844,87 +3751,7 @@ export default function MarkdownEditor({
           </div>
         </div>
 
-        <div className="mt-2 flex flex-wrap items-center gap-1.5">
-          {noteTags.map((tag) => (
-            <span
-              key={tag}
-              className="gus-chip gap-1"
-            >
-              {tag}
-              <button
-                type="button"
-                onClick={() => applyNoteTags(noteTags.filter((item) => item !== tag))}
-                aria-label={t("tasks.removeTag", { tag })}
-                className="-mr-1 rounded-full opacity-70 transition hover:opacity-100 focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
-              >
-                <X className="h-3 w-3" aria-hidden="true" />
-              </button>
-            </span>
-          ))}
-
-          <div className="relative min-w-40 max-w-64 flex-1">
-            <input
-              value={tagInput}
-              onChange={(event) => handleTagInputChange(event.target.value)}
-              onKeyDown={handleTagInputKeyDown}
-              onFocus={() => {
-                if (!vaultPath) return;
-                loadVaultTags();
-                setTagMenuOpen(true);
-              }}
-              onBlur={() => {
-                commitTagInput();
-                setTagMenuOpen(false);
-              }}
-              placeholder={t(noteTags.length > 0 ? "editor.tagPlaceholder" : "editor.tagPlaceholderLong")}
-              aria-label={t("editor.tags")}
-              role="combobox"
-              aria-expanded={tagMenuOpen}
-              aria-controls="gus-tag-menu"
-              className="w-full rounded-full border border-transparent bg-gus-card/60 px-2.5 py-0.5 text-meta text-gus-text outline-none transition-colors placeholder:text-gus-muted/70 focus:border-gus-accent/50"
-            />
-
-            {tagMenuOpen && (
-              <div
-                id="gus-tag-menu"
-                role="listbox"
-                aria-label={t("editor.vaultTags")}
-                className="absolute left-0 top-full z-30 mt-1 max-h-56 w-64 min-w-full overflow-y-auto rounded-lg border border-gus-border bg-gus-card py-1 shadow-xl"
-              >
-                {tagOptionList.length === 0 ? (
-                  <p className="px-3 py-1.5 text-meta text-gus-muted">
-                    {t(tagInput ? "editor.tagCreateHint" : "editor.noVaultTags", {
-                      tag: tagInput,
-                    })}
-                  </p>
-                ) : (
-                  tagOptionList.map((entry, index) => (
-                    <button
-                      key={entry.tag}
-                      type="button"
-                      role="option"
-                      aria-selected={index === Math.min(tagIndex, tagOptionList.length - 1)}
-                      onMouseDown={(event) => event.preventDefault()}
-                      onClick={() => pickTag(entry.tag)}
-                      onMouseEnter={() => setTagIndex(index)}
-                      className={clsx(
-                        "flex w-full items-center gap-2 px-3 py-1.5 text-left text-meta outline-none",
-                        index === Math.min(tagIndex, tagOptionList.length - 1)
-                          ? "bg-gus-accent/15 text-gus-accent"
-                          : "text-gus-text hover:bg-gus-card",
-                      )}
-                    >
-                      <span className="truncate">{entry.tag}</span>
-                      <span className="ml-auto shrink-0 text-meta text-gus-muted">
-                        {t("editor.tagUseCount", { count: entry.count })}
-                      </span>
-                    </button>
-                  ))
-                )}
-              </div>
-            )}
-          </div>
-        </div>
+        <NoteTagBar content={content} vaultPath={vaultPath} onChange={editContent} />
 
         <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-meta text-gus-muted">
           <span className="flex items-center gap-1.5" role="status" aria-live="polite">
