@@ -452,6 +452,7 @@ const en: Record<keyof typeof es, string> = {
 
   /* ---------------- calendar ---------------- */
   "calendar.title": "Calendar",
+  "calendar.subtitle": "Overview of your tasks' due dates",
   "calendar.previousMonth": "Previous month",
   "calendar.nextMonth": "Next month",
   "calendar.today": "Go to today",

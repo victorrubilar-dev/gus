@@ -449,6 +449,7 @@ export default {
 
   /* ---------------- calendario ---------------- */
   "calendar.title": "Calendario",
+  "calendar.subtitle": "Resumen de vencimientos de tus tareas",
   "calendar.previousMonth": "Mes anterior",
   "calendar.nextMonth": "Mes siguiente",
   "calendar.today": "Ir a hoy",

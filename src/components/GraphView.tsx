@@ -1,3 +1,4 @@
+import EmptyState from "./EmptyState";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
@@ -423,8 +424,11 @@ export default function GraphView({ vaultPath, refreshKey = 0, onOpenNote }: Gra
       )}
 
       {status === "ready" && model.nodes.length === 0 && (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-6 text-center text-sm text-gus-muted">
-          {graph && graph.nodes.length > 0 ? t("graph.emptyFiltered") : t("graph.empty")}
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <EmptyState
+            icon={Network}
+            title={graph && graph.nodes.length > 0 ? t("graph.emptyFiltered") : t("graph.empty")}
+          />
         </div>
       )}
 

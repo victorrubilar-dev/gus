@@ -15,6 +15,9 @@ import {
 import { useT } from "../lib/i18n";
 import type { MessageKey, TranslateParams } from "../lib/i18n/core";
 import { NEW_TASK_EVENT, type NewTask } from "../lib/newTask";
+import EmptyState from "./EmptyState";
+import SegmentedControl from "./SegmentedControl";
+import ViewHeader from "./ViewHeader";
 import KanbanBoard, { type KanbanColumnId } from "./KanbanBoard";
 
 export type { Task };
@@ -388,59 +391,28 @@ export default function TaskList({
 
   return (
     <section data-tour="tasks" className="flex h-full flex-col gap-4 p-6">
-      <header className="flex flex-wrap items-center justify-between gap-2">
-        <h2
-          className="text-sm font-semibold uppercase tracking-wider text-gus-muted"
-          title={vaultPath ? t("tasks.storeTitle", { path: vaultPath }) : t("tasks.staticList")}
-        >
-          {t("tasks.title")}
-        </h2>
-        <div className="flex items-center gap-3">
-          <div
-            role="tablist"
-            aria-label={t("tasks.title")}
-            className="flex rounded-lg border border-gus-border bg-gus-card p-0.5"
-          >
-            <button
-              type="button"
-              role="tab"
-              aria-selected={view === "board"}
-              onClick={() => setView("board")}
-              title={t("tasks.kanban")}
-              className={clsx(
-                "gus-btn w-auto px-2.5 text-meta focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none",
-                view === "board"
-                  ? "bg-gus-panel text-gus-text"
-                  : "text-gus-muted hover:text-gus-text",
-              )}
-            >
-              <SquareKanban className="h-3.5 w-3.5" aria-hidden="true" />
-              {t("tasks.viewBoard")}
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={view === "list"}
-              onClick={() => setView("list")}
-              title={t("tasks.list")}
-              className={clsx(
-                "gus-btn w-auto px-2.5 text-meta focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none",
-                view === "list"
-                  ? "bg-gus-panel text-gus-text"
-                  : "text-gus-muted hover:text-gus-text",
-              )}
-            >
-              <ListTodo className="h-3.5 w-3.5" aria-hidden="true" />
-              {t("tasks.viewList")}
-            </button>
-          </div>
-          <span className="text-body text-gus-muted">
-            {status === "loading"
-              ? t("common.loading")
-              : t("tasks.doneCount", { done, total: items.length })}
-          </span>
-        </div>
-      </header>
+      <ViewHeader
+        title={t("tasks.title")}
+        titleHint={vaultPath ? t("tasks.storeTitle", { path: vaultPath }) : t("tasks.staticList")}
+        actions={
+          <>
+            <SegmentedControl
+              ariaLabel={t("tasks.title")}
+              value={view}
+              onChange={setView}
+              options={[
+                { value: "board", label: t("tasks.viewBoard"), title: t("tasks.kanban"), icon: SquareKanban },
+                { value: "list", label: t("tasks.viewList"), title: t("tasks.list"), icon: ListTodo },
+              ]}
+            />
+            <span className="text-body text-gus-muted">
+              {status === "loading"
+                ? t("common.loading")
+                : t("tasks.doneCount", { done, total: items.length })}
+            </span>
+          </>
+        }
+      />
 
       <div className="flex flex-col gap-2">
         <button
@@ -742,10 +714,11 @@ export default function TaskList({
           )}
 
           {status === "ready" && visible.length === 0 && (
-            <li className="rounded-xl border border-dashed border-gus-border px-4 py-10 text-center text-sm text-gus-muted">
-              {tagFilter
-                ? t("tasks.emptyFiltered", { tag: tagFilter })
-                : t("tasks.empty")}
+            <li className="rounded-xl border border-dashed border-gus-border">
+              <EmptyState
+                icon={ListTodo}
+                title={tagFilter ? t("tasks.emptyFiltered", { tag: tagFilter }) : t("tasks.empty")}
+              />
             </li>
           )}
         </ul>

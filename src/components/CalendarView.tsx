@@ -1,7 +1,6 @@
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { AnimatePresence, m } from "framer-motion";
 import {
-  CalendarDays,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -15,6 +14,7 @@ import { listen } from "@tauri-apps/api/event";
 import clsx from "clsx";
 import { normalizeTags } from "../lib/markdownTasks";
 import { createTaskId, loadTaskStore, type Task } from "../lib/taskStore";
+import ViewHeader from "./ViewHeader";
 import { NEW_TASK_EVENT, type NewTask } from "../lib/newTask";
 import { PRIORITY_CLASS, priorityLabel, isTaskPriority, priorityRank } from "../lib/taskPriority";
 import { useT } from "../lib/i18n";
@@ -256,42 +256,32 @@ export default function CalendarView({
 
   return (
     <section data-tour="calendar" className="flex h-full flex-col gap-4 overflow-y-auto p-6">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-gus-accent/40 bg-gus-accent/15 text-gus-accent">
-            <CalendarDays className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
-          </div>
-          <div>
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-gus-muted">
-              {t("calendar.title")}
-            </h2>
-            <p className="text-body text-gus-muted">
-              Resumen de vencimientos de tus tareas
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setReloadKey((key) => key + 1)}
-            title={t("calendar.reload")}
-            aria-label={t("calendar.reload")}
-            className="gus-btn gus-btn-icon"
-          >
-            <RefreshCw className="h-4 w-4" aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            onClick={onNewTask}
-            disabled={status !== "ready"}
-            className="gus-btn gus-btn-primary"
-          >
-            <Plus className="h-4 w-4" aria-hidden="true" />
-            Nueva tarea
-          </button>
-        </div>
-      </header>
+      <ViewHeader
+        title={t("calendar.title")}
+        description={t("calendar.subtitle")}
+        actions={
+          <>
+            <button
+              type="button"
+              onClick={() => setReloadKey((key) => key + 1)}
+              title={t("calendar.reload")}
+              aria-label={t("calendar.reload")}
+              className="gus-btn gus-btn-icon"
+            >
+              <RefreshCw className="h-4 w-4" aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              onClick={onNewTask}
+              disabled={status !== "ready"}
+              className="gus-btn gus-btn-primary"
+            >
+              <Plus className="h-4 w-4" aria-hidden="true" />
+              {t("tasks.new")}
+            </button>
+          </>
+        }
+      />
 
       {tagEntries.length > 0 && (
         <div
