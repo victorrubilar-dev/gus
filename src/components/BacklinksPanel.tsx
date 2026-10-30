@@ -84,7 +84,7 @@ export default function BacklinksPanel({
         className="flex w-full items-center gap-2 px-4 py-2 text-left outline-none transition-colors hover:bg-gus-card focus-visible:bg-gus-card"
       >
         <Link2 className="h-3.5 w-3.5 shrink-0 text-gus-accent" strokeWidth={1.75} aria-hidden="true" />
-        <span className="text-xs font-semibold tracking-wide text-gus-text">
+        <span className="text-body font-semibold tracking-wide text-gus-text">
           {t("backlinks.title")}
         </span>
 
@@ -93,7 +93,7 @@ export default function BacklinksPanel({
         )}
 
         {backlinks.length > 0 && (
-          <span className="rounded-full border border-gus-accent/40 bg-gus-accent/15 px-1.5 text-[10px] tabular-nums text-gus-accent">
+          <span className="rounded-full border border-gus-accent/40 bg-gus-accent/15 px-1.5 text-meta tabular-nums text-gus-accent">
             {backlinks.length}
           </span>
         )}
@@ -111,11 +111,11 @@ export default function BacklinksPanel({
       {open && (
         <div className="gus-scrollbar max-h-56 min-h-0 overflow-y-auto px-4 pb-3">
           {status === "loading" && graph === null && (
-            <p className="py-2 text-xs text-gus-muted">{t("backlinks.loading")}</p>
+            <p className="py-2 text-body text-gus-muted">{t("backlinks.loading")}</p>
           )}
 
           {status === "error" && (
-            <p role="alert" className="py-2 text-xs text-rose-300">
+            <p role="alert" className="py-2 text-body text-rose-300">
               {error ?? t("backlinks.error")}
             </p>
           )}
@@ -169,7 +169,7 @@ function Section({
 
   return (
     <section className="mt-1 first:mt-0">
-      <h4 className="pt-1.5 pb-1 text-[10px] font-medium tracking-wider text-gus-muted uppercase">
+      <h4 className="pt-1.5 pb-1 text-meta font-medium tracking-wider text-gus-muted uppercase">
         {title}
         {entries.length > 0 && (
           <span className="ml-1.5 tabular-nums opacity-70">{entries.length}</span>
@@ -177,7 +177,7 @@ function Section({
       </h4>
 
       {entries.length === 0 ? (
-        <p className="pb-1 text-xs text-gus-muted/70">{empty}</p>
+        <p className="pb-1 text-body text-gus-muted/70">{empty}</p>
       ) : (
         <ul className="flex flex-col gap-0.5">
           {entries.map((item) => (
@@ -189,7 +189,7 @@ function Section({
               >
                 <span
                   className={clsx(
-                    "min-w-0 truncate text-xs",
+                    "min-w-0 truncate text-body",
                     item.broken ? "text-gus-muted italic" : "text-gus-text",
                   )}
                 >
@@ -197,10 +197,10 @@ function Section({
                 </span>
 
                 {item.folder && (
-                  <span className="min-w-0 truncate text-[10px] text-gus-muted">{item.folder}</span>
+                  <span className="min-w-0 truncate text-meta text-gus-muted">{item.folder}</span>
                 )}
 
-                <span className="ml-auto shrink-0 rounded-full border border-gus-border px-1.5 text-[10px] tabular-nums text-gus-muted">
+                <span className="ml-auto shrink-0 rounded-full border border-gus-border px-1.5 text-meta tabular-nums text-gus-muted">
                   {t("backlinks.mentions", { count: item.count })}
                 </span>
               </button>

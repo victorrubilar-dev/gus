@@ -16,7 +16,7 @@ import { useT } from "../lib/i18n";
 const INPUT_CLASS =
   "w-full rounded-lg border border-gus-border bg-gus-card px-3 py-2 text-sm text-gus-text outline-none transition-colors placeholder:text-gus-muted focus:border-gus-accent/60";
 
-const LABEL_CLASS = "mb-1 block text-xs text-gus-muted";
+const LABEL_CLASS = "mb-1 block text-body text-gus-muted";
 
 export interface NewTaskDialogProps {
   open: boolean;
@@ -142,7 +142,7 @@ export default function NewTaskDialog({ open, onOpenChange }: NewTaskDialogProps
                 <h2 className="min-w-0 flex-1 truncate text-sm font-semibold text-gus-text">
                   Nueva tarea
                 </h2>
-                <kbd className="shrink-0 rounded border border-gus-border bg-gus-card px-1.5 py-0.5 text-[10px] text-gus-muted">
+                <kbd className="shrink-0 rounded border border-gus-border bg-gus-card px-1.5 py-0.5 text-meta text-gus-muted">
                   Esc
                 </kbd>
               </div>
@@ -151,7 +151,7 @@ export default function NewTaskDialog({ open, onOpenChange }: NewTaskDialogProps
                 {error && (
                   <p
                     role="alert"
-                    className="rounded-lg border border-rose-400/30 bg-rose-400/10 px-3 py-2 text-xs text-rose-300"
+                    className="rounded-lg border border-rose-400/30 bg-rose-400/10 px-3 py-2 text-body text-rose-300"
                   >
                     {error}
                   </p>
@@ -201,7 +201,7 @@ export default function NewTaskDialog({ open, onOpenChange }: NewTaskDialogProps
                     {tags.map((tag) => (
                       <span
                         key={tag}
-                        className="inline-flex items-center gap-1 rounded-full border border-gus-accent/40 bg-gus-accent/15 px-2 py-0.5 text-[11px] capitalize text-gus-accent"
+                        className="inline-flex items-center gap-1 rounded-full border border-gus-accent/40 bg-gus-accent/15 px-2 py-0.5 text-meta capitalize text-gus-accent"
                       >
                         {tag}
                         <button
@@ -251,7 +251,7 @@ export default function NewTaskDialog({ open, onOpenChange }: NewTaskDialogProps
                           aria-checked={active}
                           onClick={() => setPriority(option)}
                           className={clsx(
-                            "inline-flex h-7 items-center gap-1 rounded-full border px-2.5 text-[11px] capitalize transition-colors focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none",
+                            "inline-flex h-7 items-center gap-1 rounded-full border px-2.5 text-meta capitalize transition-colors focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none",
                             active
                               ? option
                                 ? `${PRIORITY_CLASS[option]} font-medium`
@@ -294,7 +294,7 @@ export default function NewTaskDialog({ open, onOpenChange }: NewTaskDialogProps
                         aria-hidden="true"
                       />
                     </span>
-                    <span className="text-xs text-gus-muted">
+                    <span className="text-body text-gus-muted">
                       Limitar fecha <span className="text-gus-muted/70">(añade un plazo)</span>
                     </span>
                   </label>
@@ -316,7 +316,7 @@ export default function NewTaskDialog({ open, onOpenChange }: NewTaskDialogProps
               </div>
 
               <div className="flex flex-wrap items-center justify-between gap-2 border-t border-gus-border px-4 py-3">
-                <span className="text-[11px] text-gus-muted">
+                <span className="text-meta text-gus-muted">
                   <kbd className="rounded border border-gus-border bg-gus-card px-1 py-0.5">
                     Enter
                   </kbd>{" "}

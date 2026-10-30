@@ -50,7 +50,7 @@ export default function ThemeCard({ theme, selected, onSelect, withHint }: Theme
       </span>
 
       <span className="flex items-center justify-between gap-1">
-        <span className="truncate text-xs font-medium text-gus-text">{t(definition.labelKey)}</span>
+        <span className="truncate text-body font-medium text-gus-text">{t(definition.labelKey)}</span>
         {selected && (
           <Check
             className="h-3.5 w-3.5 shrink-0 text-gus-accent"
@@ -61,7 +61,7 @@ export default function ThemeCard({ theme, selected, onSelect, withHint }: Theme
       </span>
 
       {withHint && (
-        <span className="text-[10px] leading-tight text-gus-muted">{t(definition.hintKey)}</span>
+        <span className="text-meta leading-tight text-gus-muted">{t(definition.hintKey)}</span>
       )}
     </button>
   );

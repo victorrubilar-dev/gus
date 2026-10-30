@@ -49,7 +49,7 @@ export default function DatePicker({ value, onChange }: DatePickerProps) {
           <ChevronLeft className="h-4 w-4" aria-hidden="true" />
         </button>
 
-        <span aria-live="polite" className="text-xs font-semibold text-gus-text">
+        <span aria-live="polite" className="text-body font-semibold text-gus-text">
           {monthLabel(visibleMonth)}
         </span>
 
@@ -78,7 +78,7 @@ export default function DatePicker({ value, onChange }: DatePickerProps) {
           {weekdayLabels().map((weekday) => (
             <div
               key={weekday}
-              className="pb-1 text-center text-[10px] font-semibold uppercase tracking-wider text-gus-muted"
+              className="pb-1 text-center text-meta font-semibold uppercase tracking-wider text-gus-muted"
             >
               {weekday}
             </div>
@@ -104,7 +104,7 @@ export default function DatePicker({ value, onChange }: DatePickerProps) {
                 aria-current={isToday ? "date" : undefined}
                 aria-label={longDayLabel(iso)}
                 className={clsx(
-                  "flex h-8 items-center justify-center rounded-lg text-xs transition-colors focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none",
+                  "flex h-8 items-center justify-center rounded-lg text-body transition-colors focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none",
                   isSelected
                     ? "bg-gus-accent font-medium text-gus-bg"
                     : isToday
@@ -122,7 +122,7 @@ export default function DatePicker({ value, onChange }: DatePickerProps) {
       <div className="flex items-center justify-between gap-2 border-t border-gus-border px-3 py-2">
         <span
           className={clsx(
-            "truncate text-[11px]",
+            "truncate text-meta",
             value ? "text-gus-text" : "text-gus-muted",
           )}
         >
@@ -133,7 +133,7 @@ export default function DatePicker({ value, onChange }: DatePickerProps) {
           <button
             type="button"
             onClick={() => onChange(null)}
-            className="shrink-0 text-[11px] text-gus-muted transition-colors hover:text-rose-300 focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
+            className="shrink-0 text-meta text-gus-muted transition-colors hover:text-rose-300 focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
           >
             Quitar
           </button>

@@ -238,7 +238,7 @@ export default function PdfExportDialog({ title, children, onClose }: PdfExportD
           <FileDown className="h-4 w-4 shrink-0 text-gus-accent" aria-hidden="true" />
           <div className="min-w-0 flex-1">
             <h2 className="text-sm font-semibold text-gus-text">{t("pdf.export.title")}</h2>
-            <p className="truncate text-xs text-gus-muted">{title || t("common.untitled")}</p>
+            <p className="truncate text-body text-gus-muted">{title || t("common.untitled")}</p>
           </div>
 
           <div
@@ -254,7 +254,7 @@ export default function PdfExportDialog({ title, children, onClose }: PdfExportD
                 disabled={busy}
                 onClick={() => setTheme(id)}
                 className={clsx(
-                  "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] transition-colors focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none disabled:opacity-50",
+                  "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-meta transition-colors focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none disabled:opacity-50",
                   theme === id
                     ? "bg-gus-accent/15 font-medium text-gus-accent"
                     : "text-gus-muted hover:text-gus-text",
@@ -324,13 +324,13 @@ export default function PdfExportDialog({ title, children, onClose }: PdfExportD
         <footer className="flex shrink-0 flex-wrap items-center gap-3 border-t border-gus-border px-4 py-3">
           <div className="min-w-0 flex-1">
             {error ? (
-              <p role="alert" className="truncate text-xs text-rose-300">
+              <p role="alert" className="truncate text-body text-rose-300">
                 {error}
               </p>
             ) : status ? (
-              <p className="truncate text-xs text-gus-muted">{status}</p>
+              <p className="truncate text-body text-gus-muted">{status}</p>
             ) : (
-              <p className="truncate text-xs text-gus-muted">
+              <p className="truncate text-body text-gus-muted">
                 {t("pdf.export.previewHint")}
               </p>
             )}
@@ -346,7 +346,7 @@ export default function PdfExportDialog({ title, children, onClose }: PdfExportD
             >
               <ChevronLeft className="h-4 w-4" aria-hidden="true" />
             </button>
-            <span className="min-w-16 text-center text-xs text-gus-muted tabular-nums">
+            <span className="min-w-16 text-center text-body text-gus-muted tabular-nums">
               {t("pdf.export.pageOf", { page: page + 1, total: pageCount })}
             </span>
             <button

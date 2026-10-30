@@ -9,6 +9,11 @@
   --color-gus-eyes: #81b29a;
   --color-gus-text: #f1ebe8;
   --color-gus-muted: #a39c9a;
+  --text-body: 13px;
+  --text-body--line-height: 1.4;
+  --text-meta: 11px;
+  --text-title: 15px;
+  --text-display: 20px;
 }
 
 :root {
@@ -380,6 +385,11 @@ body {
   --color-gus-border: #2e2e2e;
   --color-gus-text: #f1ebe8;
   --color-gus-muted: #a39c9a;
+  --text-body: 13px;
+  --text-body--line-height: 1.4;
+  --text-meta: 11px;
+  --text-title: 15px;
+  --text-display: 20px;
   --color-gus-accent: #f26a4a;
   --color-gus-eyes: #81b29a;
   /* Sin esto la hoja se quedaba blanca con texto crema (ilegible): el fondo

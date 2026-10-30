@@ -60,7 +60,7 @@ function nodeRadius(degree: number): number {
 }
 
 const SELECT_CLASS =
-  "rounded-lg border border-gus-border bg-gus-panel px-2 py-1 text-xs text-gus-text outline-none transition-colors focus:border-gus-accent/60";
+  "rounded-lg border border-gus-border bg-gus-panel px-2 py-1 text-body text-gus-text outline-none transition-colors focus:border-gus-accent/60";
 
 const ZOOM_BUTTON_CLASS =
   "gus-btn gus-btn-ghost";
@@ -431,8 +431,8 @@ export default function GraphView({ vaultPath, refreshKey = 0, onOpenNote }: Gra
       <div className="pointer-events-none absolute inset-x-0 top-0 flex flex-wrap items-start gap-2 p-3">
         <div className="pointer-events-auto flex items-center gap-2 rounded-xl border border-gus-border bg-gus-panel/95 px-3 py-1.5 shadow-lg shadow-black/20">
           <Network className="h-3.5 w-3.5 text-gus-accent" strokeWidth={1.75} aria-hidden="true" />
-          <span className="text-xs font-semibold text-gus-text">{t("graph.title")}</span>
-          <span className="text-[11px] text-gus-muted">
+          <span className="text-body font-semibold text-gus-text">{t("graph.title")}</span>
+          <span className="text-meta text-gus-muted">
             {t("graph.nodes", { count: model.nodes.length })}
             {" · "}
             {t("graph.edges", { count: model.edges.length })}
@@ -490,7 +490,7 @@ export default function GraphView({ vaultPath, refreshKey = 0, onOpenNote }: Gra
             title={t("graph.zoomReset")}
             aria-label={t("graph.zoomReset")}
             onClick={() => setView(fitView(positions, size.width, size.height))}
-            className="gus-btn gus-btn-ghost w-auto px-2 text-[11px] tabular-nums focus-visible:ring-2 focus-visible:ring-gus-accent/70"
+            className="gus-btn gus-btn-ghost w-auto px-2 text-meta tabular-nums focus-visible:ring-2 focus-visible:ring-gus-accent/70"
           >
             {Math.round(view.scale * 100)}%
           </button>
@@ -518,11 +518,11 @@ export default function GraphView({ vaultPath, refreshKey = 0, onOpenNote }: Gra
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-1 p-3 text-center">
         {graph && graph.nodes.length > MAX_GRAPH_NODES && (
-          <p className="rounded-full border border-gus-border bg-gus-panel/90 px-3 py-1 text-[11px] text-gus-muted">
+          <p className="rounded-full border border-gus-border bg-gus-panel/90 px-3 py-1 text-meta text-gus-muted">
             {t("graph.truncated", { count: MAX_GRAPH_NODES })}
           </p>
         )}
-        <p className="rounded-full border border-gus-border bg-gus-panel/90 px-3 py-1 text-[11px] text-gus-muted">
+        <p className="rounded-full border border-gus-border bg-gus-panel/90 px-3 py-1 text-meta text-gus-muted">
           {t("graph.hint")}
         </p>
       </div>

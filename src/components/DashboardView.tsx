@@ -251,7 +251,7 @@ export default function DashboardView({
               <h2 className="text-sm font-semibold uppercase tracking-wider text-gus-muted">
                 {t("app.tab.home")}
               </h2>
-              <p className="text-xs text-gus-muted first-letter:uppercase">
+              <p className="text-body text-gus-muted first-letter:uppercase">
                 {vaultName} · {todayLabel}
               </p>
             </div>
@@ -269,7 +269,7 @@ export default function DashboardView({
         </header>
 
         {syncError && (
-          <p role="alert" className="rounded-lg border border-rose-400/30 bg-rose-400/10 px-3 py-2 text-xs text-rose-300">
+          <p role="alert" className="rounded-lg border border-rose-400/30 bg-rose-400/10 px-3 py-2 text-body text-rose-300">
             {syncError}
           </p>
         )}
@@ -290,7 +290,7 @@ export default function DashboardView({
             >
               <span>
                 <span className={clsx("block text-lg font-semibold", className)}>{value}</span>
-                <span className="block text-[11px] uppercase tracking-wide text-gus-muted">
+                <span className="block text-meta uppercase tracking-wide text-gus-muted">
                   {label}
                 </span>
               </span>
@@ -310,7 +310,7 @@ export default function DashboardView({
                   <ListTodo className="h-4 w-4 text-gus-accent" strokeWidth={1.75} aria-hidden="true" />
                   <h3 className="text-sm font-semibold">{t("dashboard.nextTasks")}</h3>
                   {upcoming.length > 0 && (
-                    <span className="rounded-full border border-gus-border bg-gus-panel px-2 py-0.5 text-[10px] text-gus-muted">
+                    <span className="rounded-full border border-gus-border bg-gus-panel px-2 py-0.5 text-meta text-gus-muted">
                       {upcoming.length}
                     </span>
                   )}
@@ -319,26 +319,26 @@ export default function DashboardView({
                 <button
                   type="button"
                   onClick={() => onNavigate("tasks")}
-                  className="gus-btn gus-btn-ghost w-auto px-2 text-xs text-gus-accent focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
+                  className="gus-btn gus-btn-ghost w-auto px-2 text-body text-gus-accent focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
                 >
                   {t("dashboard.openTasks")}
                 </button>
               </div>
 
               {tasksStatus === "loading" && (
-                <p className="py-6 text-center text-xs text-gus-muted">{t("dashboard.loadingTasks")}</p>
+                <p className="py-6 text-center text-body text-gus-muted">{t("dashboard.loadingTasks")}</p>
               )}
 
               {tasksStatus === "error" && (
                 <div className="flex flex-col items-center gap-2 py-6 text-center">
-                  <p className="text-xs text-gus-muted">{t("calendar.loadError")}</p>
+                  <p className="text-body text-gus-muted">{t("calendar.loadError")}</p>
                   {tasksError && (
-                    <p className="max-w-md break-words text-[11px] text-rose-400/80">{tasksError}</p>
+                    <p className="max-w-md break-words text-meta text-rose-400/80">{tasksError}</p>
                   )}
                   <button
                     type="button"
                     onClick={() => setReloadKey((key) => key + 1)}
-                    className="rounded-lg border border-gus-border px-3 py-1.5 text-xs text-gus-muted transition-colors hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
+                    className="rounded-lg border border-gus-border px-3 py-1.5 text-body text-gus-muted transition-colors hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
                   >
                     {t("editor.retry")}
                   </button>
@@ -347,7 +347,7 @@ export default function DashboardView({
 
               {tasksStatus === "ready" && upcoming.length === 0 && (
                 <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-gus-border py-8 text-center">
-                  <p className="text-xs text-gus-muted">
+                  <p className="text-body text-gus-muted">
                     {tasks.length === 0
                       ? t("dashboard.noTasks")
                       : t("dashboard.allDone")}
@@ -397,7 +397,7 @@ export default function DashboardView({
                           <span
                             title={t("tasks.priorityLabel", { name: priorityLabel(task.priority) })}
                             className={clsx(
-                              "flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] capitalize",
+                              "flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-0.5 text-meta capitalize",
                               PRIORITY_CLASS[task.priority],
                             )}
                           >
@@ -410,7 +410,7 @@ export default function DashboardView({
                           <span
                             title={chip.title}
                             className={clsx(
-                              "shrink-0 rounded-full border px-2 py-0.5 text-[11px]",
+                              "shrink-0 rounded-full border px-2 py-0.5 text-meta",
                               chip.className,
                             )}
                           >
@@ -434,32 +434,32 @@ export default function DashboardView({
                 <button
                   type="button"
                   onClick={() => onNavigate("notes")}
-                  className="gus-btn gus-btn-ghost w-auto px-2 text-xs text-gus-accent focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
+                  className="gus-btn gus-btn-ghost w-auto px-2 text-body text-gus-accent focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
                 >
                   Ver todas
                 </button>
               </div>
 
               {notesStatus === "loading" && (
-                <p className="py-6 text-center text-xs text-gus-muted">{t("dashboard.loadingNotes")}</p>
+                <p className="py-6 text-center text-body text-gus-muted">{t("dashboard.loadingNotes")}</p>
               )}
 
               {notesStatus === "error" && (
                 <div className="flex flex-col items-center gap-2 py-6 text-center">
-                  <p className="text-xs text-gus-muted">{t("dashboard.notesError")}</p>
+                  <p className="text-body text-gus-muted">{t("dashboard.notesError")}</p>
                   {notesError && (
-                    <p className="max-w-md break-words text-[11px] text-rose-400/80">{notesError}</p>
+                    <p className="max-w-md break-words text-meta text-rose-400/80">{notesError}</p>
                   )}
                 </div>
               )}
 
               {notesStatus === "ready" && notes.length === 0 && (
                 <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-gus-border py-8 text-center">
-                  <p className="text-xs text-gus-muted">{t("dashboard.emptyVault")}</p>
+                  <p className="text-body text-gus-muted">{t("dashboard.emptyVault")}</p>
                   <button
                     type="button"
                     onClick={() => onNavigate("notes")}
-                    className="rounded-lg border border-gus-border px-3 py-1.5 text-xs text-gus-muted transition-colors hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
+                    className="rounded-lg border border-gus-border px-3 py-1.5 text-body text-gus-muted transition-colors hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
                   >
                     {t("dashboard.openExplorer")}
                   </button>
@@ -487,11 +487,11 @@ export default function DashboardView({
                           <span className="block truncate text-sm text-gus-text">
                             {note.name.replace(/\.md$/i, "")}
                           </span>
-                          <span className="block truncate text-[11px] text-gus-muted">
+                          <span className="block truncate text-meta text-gus-muted">
                             {folderOf(note.relative, t)}
                           </span>
                         </span>
-                        <span className="shrink-0 text-[11px] text-gus-muted">
+                        <span className="shrink-0 text-meta text-gus-muted">
                           {relativeTime(note.modified_ms, t)}
                         </span>
                       </button>
@@ -505,7 +505,7 @@ export default function DashboardView({
           <aside className="flex flex-col gap-4">
             <div className={clsx(CARD, "p-4")}>
               <h3 className="text-sm font-semibold">{t("dashboard.progress")}</h3>
-              <p className="mt-1 text-xs text-gus-muted">
+              <p className="mt-1 text-body text-gus-muted">
                 {tasks.length === 0
                   ? t("dashboard.noTasksRegistered")
                   : t("tasks.doneCount", { done, total: tasks.length })}
@@ -517,7 +517,7 @@ export default function DashboardView({
                   style={{ width: `${progress}%` }}
                 />
               </div>
-              <p className="mt-1.5 text-right text-[11px] text-gus-muted">{progress}%</p>
+              <p className="mt-1.5 text-right text-meta text-gus-muted">{progress}%</p>
             </div>
 
             <div className={clsx(CARD, "flex flex-col gap-2 p-4")}>

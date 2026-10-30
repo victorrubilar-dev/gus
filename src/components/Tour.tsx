@@ -300,16 +300,16 @@ export default function Tour({ open, onFinish, onStepChange }: TourProps) {
         className="fixed rounded-2xl border border-gus-border bg-gus-panel p-4 shadow-2xl shadow-black/50"
       >
         <div className="mb-2 flex items-start justify-between gap-3">
-          <span className="text-[10px] font-semibold tracking-[0.14em] text-gus-accent uppercase">
+          <span className="text-meta font-semibold tracking-[0.14em] text-gus-accent uppercase">
             {t("tour.title")}
           </span>
-          <span className="text-[10px] text-gus-muted tabular-nums">
+          <span className="text-meta text-gus-muted tabular-nums">
             {t("tour.progress", { current: stepIndex + 1, total: STEPS.length })}
           </span>
         </div>
 
         <h2 className="text-sm font-semibold text-gus-text">{t(step.titleKey)}</h2>
-        <p className="mt-1.5 text-xs leading-5 text-gus-muted">{t(step.bodyKey)}</p>
+        <p className="mt-1.5 text-body leading-5 text-gus-muted">{t(step.bodyKey)}</p>
 
         <div className="mt-4 flex items-center justify-between gap-3">
           <div aria-hidden="true" className="flex items-center gap-1.5">

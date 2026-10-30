@@ -368,7 +368,7 @@ export default function VaultPicker({
           {shownError && (
             <p
               role="alert"
-              className="mt-5 rounded-lg border border-rose-400/30 bg-rose-400/10 px-3 py-2 text-xs text-rose-300"
+              className="mt-5 rounded-lg border border-rose-400/30 bg-rose-400/10 px-3 py-2 text-body text-rose-300"
             >
               {shownError}
             </p>
@@ -381,10 +381,10 @@ export default function VaultPicker({
             transition={{ delay: 0.38, duration: 0.35 }}
             className="mt-7 flex flex-col gap-4 rounded-2xl border border-gus-border bg-gus-panel p-4 text-left"
           >
-            <p className="text-xs leading-5 text-gus-muted">{t("onboarding.setup")}</p>
+            <p className="text-body leading-5 text-gus-muted">{t("onboarding.setup")}</p>
 
             <div>
-              <p className="mb-1.5 text-[11px] font-semibold tracking-wider text-gus-muted uppercase">
+              <p className="mb-1.5 text-meta font-semibold tracking-wider text-gus-muted uppercase">
                 {t("onboarding.language")}
               </p>
               <div
@@ -413,13 +413,13 @@ export default function VaultPicker({
                   );
                 })}
               </div>
-              <p className="mt-1.5 text-[11px] leading-snug text-gus-muted">
+              <p className="mt-1.5 text-meta leading-snug text-gus-muted">
                 {t("onboarding.languageHint")}
               </p>
             </div>
 
             <div>
-              <p className="mb-1.5 text-[11px] font-semibold tracking-wider text-gus-muted uppercase">
+              <p className="mb-1.5 text-meta font-semibold tracking-wider text-gus-muted uppercase">
                 {t("onboarding.style")}
               </p>
               <div className="grid grid-cols-2 gap-2">
@@ -434,7 +434,7 @@ export default function VaultPicker({
                   onSelect={() => onSchemeChange("light")}
                 />
               </div>
-              <p className="mt-1.5 text-[11px] leading-snug text-gus-muted">
+              <p className="mt-1.5 text-meta leading-snug text-gus-muted">
                 {t("onboarding.styleHint", {
                   style: t(scheme === "light" ? "theme.gus-light" : "theme.gus-dark"),
                 })}
@@ -547,7 +547,7 @@ export default function VaultPicker({
         {shownError && (
           <p
             role="alert"
-            className="mb-3 rounded-lg border border-rose-400/30 bg-rose-400/10 px-3 py-2 text-xs text-rose-300"
+            className="mb-3 rounded-lg border border-rose-400/30 bg-rose-400/10 px-3 py-2 text-body text-rose-300"
           >
             {shownError}
           </p>
@@ -555,7 +555,7 @@ export default function VaultPicker({
 
         {editMode && (
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-gus-accent/40 bg-gus-accent/10 px-3 py-2">
-            <p className="text-xs text-gus-muted">{t("vaults.editHint")}</p>
+            <p className="text-body text-gus-muted">{t("vaults.editHint")}</p>
 
             <div className="flex flex-wrap items-center gap-2">
               <button
@@ -564,7 +564,7 @@ export default function VaultPicker({
                 disabled={vaults.length === 0 || busy || pickerBusy}
                 className={clsx(
                   SMALL_BUTTON_CLASS,
-                  "border border-gus-border bg-gus-card text-xs text-gus-muted hover:text-gus-text",
+                  "border border-gus-border bg-gus-card text-body text-gus-muted hover:text-gus-text",
                 )}
               >
                 {selectedPaths.size === vaults.length && vaults.length > 0
@@ -579,7 +579,7 @@ export default function VaultPicker({
                     onClick={removeSelected}
                     className={clsx(
                       SMALL_BUTTON_CLASS,
-                      "border border-rose-400/40 bg-rose-400/10 text-xs text-rose-300 hover:bg-rose-400/20",
+                      "border border-rose-400/40 bg-rose-400/10 text-body text-rose-300 hover:bg-rose-400/20",
                     )}
                   >
                     {t("vaults.confirmRemove", { count: selectedPaths.size })}
@@ -589,7 +589,7 @@ export default function VaultPicker({
                     onClick={() => setConfirmBulkDelete(false)}
                     className={clsx(
                       SMALL_BUTTON_CLASS,
-                      "border border-gus-border text-xs text-gus-muted hover:text-gus-text",
+                      "border border-gus-border text-body text-gus-muted hover:text-gus-text",
                     )}
                   >
                     {t("common.cancel")}
@@ -602,7 +602,7 @@ export default function VaultPicker({
                   disabled={selectedPaths.size === 0 || busy || pickerBusy}
                   className={clsx(
                     SMALL_BUTTON_CLASS,
-                    "border border-rose-400/40 bg-rose-400/10 text-xs text-rose-300 hover:bg-rose-400/20",
+                    "border border-rose-400/40 bg-rose-400/10 text-body text-rose-300 hover:bg-rose-400/20",
                   )}
                 >
                   {t("vaults.removeSelectedCount", { count: selectedPaths.size })}
@@ -614,7 +614,7 @@ export default function VaultPicker({
 
         <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {vaults.length === 0 && (
-            <li className="rounded-xl border border-dashed border-gus-border px-3 py-10 text-center text-xs text-gus-muted sm:col-span-2 xl:col-span-3">
+            <li className="rounded-xl border border-dashed border-gus-border px-3 py-10 text-center text-body text-gus-muted sm:col-span-2 xl:col-span-3">
               {t("vaults.noVaultsYet")}
             </li>
           )}
@@ -716,13 +716,13 @@ export default function VaultPicker({
                         {vault.name}
                       </span>
                       {lastVault === vault.path && (
-                        <span className="shrink-0 rounded-full border border-gus-accent/50 bg-gus-accent/20 px-1.5 py-px text-[9px] tracking-wide text-gus-accent uppercase backdrop-blur">
+                        <span className="shrink-0 rounded-full border border-gus-accent/50 bg-gus-accent/20 px-1.5 py-px text-meta tracking-wide text-gus-accent uppercase backdrop-blur">
                           {t("vaults.lastUsed")}
                         </span>
                       )}
                     </div>
                     <span
-                      className="mt-0.5 block truncate font-mono text-[10px] text-white/70"
+                      className="mt-0.5 block truncate font-mono text-meta text-white/70"
                       title={vault.path}
                     >
                       {vault.path}
@@ -734,7 +734,7 @@ export default function VaultPicker({
                       type="button"
                       onClick={() => onOpen(vault.path)}
                       disabled={busy || pickerBusy}
-                      className="pointer-events-auto shrink-0 rounded-lg bg-gus-accent px-3 py-1.5 text-xs font-semibold text-gus-bg outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-gus-accent/70 focus-visible:ring-offset-2 focus-visible:ring-offset-black/40 disabled:opacity-50"
+                      className="pointer-events-auto shrink-0 rounded-lg bg-gus-accent px-3 py-1.5 text-body font-semibold text-gus-bg outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-gus-accent/70 focus-visible:ring-offset-2 focus-visible:ring-offset-black/40 disabled:opacity-50"
                     >
                       {t("vaults.open")}
                     </button>
@@ -749,7 +749,7 @@ export default function VaultPicker({
                     }}
                     className="absolute inset-0 z-20 flex flex-col justify-center gap-2 bg-gus-bg/95 p-4 backdrop-blur-sm"
                   >
-                    <label htmlFor={`vault-rename-${index}`} className="text-xs text-gus-muted">
+                    <label htmlFor={`vault-rename-${index}`} className="text-body text-gus-muted">
                       {t("vaults.visibleName")}
                     </label>
                     <input
@@ -764,7 +764,7 @@ export default function VaultPicker({
                       }}
                       className={INPUT_CLASS}
                     />
-                    <p className="truncate font-mono text-[10px] text-gus-muted" title={vault.path}>
+                    <p className="truncate font-mono text-meta text-gus-muted" title={vault.path}>
                       {vault.path}
                     </p>
                     <div className="mt-1 flex gap-2">
@@ -810,7 +810,7 @@ export default function VaultPicker({
             className="mt-4 space-y-3 rounded-xl border border-gus-border bg-gus-panel p-4"
           >
             <div>
-              <label htmlFor="vault-name" className="mb-1 block text-xs text-gus-muted">
+              <label htmlFor="vault-name" className="mb-1 block text-body text-gus-muted">
                 {t("vaults.vaultName")}
               </label>
               <input
@@ -824,7 +824,7 @@ export default function VaultPicker({
             </div>
 
             <div>
-              <label htmlFor="vault-base" className="mb-1 block text-xs text-gus-muted">
+              <label htmlFor="vault-base" className="mb-1 block text-body text-gus-muted">
                 {t("vaults.baseFolder")}
               </label>
               <div className="flex gap-2">
@@ -853,7 +853,7 @@ export default function VaultPicker({
                   {t(choosingBase ? "vaults.choosing" : "vaults.browse")}
                 </button>
               </div>
-              <p className="mt-1 text-[11px] break-all text-gus-muted">
+              <p className="mt-1 text-meta break-all text-gus-muted">
                 {t("vaults.willCreateAt")}{" "}
                 <span className="font-mono">
                   {joinPath(effectiveBase, nameInput.trim() || "…")}

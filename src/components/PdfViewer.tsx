@@ -63,7 +63,7 @@ const ICON_BUTTON_ACTIVE =
   "flex h-6 w-6 items-center justify-center rounded border border-gus-accent/60 bg-gus-accent/20 text-gus-accent transition-colors focus-visible:outline-2 focus-visible:outline-gus-accent/60";
 
 const CHIP_BUTTON =
-  "flex items-center gap-1 rounded border border-gus-accent/40 bg-gus-accent/15 px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-gus-accent transition-colors hover:bg-gus-accent/25 focus-visible:outline-2 focus-visible:outline-gus-accent/60";
+  "flex items-center gap-1 rounded border border-gus-accent/40 bg-gus-accent/15 px-1.5 py-0.5 font-mono text-meta tabular-nums text-gus-accent transition-colors hover:bg-gus-accent/25 focus-visible:outline-2 focus-visible:outline-gus-accent/60";
 
 const TOOLS: { id: Tool; labelKey: MessageKey; Icon: typeof Hand }[] = [
   { id: "mano", labelKey: "pdf.tool.hand", Icon: Hand },
@@ -587,7 +587,7 @@ export default function PdfViewer({
         fallbackFs && "fixed inset-0 z-50 bg-gus-bg",
       )}
     >
-      <div className="flex flex-wrap items-center gap-2 border-b border-gus-border bg-gus-panel px-3 py-1.5 text-xs text-gus-muted">
+      <div className="flex flex-wrap items-center gap-2 border-b border-gus-border bg-gus-panel px-3 py-1.5 text-body text-gus-muted">
         <div className="flex items-center gap-1">
           <button
             type="button"
@@ -677,7 +677,7 @@ export default function PdfViewer({
           aria-label={t("pdf.viewer.filterAria", { name: t(filterInfo.labelKey) })}
           title={t("pdf.viewer.filterHint", { name: t(filterInfo.labelKey) })}
           className={clsx(
-            "flex h-6 items-center gap-1 rounded border px-1.5 text-[11px] transition-colors focus-visible:outline-2 focus-visible:outline-gus-accent/60",
+            "flex h-6 items-center gap-1 rounded border px-1.5 text-meta transition-colors focus-visible:outline-2 focus-visible:outline-gus-accent/60",
             doc.filter === "normal"
               ? "border-gus-border bg-gus-card hover:border-gus-accent/50 hover:text-gus-accent"
               : "border-gus-accent/60 bg-gus-accent/20 text-gus-accent",
@@ -749,7 +749,7 @@ export default function PdfViewer({
             <div className="flex h-full items-center justify-center px-6 text-center">
               <div className="flex max-w-md flex-col gap-2">
                 <p className="text-sm text-gus-muted">{t("pdf.viewer.renderError")}</p>
-                {error && <p className="break-words text-xs text-rose-300">{error}</p>}
+                {error && <p className="break-words text-body text-rose-300">{error}</p>}
               </div>
             </div>
           )}

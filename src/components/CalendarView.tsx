@@ -265,7 +265,7 @@ export default function CalendarView({
             <h2 className="text-sm font-semibold uppercase tracking-wider text-gus-muted">
               {t("calendar.title")}
             </h2>
-            <p className="text-xs text-gus-muted">
+            <p className="text-body text-gus-muted">
               Resumen de vencimientos de tus tareas
             </p>
           </div>
@@ -299,7 +299,7 @@ export default function CalendarView({
           aria-label={t("calendar.filterTags")}
           className="flex flex-wrap items-center gap-1.5"
         >
-          <span className="text-[11px] text-gus-muted">{t("tasks.tagsLabel")}</span>
+          <span className="text-meta text-gus-muted">{t("tasks.tagsLabel")}</span>
           {tagEntries.map(({ label, count }) => {
             const active =
               !!tagFilter && tagFilter.toLowerCase() === label.toLowerCase();
@@ -313,7 +313,7 @@ export default function CalendarView({
                   count === 1 ? "tarea" : "tareas"
                 }`}
                 className={clsx(
-                  "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] capitalize transition hover:opacity-80 focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none",
+                  "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-meta capitalize transition hover:opacity-80 focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none",
                   active
                     ? "border-gus-accent/60 bg-gus-accent/20 text-gus-accent ring-2 ring-gus-accent/70"
                     : "border-gus-accent/40 bg-gus-accent/15 text-gus-accent",
@@ -329,7 +329,7 @@ export default function CalendarView({
               type="button"
               onClick={() => setTagFilter(null)}
               title={t("tasks.removeFilter")}
-              className="flex items-center gap-1 rounded-full border border-gus-border px-2 py-0.5 text-[11px] text-gus-muted transition-colors hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
+              className="flex items-center gap-1 rounded-full border border-gus-border px-2 py-0.5 text-meta text-gus-muted transition-colors hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
             >
               Todas <X className="h-3 w-3" aria-hidden="true" />
             </button>
@@ -338,7 +338,7 @@ export default function CalendarView({
       )}
 
       {syncError && (
-        <p className="rounded-lg border border-rose-400/30 bg-rose-400/5 px-3 py-2 text-xs text-rose-300">
+        <p className="rounded-lg border border-rose-400/30 bg-rose-400/5 px-3 py-2 text-body text-rose-300">
           No se pudo guardar en el almacén oculto: {syncError}
         </p>
       )}
@@ -353,7 +353,7 @@ export default function CalendarView({
         <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
           <p className="text-sm text-gus-muted">{t("calendar.loadError")}</p>
           {loadError && (
-            <p className="max-w-xl break-words text-xs text-rose-400/80">{loadError}</p>
+            <p className="max-w-xl break-words text-body text-rose-400/80">{loadError}</p>
           )}
           <button type="button" onClick={() => setReloadKey((key) => key + 1)} className={INPUT_CLASS}>
             {t("editor.retry")}
@@ -370,7 +370,7 @@ export default function CalendarView({
                 className="rounded-xl border border-gus-border bg-gus-card px-3 py-2.5"
               >
                 <p className={clsx("text-lg font-semibold", className)}>{value}</p>
-                <p className="text-[11px] uppercase tracking-wide text-gus-muted">
+                <p className="text-meta uppercase tracking-wide text-gus-muted">
                   {label}
                 </p>
               </div>
@@ -392,7 +392,7 @@ export default function CalendarView({
 
                 <div className="text-center">
                   <h3 className="text-sm font-semibold">{monthLabel(visibleMonth)}</h3>
-                  <p className="text-[11px] text-gus-muted">
+                  <p className="text-meta text-gus-muted">
                     {t("calendar.datedCount", {
                       count: displayItems.filter((task) => task.due?.startsWith(monthPrefix))
                         .length,
@@ -424,7 +424,7 @@ export default function CalendarView({
                 {weekdayLabels().map((weekday) => (
                   <div
                     key={weekday}
-                    className="bg-gus-panel px-2 py-1.5 text-center text-[10px] font-semibold uppercase tracking-wider text-gus-muted"
+                    className="bg-gus-panel px-2 py-1.5 text-center text-meta font-semibold uppercase tracking-wider text-gus-muted"
                   >
                     {weekday}
                   </div>
@@ -462,7 +462,7 @@ export default function CalendarView({
                     >
                       <span
                         className={clsx(
-                          "inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[11px] font-medium",
+                          "inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-meta font-medium",
                           isToday
                             ? "bg-gus-accent text-gus-bg"
                             : isPast && hasPending
@@ -479,7 +479,7 @@ export default function CalendarView({
                             key={task.id}
                             title={task.title}
                             className={clsx(
-                              "truncate rounded px-1 py-0.5 text-[10px] leading-tight",
+                              "truncate rounded px-1 py-0.5 text-meta leading-tight",
                               task.completes
                                 ? "text-gus-muted line-through opacity-60"
                                 : "bg-gus-accent/10 text-gus-accent",
@@ -489,7 +489,7 @@ export default function CalendarView({
                           </span>
                         ))}
                         {dayTasks.length > 2 && (
-                          <span className="px-1 text-[9px] text-gus-muted">
+                          <span className="px-1 text-meta text-gus-muted">
                             {t("calendar.more", { count: dayTasks.length - 2 })}
                           </span>
                         )}
@@ -502,7 +502,7 @@ export default function CalendarView({
 
             <aside className="flex min-h-0 flex-col gap-3 rounded-xl border border-gus-border bg-gus-card p-4 min-[900px]:h-[calc(100%-3.25rem)]">
               <div>
-                <p className="text-[11px] uppercase tracking-wider text-gus-muted">
+                <p className="text-meta uppercase tracking-wider text-gus-muted">
                   {t("calendar.selectedDay")}
                 </p>
                 <h3 className="mt-0.5 text-sm font-semibold first-letter:uppercase">
@@ -510,7 +510,7 @@ export default function CalendarView({
                 </h3>
               </div>
 
-              <div className="flex items-center justify-between text-xs text-gus-muted">
+              <div className="flex items-center justify-between text-body text-gus-muted">
                 <span>
                   {t("calendar.pendingCount", {
                     count: selectedTasks.filter((task) => !task.completes).length,
@@ -534,7 +534,7 @@ export default function CalendarView({
                     exit={{ opacity: 0 }}
                     className="flex flex-1 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-gus-border px-3 py-6 text-center"
                   >
-                    <p className="text-xs text-gus-muted">
+                    <p className="text-body text-gus-muted">
                       {selectedIso === todayIso
                         ? t("calendar.noTasksToday")
                         : t("calendar.noTasksDay")}
@@ -542,7 +542,7 @@ export default function CalendarView({
                     <button
                       type="button"
                       onClick={onOpenTasks}
-                      className="gus-btn gus-btn-ghost w-auto px-2 text-xs text-gus-accent"
+                      className="gus-btn gus-btn-ghost w-auto px-2 text-body text-gus-accent"
                     >
                       {t("calendar.allTasks")}
                     </button>
@@ -584,7 +584,7 @@ export default function CalendarView({
                         <div className="min-w-0 flex-1">
                           <p
                             className={clsx(
-                              "break-words text-xs",
+                              "break-words text-body",
                               task.completes
                                 ? "text-gus-muted line-through"
                                 : "text-gus-text",
@@ -593,7 +593,7 @@ export default function CalendarView({
                             {task.title}
                           </p>
                           {task.description && (
-                            <p className="mt-0.5 line-clamp-2 text-[11px] text-gus-muted">
+                            <p className="mt-0.5 line-clamp-2 text-meta text-gus-muted">
                               {task.description}
                             </p>
                           )}
@@ -603,7 +603,7 @@ export default function CalendarView({
                                 <span
                                   title={t("tasks.priorityLabel", { name: priorityLabel(task.priority) })}
                                   className={clsx(
-                                    "inline-flex items-center gap-1 rounded-full border px-1.5 py-px text-[9px] capitalize",
+                                    "inline-flex items-center gap-1 rounded-full border px-1.5 py-px text-meta capitalize",
                                     PRIORITY_CLASS[task.priority],
                                   )}
                                 >
@@ -623,7 +623,7 @@ export default function CalendarView({
                                     title={`Filtrar por #${tag}`}
                                     aria-pressed={active}
                                     className={clsx(
-                                      "rounded-full border px-1.5 py-px text-[9px] transition hover:opacity-80 focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none",
+                                      "rounded-full border px-1.5 py-px text-meta transition hover:opacity-80 focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none",
                                       active
                                         ? "border-gus-accent/60 bg-gus-accent/20 text-gus-accent ring-2 ring-gus-accent/70"
                                         : "border-gus-accent/40 bg-gus-accent/15 text-gus-accent",

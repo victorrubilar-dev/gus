@@ -272,7 +272,7 @@ export default function EditorContextMenu({
       >
         {table && (
           <>
-            <div className="flex items-center gap-2 px-3 pt-1.5 pb-1 text-[10px] font-medium uppercase tracking-wide text-gus-muted">
+            <div className="flex items-center gap-2 px-3 pt-1.5 pb-1 text-meta font-medium uppercase tracking-wide text-gus-muted">
               <Table className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
               {t("table.menu")}
             </div>
@@ -302,7 +302,7 @@ export default function EditorContextMenu({
           <>
             {spell.mode === "misspelled" &&
               (spell.suggestions.length === 0 ? (
-                <p className="px-3 py-1.5 text-xs text-gus-muted">{t("ctx.noSuggestions")}</p>
+                <p className="px-3 py-1.5 text-body text-gus-muted">{t("ctx.noSuggestions")}</p>
               ) : (
                 spell.suggestions.map((item) => (
                   <button

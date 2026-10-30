@@ -384,7 +384,7 @@ export default function TaskList({
     a.label.localeCompare(b.label),
   );
 
-  const chipClass = "rounded-full border px-2 py-0.5 text-[11px] capitalize";
+  const chipClass = "rounded-full border px-2 py-0.5 text-meta capitalize";
 
   return (
     <section data-tour="tasks" className="flex h-full flex-col gap-4 p-6">
@@ -408,7 +408,7 @@ export default function TaskList({
               onClick={() => setView("board")}
               title={t("tasks.kanban")}
               className={clsx(
-                "gus-btn w-auto px-2.5 text-[11px] focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none",
+                "gus-btn w-auto px-2.5 text-meta focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none",
                 view === "board"
                   ? "bg-gus-panel text-gus-text"
                   : "text-gus-muted hover:text-gus-text",
@@ -424,7 +424,7 @@ export default function TaskList({
               onClick={() => setView("list")}
               title={t("tasks.list")}
               className={clsx(
-                "gus-btn w-auto px-2.5 text-[11px] focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none",
+                "gus-btn w-auto px-2.5 text-meta focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none",
                 view === "list"
                   ? "bg-gus-panel text-gus-text"
                   : "text-gus-muted hover:text-gus-text",
@@ -434,7 +434,7 @@ export default function TaskList({
               {t("tasks.viewList")}
             </button>
           </div>
-          <span className="text-xs text-gus-muted">
+          <span className="text-body text-gus-muted">
             {status === "loading"
               ? t("common.loading")
               : t("tasks.doneCount", { done, total: items.length })}
@@ -454,7 +454,7 @@ export default function TaskList({
         </button>
 
         {syncError && (
-          <p className="rounded-lg border border-rose-400/30 bg-rose-400/5 px-3 py-2 text-xs text-rose-300">
+          <p className="rounded-lg border border-rose-400/30 bg-rose-400/5 px-3 py-2 text-body text-rose-300">
             {t("tasks.syncError", { error: syncError })}
           </p>
         )}
@@ -467,7 +467,7 @@ export default function TaskList({
           aria-label={t("tasks.filterTag")}
           className="flex flex-wrap items-center gap-1.5"
         >
-          <span className="text-[11px] text-gus-muted">{t("tasks.tagsLabel")}</span>
+          <span className="text-meta text-gus-muted">{t("tasks.tagsLabel")}</span>
           {tagEntries.map(({ label, count }) => {
             const active =
               !!tagFilter && tagFilter.toLowerCase() === label.toLowerCase();
@@ -497,7 +497,7 @@ export default function TaskList({
               type="button"
               onClick={() => setTagFilter(null)}
               title={t("tasks.removeFilter")}
-              className="flex items-center gap-1 rounded-full border border-gus-border px-2 py-0.5 text-[11px] text-gus-muted transition-colors hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
+              className="flex items-center gap-1 rounded-full border border-gus-border px-2 py-0.5 text-meta text-gus-muted transition-colors hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
             >
               {t("common.all")} <X className="h-3 w-3" aria-hidden="true" />
             </button>
@@ -519,7 +519,7 @@ export default function TaskList({
             )}
 
             {status === "error" && (
-              <p className="break-words rounded-xl border border-rose-400/30 bg-rose-400/5 px-4 py-4 text-xs text-rose-300">
+              <p className="break-words rounded-xl border border-rose-400/30 bg-rose-400/5 px-4 py-4 text-body text-rose-300">
                 {t("tasks.loadError")}
                 {vaultPath && <span className="font-mono"> · {vaultPath}</span>}
                 {loadError && <span className="block text-rose-400/80">{loadError}</span>}
@@ -579,7 +579,7 @@ export default function TaskList({
                       </span>
                       {task.description && (
                         <span
-                          className="truncate text-[11px] text-gus-muted"
+                          className="truncate text-meta text-gus-muted"
                           title={task.description}
                         >
                           {task.description.replace(/\n+/g, " · ")}
@@ -601,7 +601,7 @@ export default function TaskList({
                       name: task.priority ? priorityLabel(task.priority) : t("priority.none"),
                     })}
                     className={clsx(
-                      "flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] capitalize transition-colors focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none",
+                      "flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-meta capitalize transition-colors focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none",
                       task.priority
                         ? PRIORITY_CLASS[task.priority]
                         : "border-dashed border-gus-border text-gus-muted hover:border-gus-accent/50 hover:text-gus-accent",
@@ -615,7 +615,7 @@ export default function TaskList({
                     <span
                       title={plazo.title}
                       className={clsx(
-                        "flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[11px]",
+                        "flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-meta",
                         plazo.className,
                       )}
                     >
@@ -626,7 +626,7 @@ export default function TaskList({
 
                   {isEditing ? (
                     <div className="absolute top-full right-11 z-30 mt-1 w-60 rounded-xl border border-gus-border bg-gus-card p-2 shadow-xl shadow-black/40">
-                      <p className="mb-1.5 text-[10px] tracking-wider text-gus-muted uppercase">
+                      <p className="mb-1.5 text-meta tracking-wider text-gus-muted uppercase">
                         {t("tasks.tagsOf", { title: task.title })}
                       </p>
                       <div
@@ -654,7 +654,7 @@ export default function TaskList({
                           </span>
                         ))}
                         {editTags.length === 0 && (
-                          <span className="text-[11px] text-gus-muted">{t("tasks.noTags")}</span>
+                          <span className="text-meta text-gus-muted">{t("tasks.noTags")}</span>
                         )}
                       </div>
                       <input
@@ -666,7 +666,7 @@ export default function TaskList({
                         placeholder={t("tasks.addTagPlaceholder")}
                         title={t("tasks.editHint")}
                         aria-label={t("tasks.newTagFor", { title: task.title })}
-                        className="mt-2 w-full rounded-md border border-gus-border bg-gus-panel px-2 py-1 text-xs text-gus-text outline-none transition-colors placeholder:text-gus-muted focus:border-gus-accent/60"
+                        className="mt-2 w-full rounded-md border border-gus-border bg-gus-panel px-2 py-1 text-body text-gus-text outline-none transition-colors placeholder:text-gus-muted focus:border-gus-accent/60"
                       />
                     </div>
                   ) : (
@@ -698,7 +698,7 @@ export default function TaskList({
                         title={t("tasks.editTags")}
                         aria-label={t("tasks.tagsOf", { title: task.title })}
                         aria-haspopup="dialog"
-                        className="rounded-full border border-dashed border-gus-border px-2 py-0.5 text-[11px] text-gus-muted transition-colors group-hover:border-gus-accent/50 group-hover:text-gus-accent focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
+                        className="rounded-full border border-dashed border-gus-border px-2 py-0.5 text-meta text-gus-muted transition-colors group-hover:border-gus-accent/50 group-hover:text-gus-accent focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
                       >
                         +
                       </button>
@@ -724,7 +724,7 @@ export default function TaskList({
           )}
 
           {status === "error" && (
-            <li className="flex flex-col items-start gap-2 rounded-xl border border-rose-400/30 bg-rose-400/5 px-4 py-4 text-xs text-rose-300">
+            <li className="flex flex-col items-start gap-2 rounded-xl border border-rose-400/30 bg-rose-400/5 px-4 py-4 text-body text-rose-300">
               <span className="break-words">
                 {t("tasks.loadError")}
                 {vaultPath && <span className="font-mono"> · {vaultPath}</span>}

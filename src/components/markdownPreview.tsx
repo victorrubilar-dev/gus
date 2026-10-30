@@ -14,7 +14,7 @@ import { useResolvedImage } from "./useResolvedImage";
 /** Los bloques de la vista previa, al estilo Obsidian: fondo de bloque,
  *  esquinas a 4px (--code-radius) y sin borde (--code-border-width: 0px). */
 export const PRE_CLASS =
-  "gus-scrollbar overflow-x-auto whitespace-pre-wrap rounded bg-gus-card px-4 py-3 text-[13px] leading-relaxed text-gus-text [&_code]:rounded-none [&_code]:bg-transparent [&_code]:px-0 [&_code]:text-inherit";
+  "gus-scrollbar overflow-x-auto whitespace-pre-wrap rounded bg-gus-card px-4 py-3 text-body leading-relaxed text-gus-text [&_code]:rounded-none [&_code]:bg-transparent [&_code]:px-0 [&_code]:text-inherit";
 
 /**
  * Lee el contenido del bloque que envuelve un <pre> de react-markdown y
@@ -215,14 +215,14 @@ export function PreviewImage({
 
   if (estado.fase === "fallo") {
     return (
-      <span className="my-4 block break-words rounded-lg border border-dashed border-rose-400/40 bg-rose-400/5 px-3 py-2 text-xs text-rose-300">
+      <span className="my-4 block break-words rounded-lg border border-dashed border-rose-400/40 bg-rose-400/5 px-3 py-2 text-body text-rose-300">
         {t("editor.imageBroken", { name: nombre })}
       </span>
     );
   }
 
   return (
-    <span className="my-4 block rounded-lg border border-gus-border bg-gus-card px-3 py-2 text-xs text-gus-muted">
+    <span className="my-4 block rounded-lg border border-gus-border bg-gus-card px-3 py-2 text-body text-gus-muted">
       {t("editor.imageLoading")}
     </span>
   );

@@ -50,7 +50,7 @@ export default function PdfNotesPanel({
   return (
     <aside className="flex w-72 shrink-0 flex-col border-l border-gus-border bg-gus-panel">
       <div className="flex items-center justify-between border-b border-gus-border px-3 py-2">
-        <span className="text-xs font-semibold text-gus-text">{t("pdf.notes.title")}</span>
+        <span className="text-body font-semibold text-gus-text">{t("pdf.notes.title")}</span>
         <button
           type="button"
           onClick={onClose}
@@ -66,7 +66,7 @@ export default function PdfNotesPanel({
         <button
           type="button"
           onClick={onAdd}
-          className="flex w-full items-center justify-center gap-1.5 rounded border border-gus-accent/40 bg-gus-accent/15 px-2 py-1.5 text-xs text-gus-accent transition-colors hover:bg-gus-accent/25 focus-visible:outline-2 focus-visible:outline-gus-accent/60"
+          className="flex w-full items-center justify-center gap-1.5 rounded border border-gus-accent/40 bg-gus-accent/15 px-2 py-1.5 text-body text-gus-accent transition-colors hover:bg-gus-accent/25 focus-visible:outline-2 focus-visible:outline-gus-accent/60"
         >
           <Plus size={13} />
           Nota en la página {currentPage}
@@ -75,7 +75,7 @@ export default function PdfNotesPanel({
 
       <div className="gus-scrollbar min-h-0 flex-1 overflow-y-auto px-3 py-2">
         {sorted.length === 0 ? (
-          <p className="px-1 py-6 text-center text-xs leading-relaxed text-gus-muted">
+          <p className="px-1 py-6 text-center text-body leading-relaxed text-gus-muted">
             Sin notas todavía.
             <br />
             Añade una en la página que estés leyendo.
@@ -92,7 +92,7 @@ export default function PdfNotesPanel({
                     type="button"
                     onClick={() => onJump(note.page)}
                     title={t("pdf.notes.goToPage", { page: note.page })}
-                    className="rounded border border-gus-accent/40 bg-gus-accent/15 px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-gus-accent transition-colors hover:bg-gus-accent/25 focus-visible:outline-2 focus-visible:outline-gus-accent/60"
+                    className="rounded border border-gus-accent/40 bg-gus-accent/15 px-1.5 py-0.5 font-mono text-meta tabular-nums text-gus-accent transition-colors hover:bg-gus-accent/25 focus-visible:outline-2 focus-visible:outline-gus-accent/60"
                   >
                     pág. {note.page}
                   </button>
@@ -116,7 +116,7 @@ export default function PdfNotesPanel({
                   onChange={(event) => onChange(note.id, event.target.value)}
                   rows={3}
                   placeholder={t("pdf.notes.placeholder")}
-                  className="gus-scrollbar w-full resize-none rounded bg-transparent text-xs leading-relaxed text-gus-text placeholder:text-gus-muted/70 focus:outline-none"
+                  className="gus-scrollbar w-full resize-none rounded bg-transparent text-body leading-relaxed text-gus-text placeholder:text-gus-muted/70 focus:outline-none"
                 />
               </li>
             ))}

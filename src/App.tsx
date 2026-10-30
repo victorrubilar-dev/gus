@@ -1449,8 +1449,8 @@ function App({
           {image ? (
             <div className="flex h-full min-h-0 flex-col">
               <div className="flex items-center justify-between gap-3 border-b border-gus-border bg-gus-panel px-4 py-2">
-                <span className="truncate font-mono text-xs text-gus-muted">{image.title}</span>
-                <span className="shrink-0 rounded-full border border-gus-accent/40 bg-gus-accent/15 px-2 py-0.5 text-[10px] uppercase tracking-wide text-gus-accent">
+                <span className="truncate font-mono text-body text-gus-muted">{image.title}</span>
+                <span className="shrink-0 rounded-full border border-gus-accent/40 bg-gus-accent/15 px-2 py-0.5 text-meta uppercase tracking-wide text-gus-accent">
                   {t("app.badge.image")}
                 </span>
               </div>
@@ -1464,7 +1464,7 @@ function App({
                   <div className="flex max-w-md flex-col items-center gap-2 px-6 text-center">
                     <p className="text-sm text-gus-muted">{t("app.imageError")}</p>
                     {image.error && (
-                      <p className="break-words text-xs text-rose-300">{image.error}</p>
+                      <p className="break-words text-body text-rose-300">{image.error}</p>
                     )}
                   </div>
                 )}
@@ -1488,8 +1488,8 @@ function App({
           ) : pdf ? (
             <div className="flex h-full min-h-0 flex-col">
               <div className="flex items-center justify-between gap-3 border-b border-gus-border bg-gus-panel px-4 py-2">
-                <span className="truncate font-mono text-xs text-gus-muted">{pdf.title}</span>
-                <span className="shrink-0 rounded-full border border-gus-accent/40 bg-gus-accent/15 px-2 py-0.5 text-[10px] uppercase tracking-wide text-gus-accent">
+                <span className="truncate font-mono text-body text-gus-muted">{pdf.title}</span>
+                <span className="shrink-0 rounded-full border border-gus-accent/40 bg-gus-accent/15 px-2 py-0.5 text-meta uppercase tracking-wide text-gus-accent">
                   PDF
                 </span>
               </div>
@@ -1503,7 +1503,7 @@ function App({
                   <div className="flex max-w-md flex-col items-center gap-2 px-6 text-center">
                     <p className="text-sm text-gus-muted">{t("app.pdfError")}</p>
                     {pdf.error && (
-                      <p className="break-words text-xs text-rose-300">{pdf.error}</p>
+                      <p className="break-words text-body text-rose-300">{pdf.error}</p>
                     )}
                   </div>
                 )}
@@ -1527,7 +1527,7 @@ function App({
                 <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-sm text-gus-muted">
                   <span>{t("app.noteError")}</span>
                   {noteError && (
-                    <span className="break-words text-xs text-rose-400/80">{noteError}</span>
+                    <span className="break-words text-body text-rose-400/80">{noteError}</span>
                   )}
                 </div>
               )}
@@ -1920,7 +1920,7 @@ function App({
               role="status"
               aria-live="polite"
               className={clsx(
-                "fixed right-4 z-50 max-w-sm rounded-xl border border-rose-400/40 bg-gus-panel px-4 py-3 text-xs text-rose-300 shadow-2xl shadow-black/40",
+                "fixed right-4 z-50 max-w-sm rounded-xl border border-rose-400/40 bg-gus-panel px-4 py-3 text-body text-rose-300 shadow-2xl shadow-black/40",
                 importNotice ? "bottom-20" : "bottom-4",
               )}
             >
@@ -1933,7 +1933,7 @@ function App({
               role="status"
               aria-live="polite"
               className={clsx(
-                "fixed right-4 bottom-4 z-50 max-w-sm rounded-xl border bg-gus-panel px-4 py-3 text-xs shadow-2xl shadow-black/40",
+                "fixed right-4 bottom-4 z-50 max-w-sm rounded-xl border bg-gus-panel px-4 py-3 text-body shadow-2xl shadow-black/40",
                 importNotice.ok
                   ? "border-gus-accent/40 text-gus-accent"
                   : "border-amber-400/40 text-amber-300",
@@ -1958,7 +1958,7 @@ function App({
                     : t("app.dropVault")}
               </p>
               {currentVault && !dropOnNote && (
-                <p className="max-w-md break-words text-xs text-gus-muted">
+                <p className="max-w-md break-words text-body text-gus-muted">
                   {t("app.dropEnter", {
                     folder: relativeFolderLabel(dropFolder ?? currentVault, currentVault),
                   })}

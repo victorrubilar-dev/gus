@@ -338,7 +338,7 @@ function MenuShell({
 function MenuHints({ corner }: { corner?: string }) {
   const t = useT();
   return (
-    <p className="mt-1 flex items-center gap-2 border-t border-gus-border px-3 pt-1.5 pb-1 text-[10px] text-gus-muted/70">
+    <p className="mt-1 flex items-center gap-2 border-t border-gus-border px-3 pt-1.5 pb-1 text-meta text-gus-muted/70">
       <span className="min-w-0 flex-1 truncate">{t("menu.hints")}</span>
       {corner && (
         <span className="shrink-0 font-mono text-gus-muted" aria-hidden="true">
@@ -429,7 +429,7 @@ export function SpellSuggestMenu({
         </button>
       ))}
 
-      <p className="mt-1 border-t border-gus-border px-3 pt-1.5 pb-1 text-[10px] text-gus-muted/70">
+      <p className="mt-1 border-t border-gus-border px-3 pt-1.5 pb-1 text-meta text-gus-muted/70">
         {t(index >= 0 ? "menu.spellHintPicking" : "menu.spellHintIdle", { combo: applyCombo })}
       </p>
     </m.div>
@@ -461,11 +461,11 @@ export function WikiLinkMenu({
   return (
     <MenuShell anchor={anchor} label={t("menu.wikiLabel")} activeIndex={active}>
       {loading && notes.length === 0 && (
-        <p className="px-3 py-2 text-xs text-gus-muted">{t("menu.wikiSearching")}</p>
+        <p className="px-3 py-2 text-body text-gus-muted">{t("menu.wikiSearching")}</p>
       )}
 
       {!loading && notes.length === 0 && (
-        <p className="px-3 py-2 text-xs text-gus-muted">{t("menu.wikiEmpty", { query })}</p>
+        <p className="px-3 py-2 text-body text-gus-muted">{t("menu.wikiEmpty", { query })}</p>
       )}
 
       {notes.map((note, position) => {
@@ -481,7 +481,7 @@ export function WikiLinkMenu({
             onMouseDown={(event) => event.preventDefault()}
             onMouseEnter={() => onHover(position)}
             className={clsx(
-              "flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs outline-none transition-colors",
+              "flex w-full items-center gap-2 px-3 py-1.5 text-left text-body outline-none transition-colors",
               isActive
                 ? "bg-gus-accent/15 text-gus-text"
                 : "text-gus-muted hover:bg-gus-card hover:text-gus-text",
@@ -489,7 +489,7 @@ export function WikiLinkMenu({
           >
             <FileText className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
             <span className="min-w-0 flex-1 truncate">{wikiNoteBaseTitle(note)}</span>
-            <span className="max-w-24 shrink-0 truncate rounded border border-gus-border px-1 py-0.5 text-[10px] text-gus-muted/70">
+            <span className="max-w-24 shrink-0 truncate rounded border border-gus-border px-1 py-0.5 text-meta text-gus-muted/70">
               {wikiNoteFolder(note)}
             </span>
           </button>
@@ -530,7 +530,7 @@ export function SlashMenu({
   return (
     <MenuShell anchor={anchor} label={title} activeIndex={active}>
       {items.length === 0 && (
-        <p className="px-3 py-2 text-xs text-gus-muted">
+        <p className="px-3 py-2 text-body text-gus-muted">
           {t(insideTable ? "menu.tableNoMatch" : "menu.blockNoMatch")}
         </p>
       )}
@@ -549,7 +549,7 @@ export function SlashMenu({
             onMouseDown={(event) => event.preventDefault()}
             onMouseEnter={() => onHover(position)}
             className={clsx(
-              "flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs outline-none transition-colors",
+              "flex w-full items-center gap-2 px-3 py-1.5 text-left text-body outline-none transition-colors",
               isActive
                 ? "bg-gus-accent/15 text-gus-text"
                 : "text-gus-muted hover:bg-gus-card hover:text-gus-text",
@@ -557,7 +557,7 @@ export function SlashMenu({
           >
             <Icon className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
             <span className="min-w-0 flex-1 truncate">{itemLabel(t, item)}</span>
-            <span className="max-w-32 shrink-0 truncate font-mono text-[10px] text-gus-muted/70">
+            <span className="max-w-32 shrink-0 truncate font-mono text-meta text-gus-muted/70">
               {t(item.hintKey)}
             </span>
           </button>
@@ -679,11 +679,11 @@ export function VaultImageMenu({
   return (
     <MenuShell anchor={anchor} label={t("menu.imageLabel")} activeIndex={active}>
       {loading && images.length === 0 && (
-        <p className="px-3 py-2 text-xs text-gus-muted">{t("menu.imageSearching")}</p>
+        <p className="px-3 py-2 text-body text-gus-muted">{t("menu.imageSearching")}</p>
       )}
 
       {!loading && images.length === 0 && (
-        <p className="px-3 py-2 text-xs text-gus-muted">
+        <p className="px-3 py-2 text-body text-gus-muted">
           {query ? t("menu.imageNoMatch", { query }) : t("menu.imageEmpty")}
         </p>
       )}
@@ -703,7 +703,7 @@ export function VaultImageMenu({
             onMouseDown={(event) => event.preventDefault()}
             onMouseEnter={() => onHover(position)}
             className={clsx(
-              "flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs outline-none transition-colors",
+              "flex w-full items-center gap-2 px-3 py-1.5 text-left text-body outline-none transition-colors",
               isActive
                 ? "bg-gus-accent/15 text-gus-text"
                 : "text-gus-muted hover:bg-gus-card hover:text-gus-text",
@@ -717,7 +717,7 @@ export function VaultImageMenu({
               )}
             </span>
             <span className="min-w-0 flex-1 truncate">{image.name}</span>
-            <span className="max-w-24 shrink-0 truncate rounded border border-gus-border px-1 py-0.5 text-[10px] text-gus-muted/70">
+            <span className="max-w-24 shrink-0 truncate rounded border border-gus-border px-1 py-0.5 text-meta text-gus-muted/70">
               {folder ?? t("welcome.vaultRoot")}
             </span>
           </button>

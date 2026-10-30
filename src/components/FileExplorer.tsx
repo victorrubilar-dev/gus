@@ -155,7 +155,7 @@ const TRAIL_SEGMENT_CLASS =
   "gus-btn gus-btn-ghost w-auto min-w-0 max-w-full shrink-0 justify-start truncate px-1.5 text-left focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none";
 
 const RENAME_INPUT_CLASS =
-  "min-w-0 flex-1 rounded-lg border border-gus-accent/50 bg-gus-card px-2 py-1.5 font-mono text-xs text-gus-text outline-none focus:ring-2 focus:ring-gus-accent/60";
+  "min-w-0 flex-1 rounded-lg border border-gus-accent/50 bg-gus-card px-2 py-1.5 font-mono text-body text-gus-text outline-none focus:ring-2 focus:ring-gus-accent/60";
 
 function formatModified(ms: number | null | undefined): string | undefined {
   if (!ms) return undefined;
@@ -1068,7 +1068,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
             .join(" · ");
 
   const menuItemClass =
-    "flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-gus-accent/60 focus-visible:outline-none";
+    "flex w-full items-center gap-2 px-3 py-1.5 text-left text-body transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-gus-accent/60 focus-visible:outline-none";
 
   const collapseLevel = collapse.key === trailKey ? collapse.level : 0;
   const { visible: trailParts, hidden: hiddenParts, maxLevel } = splitTrail(trail, collapseLevel);
@@ -1212,7 +1212,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
             Notas
           </h2>
           <p
-            className="truncate text-[11px] text-gus-muted"
+            className="truncate text-meta text-gus-muted"
             title={staticMode ? "lista estática" : currentDir}
           >
             {summary}
@@ -1260,7 +1260,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
         <nav
           aria-label={t("explorer.currentFolder")}
           data-trail-menu="true"
-          className="relative -mt-1 flex items-center gap-1 text-[11px]"
+          className="relative -mt-1 flex items-center gap-1 text-meta"
         >
           <div className="flex shrink-0 items-center gap-0.5">
             <button
@@ -1392,7 +1392,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
           role="status"
           aria-live="polite"
           className={clsx(
-            "flex items-start justify-between gap-2 rounded-md border px-2 py-1.5 text-[11px]",
+            "flex items-start justify-between gap-2 rounded-md border px-2 py-1.5 text-meta",
             noticeOk
               ? "border-gus-accent/40 bg-gus-accent/10 text-gus-accent"
               : "border-amber-400/30 bg-amber-400/10 text-amber-300",
@@ -1418,7 +1418,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
       {actionError && (
         <p
           role="alert"
-          className="flex items-start justify-between gap-2 rounded-md border border-rose-400/30 bg-rose-400/5 px-2 py-1.5 text-[11px] text-rose-300"
+          className="flex items-start justify-between gap-2 rounded-md border border-rose-400/30 bg-rose-400/5 px-2 py-1.5 text-meta text-rose-300"
         >
           <span className="min-w-0 break-words">{actionError}</span>
           <button
@@ -1487,12 +1487,12 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
                     strokeWidth={1.75}
                     aria-hidden="true"
                   />
-                  <span className="min-w-0 flex-1 truncate font-mono text-xs">
+                  <span className="min-w-0 flex-1 truncate font-mono text-body">
                     {folder.name}
                   </span>
                   <span
                     aria-hidden="true"
-                    className="shrink-0 text-[10px] opacity-0 transition-opacity group-hover:opacity-100"
+                    className="shrink-0 text-meta opacity-0 transition-opacity group-hover:opacity-100"
                   >
                     ›
                   </span>
@@ -1596,8 +1596,8 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
                           />
                         )}
                         <span className="relative min-w-0 flex-1">
-                          <span className="block truncate font-mono text-xs">{file.name}</span>
-                          <span className="block truncate text-[10px] text-gus-muted">
+                          <span className="block truncate font-mono text-body">{file.name}</span>
+                          <span className="block truncate text-meta text-gus-muted">
                             {file.kind === "image"
                               ? "imagen"
                               : file.kind === "pdf"
@@ -1615,13 +1615,13 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
         </AnimatePresence>
 
         {status === "loading" && (
-          <li className="rounded-lg border border-dashed border-gus-border px-3 py-6 text-center text-xs text-gus-muted">
+          <li className="rounded-lg border border-dashed border-gus-border px-3 py-6 text-center text-body text-gus-muted">
             Leyendo vault…
           </li>
         )}
 
         {status === "error" && (
-          <li className="flex flex-col items-start gap-2 rounded-lg border border-rose-400/30 bg-rose-400/5 px-3 py-3 text-xs text-rose-300">
+          <li className="flex flex-col items-start gap-2 rounded-lg border border-rose-400/30 bg-rose-400/5 px-3 py-3 text-body text-rose-300">
             <span className="break-words">
               No se pudo leer <span className="font-mono">{currentDir}</span>
               {errorMessage && <span className="block text-rose-400/80">{errorMessage}</span>}
@@ -1638,7 +1638,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
         )}
 
         {status === "ready" && items.length === 0 && folders.length === 0 && (
-          <li className="rounded-lg border border-dashed border-gus-border px-3 py-6 text-center text-xs text-gus-muted">
+          <li className="rounded-lg border border-dashed border-gus-border px-3 py-6 text-center text-body text-gus-muted">
             {t("explorer.emptyHintBefore")}{" "}
             <strong className="font-medium text-gus-text">+</strong>
             {t("explorer.emptyHintMid")}{" "}
@@ -1659,7 +1659,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
           style={{ left: menu.x, top: menu.y }}
         >
           {confirmId === menu.id && menuTarget ? (
-            <div className="p-3 text-xs">
+            <div className="p-3 text-body">
               <p className="text-gus-text">
                 {t(menu.kind === "folder" ? "explorer.trashFolderAsk" : "explorer.trashItemAsk", {
                   name: "",
@@ -1667,7 +1667,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
                 <span className="font-mono break-all">{menuTarget.name}</span>
                 {t("explorer.trashToBin")}
               </p>
-              <p className="mt-1 text-[11px] text-gus-muted">
+              <p className="mt-1 text-meta text-gus-muted">
                 {menu.kind === "folder"
                   ? t("explorer.trashFolderBody")
                   : t("explorer.trashItemBody")}
@@ -1681,7 +1681,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
                     else if (menuFile) void deleteFile(menuFile);
                   }}
                   disabled={busy}
-                  className="rounded-md border border-rose-400/40 bg-rose-400/10 px-2 py-1 text-[11px] text-rose-300 transition-colors hover:bg-rose-400/20 focus-visible:ring-2 focus-visible:ring-rose-300/60 focus-visible:outline-none disabled:opacity-50"
+                  className="rounded-md border border-rose-400/40 bg-rose-400/10 px-2 py-1 text-meta text-rose-300 transition-colors hover:bg-rose-400/20 focus-visible:ring-2 focus-visible:ring-rose-300/60 focus-visible:outline-none disabled:opacity-50"
                 >
                   {t("explorer.moveToTrash")}
                 </button>
@@ -1689,7 +1689,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
                   type="button"
                   ref={confirmCancelRef}
                   onClick={() => setConfirmId(null)}
-                  className="rounded-md border border-gus-border px-2 py-1 text-[11px] text-gus-muted transition-colors hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
+                  className="rounded-md border border-gus-border px-2 py-1 text-meta text-gus-muted transition-colors hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
                 >
                   {t("common.cancel")}
                 </button>
@@ -1697,15 +1697,15 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
             </div>
           ) : movingId === menu.id && menuTarget ? (
             <div>
-              <p className="border-b border-gus-border px-3 py-2 text-[10px] tracking-wider text-gus-muted uppercase">
+              <p className="border-b border-gus-border px-3 py-2 text-meta tracking-wider text-gus-muted uppercase">
                 {t(menu.kind === "folder" ? "explorer.moveFolderTo" : "explorer.moveFileTo")}
               </p>
               <ul className="gus-scrollbar max-h-44 overflow-y-auto py-1">
                 {destinations === null && (
-                  <li className="px-3 py-2 text-[11px] text-gus-muted">{t("common.loading")}</li>
+                  <li className="px-3 py-2 text-meta text-gus-muted">{t("common.loading")}</li>
                 )}
                 {destinations?.length === 0 && (
-                  <li className="px-3 py-2 text-[11px] text-gus-muted">
+                  <li className="px-3 py-2 text-meta text-gus-muted">
                     {t("explorer.noDestinations")}
                   </li>
                 )}

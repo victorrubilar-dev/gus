@@ -39,7 +39,7 @@ export interface SearchViewProps {
 }
 
 const FIELD_CLASS =
-  "rounded-lg border border-gus-border bg-gus-panel px-2 py-1 text-xs text-gus-text outline-none transition-colors focus:border-gus-accent/60";
+  "rounded-lg border border-gus-border bg-gus-panel px-2 py-1 text-body text-gus-text outline-none transition-colors focus:border-gus-accent/60";
 
 const ICON_BUTTON_CLASS =
   "flex h-6 w-6 items-center justify-center rounded-md text-gus-muted outline-none transition-colors hover:bg-gus-card hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/70";
@@ -57,7 +57,7 @@ function shortDate(ms: number): string {
 /** Una línea de fragmento, con las coincidencias ya marcadas. */
 function SnippetLine({ snippet }: { snippet: SearchSnippet }) {
   return (
-    <p className="flex gap-2 text-xs leading-relaxed text-gus-text/80">
+    <p className="flex gap-2 text-body leading-relaxed text-gus-text/80">
       <span className="w-8 shrink-0 text-right tabular-nums text-gus-muted/60 select-none">
         {snippet.line}
       </span>
@@ -199,12 +199,12 @@ export default function SearchView({
     <div data-tour="search" className="flex h-full w-full flex-col bg-gus-bg">
       <header className="flex items-center gap-2 border-b border-gus-border px-4 py-2">
         <Search className="h-3.5 w-3.5 shrink-0 text-gus-accent" strokeWidth={1.75} aria-hidden="true" />
-        <span className="text-xs font-semibold tracking-wide text-gus-text">
+        <span className="text-body font-semibold tracking-wide text-gus-text">
           {t("search.title")}
         </span>
 
         {facets && indexState === "ready" && (
-          <span className="text-[11px] text-gus-muted">
+          <span className="text-meta text-gus-muted">
             {t("search.indexNotes", { count: facets.notes })}
           </span>
         )}
@@ -291,7 +291,7 @@ export default function SearchView({
               aria-label={t("search.filterFrom")}
               className={FIELD_CLASS}
             />
-            <span className="text-[11px] text-gus-muted">→</span>
+            <span className="text-meta text-gus-muted">→</span>
             <input
               type="date"
               value={to}
@@ -310,7 +310,7 @@ export default function SearchView({
                 setFrom("");
                 setTo("");
               }}
-              className="flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] text-gus-muted outline-none transition-colors hover:bg-gus-card hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/70"
+              className="flex items-center gap-1 rounded-md px-1.5 py-1 text-meta text-gus-muted outline-none transition-colors hover:bg-gus-card hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/70"
             >
               <X className="h-3 w-3" aria-hidden="true" />
               {t("search.clearFilters")}
@@ -336,7 +336,7 @@ export default function SearchView({
 
         {canSearch(settledQuery) && (
           <>
-            <p className="mb-2 text-[11px] text-gus-muted">
+            <p className="mb-2 text-meta text-gus-muted">
               {searchState === "loading"
                 ? t("search.searching")
                 : t("search.results", { count: results?.total ?? 0 })}
@@ -372,10 +372,10 @@ export default function SearchView({
                         <span className="truncate text-sm font-medium text-gus-text">
                           {match.title}
                         </span>
-                        <span className="shrink-0 text-[11px] text-gus-muted">
+                        <span className="shrink-0 text-meta text-gus-muted">
                           {match.folder || t("search.rootFolder")}
                         </span>
-                        <span className="ml-auto shrink-0 text-[11px] text-gus-muted">
+                        <span className="ml-auto shrink-0 text-meta text-gus-muted">
                           {shortDate(match.modifiedMs)}
                         </span>
                       </span>
@@ -385,7 +385,7 @@ export default function SearchView({
                           {match.tags.map((entry) => (
                             <span
                               key={entry}
-                              className="rounded-full border border-gus-accent/40 bg-gus-accent/15 px-1.5 text-[10px] text-gus-accent"
+                              className="rounded-full border border-gus-accent/40 bg-gus-accent/15 px-1.5 text-meta text-gus-accent"
                             >
                               {entry}
                             </span>
@@ -399,13 +399,13 @@ export default function SearchView({
                             <SnippetLine key={`${snippet.line}-${index}`} snippet={snippet} />
                           ))}
                           {hits > 1 && (
-                            <span className="pl-10 text-[11px] text-gus-muted">
+                            <span className="pl-10 text-meta text-gus-muted">
                               {t("search.matches", { count: hits })}
                             </span>
                           )}
                         </span>
                       ) : (
-                        <span className="text-xs text-gus-muted/70">
+                        <span className="text-body text-gus-muted/70">
                           {t("search.titleOnly")}
                         </span>
                       )}

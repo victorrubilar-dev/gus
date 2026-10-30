@@ -27,7 +27,7 @@ export interface WelcomePanelProps {
 type Status = "loading" | "ready" | "error";
 
 const KEY_CLASS =
-  "rounded border border-gus-border bg-gus-card px-1.5 py-0.5 font-mono text-[10px] text-gus-text";
+  "rounded border border-gus-border bg-gus-card px-1.5 py-0.5 font-mono text-meta text-gus-text";
 
 /** Fecha corta en el idioma de la interfaz. */
 export function shortDate(ms: number): string {
@@ -134,13 +134,13 @@ export default function WelcomePanel({
         </div>
 
         {emptyVault && (
-          <p className="max-w-xs rounded-lg border border-dashed border-gus-border px-4 py-3 text-xs text-gus-muted">
+          <p className="max-w-xs rounded-lg border border-dashed border-gus-border px-4 py-3 text-body text-gus-muted">
             {t("welcome.emptyVault")}
           </p>
         )}
 
         {!emptyVault && (
-          <ul className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-[11px] text-gus-muted">
+          <ul className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-meta text-gus-muted">
             <li className="flex items-center gap-1.5">
               <kbd className={KEY_CLASS}>Supr</kbd>
               {t("welcome.hintDelete")}
@@ -152,7 +152,7 @@ export default function WelcomePanel({
 
         {notes.length > 0 && (
           <div className="w-full border-t border-gus-border pt-4">
-            <p className="mb-2 text-left text-[10px] tracking-[0.14em] text-gus-muted uppercase">
+            <p className="mb-2 text-left text-meta tracking-[0.14em] text-gus-muted uppercase">
               {t("welcome.recent")}
             </p>
             <ul className="flex flex-col gap-1.5">
@@ -170,14 +170,14 @@ export default function WelcomePanel({
                       aria-hidden="true"
                     />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate font-mono text-xs text-gus-text">
+                      <span className="block truncate font-mono text-body text-gus-text">
                         {note.name.replace(/\.md$/i, "")}
                       </span>
-                      <span className="block truncate text-[10px] text-gus-muted">
+                      <span className="block truncate text-meta text-gus-muted">
                         {folderOf(note.relative, t)}
                       </span>
                     </span>
-                    <span className="shrink-0 text-[10px] text-gus-muted">
+                    <span className="shrink-0 text-meta text-gus-muted">
                       {relativeTime(note.modified_ms, t)}
                     </span>
                   </button>

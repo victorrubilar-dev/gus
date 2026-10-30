@@ -3784,12 +3784,12 @@ export default function MarkdownEditor({
       <h4 className="mt-4 mb-2 text-lg font-semibold text-gus-text first:mt-0">{children}</h4>
     ),
     h5: ({ children }) => (
-      <h5 className="mt-4 mb-2 text-xs font-semibold tracking-wider text-gus-muted uppercase first:mt-0">
+      <h5 className="mt-4 mb-2 text-body font-semibold tracking-wider text-gus-muted uppercase first:mt-0">
         {children}
       </h5>
     ),
     h6: ({ children }) => (
-      <h6 className="mt-4 mb-2 text-xs font-semibold tracking-wider text-gus-muted/80 uppercase first:mt-0">
+      <h6 className="mt-4 mb-2 text-body font-semibold tracking-wider text-gus-muted/80 uppercase first:mt-0">
         {children}
       </h6>
     ),
@@ -3825,7 +3825,7 @@ export default function MarkdownEditor({
             {children}
             {refs !== undefined && refs > 0 && (
               <sup
-                className="ml-0.5 rounded-full border border-gus-accent/30 bg-gus-accent/10 px-1 text-[9px] leading-4 tabular-nums text-gus-accent/90"
+                className="ml-0.5 rounded-full border border-gus-accent/30 bg-gus-accent/10 px-1 text-meta leading-4 tabular-nums text-gus-accent/90"
                 aria-label={t("editor.linkRefs", { count: refs })}
               >
                 {refs}
@@ -3959,7 +3959,7 @@ export default function MarkdownEditor({
       </div>
     ),
     thead: ({ children }) => (
-      <thead className="bg-gus-card text-[11px] tracking-wide text-gus-muted uppercase">
+      <thead className="bg-gus-card text-meta tracking-wide text-gus-muted uppercase">
         {children}
       </thead>
     ),
@@ -4021,7 +4021,7 @@ export default function MarkdownEditor({
             }}
             aria-label={t(viewMode === "edit" ? "editor.previewAria" : "editor.editAria")}
             title={t(viewMode === "edit" ? "editor.preview" : "editor.edit")}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-gus-border bg-gus-card px-3 py-1.5 text-xs text-gus-muted outline-none transition-colors hover:border-gus-accent/50 hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-gus-border bg-gus-card px-3 py-1.5 text-body text-gus-muted outline-none transition-colors hover:border-gus-accent/50 hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60"
           >
             {viewMode === "edit" ? (
               <>
@@ -4044,7 +4044,7 @@ export default function MarkdownEditor({
               aria-expanded={headerMenu}
               aria-label={t("editor.moreOptionsAria")}
               title={t("editor.moreOptions")}
-              className="inline-flex h-[30px] items-center rounded-lg border border-gus-border bg-gus-card px-2 text-xs text-gus-muted outline-none transition-colors hover:border-gus-accent/50 hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60"
+              className="inline-flex h-[30px] items-center rounded-lg border border-gus-border bg-gus-card px-2 text-body text-gus-muted outline-none transition-colors hover:border-gus-accent/50 hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60"
             >
               <ChevronDown className="h-4 w-4" aria-hidden="true" />
             </button>
@@ -4061,7 +4061,7 @@ export default function MarkdownEditor({
                     setHeaderMenu(false);
                     setExportOpen(true);
                   }}
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-gus-muted transition-colors hover:bg-gus-panel hover:text-gus-text focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-gus-accent/60 focus-visible:outline-none"
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-body text-gus-muted transition-colors hover:bg-gus-panel hover:text-gus-text focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-gus-accent/60 focus-visible:outline-none"
                 >
                   <FileDown className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                   {t("editor.exportPdf")}
@@ -4075,7 +4075,7 @@ export default function MarkdownEditor({
           {noteTags.map((tag) => (
             <span
               key={tag}
-              className="inline-flex items-center gap-1 rounded-full border border-gus-accent/40 bg-gus-accent/15 px-2 py-0.5 text-[11px] text-gus-accent"
+              className="inline-flex items-center gap-1 rounded-full border border-gus-accent/40 bg-gus-accent/15 px-2 py-0.5 text-meta text-gus-accent"
             >
               {tag}
               <button
@@ -4108,7 +4108,7 @@ export default function MarkdownEditor({
               role="combobox"
               aria-expanded={tagMenuOpen}
               aria-controls="gus-tag-menu"
-              className="w-full rounded-full border border-transparent bg-gus-card/60 px-2.5 py-0.5 text-[11px] text-gus-text outline-none transition-colors placeholder:text-gus-muted/70 focus:border-gus-accent/50"
+              className="w-full rounded-full border border-transparent bg-gus-card/60 px-2.5 py-0.5 text-meta text-gus-text outline-none transition-colors placeholder:text-gus-muted/70 focus:border-gus-accent/50"
             />
 
             {tagMenuOpen && (
@@ -4119,7 +4119,7 @@ export default function MarkdownEditor({
                 className="absolute left-0 top-full z-30 mt-1 max-h-56 w-64 min-w-full overflow-y-auto rounded-lg border border-gus-border bg-gus-card py-1 shadow-xl"
               >
                 {tagOptionList.length === 0 ? (
-                  <p className="px-3 py-1.5 text-[11px] text-gus-muted">
+                  <p className="px-3 py-1.5 text-meta text-gus-muted">
                     {t(tagInput ? "editor.tagCreateHint" : "editor.noVaultTags", {
                       tag: tagInput,
                     })}
@@ -4135,14 +4135,14 @@ export default function MarkdownEditor({
                       onClick={() => pickTag(entry.tag)}
                       onMouseEnter={() => setTagIndex(index)}
                       className={clsx(
-                        "flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] outline-none",
+                        "flex w-full items-center gap-2 px-3 py-1.5 text-left text-meta outline-none",
                         index === Math.min(tagIndex, tagOptionList.length - 1)
                           ? "bg-gus-accent/15 text-gus-accent"
                           : "text-gus-text hover:bg-gus-card",
                       )}
                     >
                       <span className="truncate">{entry.tag}</span>
-                      <span className="ml-auto shrink-0 text-[10px] text-gus-muted">
+                      <span className="ml-auto shrink-0 text-meta text-gus-muted">
                         {t("editor.tagUseCount", { count: entry.count })}
                       </span>
                     </button>
@@ -4153,7 +4153,7 @@ export default function MarkdownEditor({
           </div>
         </div>
 
-        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-gus-muted">
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-meta text-gus-muted">
           <span className="flex items-center gap-1.5" role="status" aria-live="polite">
             <span className={clsx("h-1.5 w-1.5 rounded-full", statusDot)} aria-hidden="true" />
             {statusLabel}
@@ -4166,7 +4166,7 @@ export default function MarkdownEditor({
           <span className="text-gus-muted/70">{t("editor.saveHint", { combo: saveCombo })}</span>
         </div>
         {saveError && (
-          <p className="mt-2 break-words rounded-md border border-rose-400/30 bg-rose-400/5 px-2 py-1.5 text-[11px] text-rose-300">
+          <p className="mt-2 break-words rounded-md border border-rose-400/30 bg-rose-400/5 px-2 py-1.5 text-meta text-rose-300">
             {saveError}
           </p>
         )}
@@ -4408,7 +4408,7 @@ export default function MarkdownEditor({
           role="status"
           aria-live="polite"
           className={clsx(
-            "fixed right-4 bottom-4 z-50 max-w-sm rounded-xl border bg-gus-panel px-4 py-3 text-xs shadow-2xl shadow-black/40",
+            "fixed right-4 bottom-4 z-50 max-w-sm rounded-xl border bg-gus-panel px-4 py-3 text-body shadow-2xl shadow-black/40",
             imageNotice.ok
               ? "border-gus-accent/40 text-gus-accent"
               : "border-amber-400/40 text-amber-300",

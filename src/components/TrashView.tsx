@@ -184,7 +184,7 @@ export default function TrashView({ vaultPath, onRestore }: TrashViewProps) {
   }
 
   const chip =
-    "rounded-full border px-2 py-0.5 text-[11px] transition-colors focus-visible:ring-2 focus-visible:outline-none";
+    "rounded-full border px-2 py-0.5 text-meta transition-colors focus-visible:ring-2 focus-visible:outline-none";
 
   return (
     <section className="flex h-full flex-col gap-4 p-6">
@@ -209,7 +209,7 @@ export default function TrashView({ vaultPath, onRestore }: TrashViewProps) {
           </button>
 
           {confirmEmpty ? (
-            <span className="flex items-center gap-1.5 text-[11px] text-rose-300">
+            <span className="flex items-center gap-1.5 text-meta text-rose-300">
               {t("trash.emptyAsk")}
               <button
                 type="button"
@@ -241,19 +241,19 @@ export default function TrashView({ vaultPath, onRestore }: TrashViewProps) {
       </header>
 
       {status === "ready" && items.length > 0 && (
-        <p className="text-[11px] text-gus-muted">
+        <p className="text-meta text-gus-muted">
           {t("trash.retentionNote", { days: CADUCA_DIAS })}
         </p>
       )}
 
       {syncError && (
-        <p className="rounded-lg border border-rose-400/30 bg-rose-400/5 px-3 py-2 text-xs text-rose-300">
+        <p className="rounded-lg border border-rose-400/30 bg-rose-400/5 px-3 py-2 text-body text-rose-300">
           La papelera ha devuelto un error: {syncError}
         </p>
       )}
 
       {notice && (
-        <p className="rounded-lg border border-gus-accent/40 bg-gus-accent/10 px-3 py-2 text-xs text-gus-accent">
+        <p className="rounded-lg border border-gus-accent/40 bg-gus-accent/10 px-3 py-2 text-body text-gus-accent">
           {notice}
         </p>
       )}
@@ -295,14 +295,14 @@ export default function TrashView({ vaultPath, onRestore }: TrashViewProps) {
                       {item.name}
                     </span>
                     <span
-                      className="truncate text-[11px] text-gus-muted"
+                      className="truncate text-meta text-gus-muted"
                       title={item.origin ?? t("trash.unknownOrigin")}
                     >
                       {carpetaOrigen(item, t)}
                     </span>
                   </span>
 
-                  <span className="hidden shrink-0 flex-col items-end text-[11px] text-gus-muted sm:flex">
+                  <span className="hidden shrink-0 flex-col items-end text-meta text-gus-muted sm:flex">
                     <span>{formatoTamano(item.size, item.isDir, t)}</span>
                     <span>{formatoFecha(item.trashedAtMs ?? item.modifiedMs)}</span>
                     {restan !== null && (
@@ -344,7 +344,7 @@ export default function TrashView({ vaultPath, onRestore }: TrashViewProps) {
                 </div>
 
                 {confirming && (
-                  <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-rose-400/30 bg-rose-400/5 px-3 py-2 text-xs text-rose-300">
+                  <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-rose-400/30 bg-rose-400/5 px-3 py-2 text-body text-rose-300">
                     <span className="min-w-0 break-all">
                       {t("trash.deleteConfirm", { name: item.name })}
                     </span>
@@ -353,7 +353,7 @@ export default function TrashView({ vaultPath, onRestore }: TrashViewProps) {
                         type="button"
                         onClick={() => void removeForever(item)}
                         disabled={isBusy}
-                        className="rounded-md border border-rose-400/40 bg-rose-400/10 px-2 py-1 text-[11px] text-rose-300 transition-colors hover:bg-rose-400/20 focus-visible:ring-2 focus-visible:ring-rose-300/60 focus-visible:outline-none disabled:opacity-50"
+                        className="rounded-md border border-rose-400/40 bg-rose-400/10 px-2 py-1 text-meta text-rose-300 transition-colors hover:bg-rose-400/20 focus-visible:ring-2 focus-visible:ring-rose-300/60 focus-visible:outline-none disabled:opacity-50"
                       >
                         {isBusy ? t("trash.deleting") : t("trash.deleteYes")}
                       </button>
@@ -361,7 +361,7 @@ export default function TrashView({ vaultPath, onRestore }: TrashViewProps) {
                         type="button"
                         onClick={() => setConfirmId(null)}
                         disabled={isBusy}
-                        className="rounded-md border border-gus-border px-2 py-1 text-[11px] text-gus-muted transition-colors hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none disabled:opacity-50"
+                        className="rounded-md border border-gus-border px-2 py-1 text-meta text-gus-muted transition-colors hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none disabled:opacity-50"
                       >
                         {t("common.cancel")}
                       </button>
@@ -380,7 +380,7 @@ export default function TrashView({ vaultPath, onRestore }: TrashViewProps) {
         )}
 
         {status === "error" && (
-          <li className="flex flex-col items-start gap-2 rounded-xl border border-rose-400/30 bg-rose-400/5 px-4 py-4 text-xs text-rose-300">
+          <li className="flex flex-col items-start gap-2 rounded-xl border border-rose-400/30 bg-rose-400/5 px-4 py-4 text-body text-rose-300">
             <span className="break-words">
               {t("trash.loadError")}
               <span className="block font-mono text-rose-400/80">
@@ -403,7 +403,7 @@ export default function TrashView({ vaultPath, onRestore }: TrashViewProps) {
           <li className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-gus-border px-4 py-10 text-center">
             <Trash2 className="h-6 w-6 text-gus-muted" strokeWidth={1.5} aria-hidden="true" />
             <p className="text-sm text-gus-muted">{t("trash.empty")}</p>
-            <p className="text-[11px] text-gus-muted/80">{t("trash.emptyHint")}</p>
+            <p className="text-meta text-gus-muted/80">{t("trash.emptyHint")}</p>
           </li>
         )}
       </ul>

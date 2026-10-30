@@ -81,10 +81,10 @@ export default function KanbanBoard({
             )}
           >
             <header className="flex items-center justify-between px-0.5">
-              <h3 className="text-[11px] font-semibold uppercase tracking-wider text-gus-muted">
+              <h3 className="text-meta font-semibold uppercase tracking-wider text-gus-muted">
                 {t(column.labelKey)}
               </h3>
-              <span className="rounded-full border border-gus-border bg-gus-card px-1.5 py-px text-[10px] text-gus-muted">
+              <span className="rounded-full border border-gus-border bg-gus-card px-1.5 py-px text-meta text-gus-muted">
                 {cards.length}
               </span>
             </header>
@@ -135,7 +135,7 @@ export default function KanbanBoard({
                         <div className="flex items-start gap-2">
                           <p
                             className={clsx(
-                              "min-w-0 flex-1 break-words text-xs leading-relaxed",
+                              "min-w-0 flex-1 break-words text-body leading-relaxed",
                               task.completes
                                 ? "text-gus-muted line-through"
                                 : "text-gus-text",
@@ -147,7 +147,7 @@ export default function KanbanBoard({
                             <span
                               title={`${t("tasks.priorityLabel", { name: priorityLabel(task.priority) })}`}
                               className={clsx(
-                                "inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] capitalize",
+                                "inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-0.5 text-meta capitalize",
                                 PRIORITY_CLASS[task.priority],
                               )}
                             >
@@ -158,7 +158,7 @@ export default function KanbanBoard({
                         </div>
 
                         {task.description && (
-                          <p className="mt-1 line-clamp-2 text-[11px] text-gus-muted">
+                          <p className="mt-1 line-clamp-2 text-meta text-gus-muted">
                             {task.description}
                           </p>
                         )}
@@ -169,7 +169,7 @@ export default function KanbanBoard({
                               <span
                                 title={`Plazo: ${task.due}`}
                                 className={clsx(
-                                  "inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px]",
+                                  "inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-meta",
                                   overdue
                                     ? "border-rose-400/40 bg-rose-400/10 text-rose-300"
                                     : "border-gus-border bg-gus-panel text-gus-muted",
@@ -191,7 +191,7 @@ export default function KanbanBoard({
                                   title={`Filtrar por #${tag}`}
                                   aria-pressed={active}
                                   className={clsx(
-                                    "rounded-full border px-1.5 py-0.5 text-[10px] capitalize transition-colors",
+                                    "rounded-full border px-1.5 py-0.5 text-meta capitalize transition-colors",
                                     active
                                       ? "border-gus-accent/60 bg-gus-accent/20 text-gus-accent"
                                       : "border-gus-accent/40 bg-gus-accent/15 text-gus-accent hover:opacity-80",
@@ -213,7 +213,7 @@ export default function KanbanBoard({
               </AnimatePresence>
 
               {cards.length === 0 && (
-                <li className="rounded-lg border border-dashed border-gus-border px-3 py-6 text-center text-[11px] text-gus-muted">
+                <li className="rounded-lg border border-dashed border-gus-border px-3 py-6 text-center text-meta text-gus-muted">
                   {t(column.hintKey)}
                 </li>
               )}

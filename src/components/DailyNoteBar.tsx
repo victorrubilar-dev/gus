@@ -47,7 +47,7 @@ export default function DailyNoteBar({ date, busy = false, onNavigate }: DailyNo
         {dailyTitle(date)}
       </p>
 
-      <span className="rounded-full border border-gus-accent/40 bg-gus-accent/15 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-gus-accent">
+      <span className="rounded-full border border-gus-accent/40 bg-gus-accent/15 px-2 py-0.5 text-meta font-medium uppercase tracking-wide text-gus-accent">
         {t("daily.badge")}
       </span>
 
@@ -58,7 +58,7 @@ export default function DailyNoteBar({ date, busy = false, onNavigate }: DailyNo
           aria-label={t("daily.backToToday")}
           disabled={busy}
           onClick={() => onNavigate(now)}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-gus-border px-2.5 py-1 text-xs text-gus-muted outline-none transition-colors hover:border-gus-accent/50 hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/70 disabled:cursor-wait disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-gus-border px-2.5 py-1 text-body text-gus-muted outline-none transition-colors hover:border-gus-accent/50 hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/70 disabled:cursor-wait disabled:opacity-50"
         >
           <CalendarDays className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
           {t("daily.today")}

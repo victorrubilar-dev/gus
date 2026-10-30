@@ -884,7 +884,7 @@ const PreviewLine = memo(function PreviewLine({
         data-copy-line={block.start}
         title={t("editor.copyCode")}
         className={clsx(
-          "absolute top-1.5 right-1.5 z-10 flex items-center rounded px-2 py-1 font-sans text-xs",
+          "absolute top-1.5 right-1.5 z-10 flex items-center rounded px-2 py-1 font-sans text-body",
           copied
             ? "text-emerald-400"
             : clsx("text-gus-muted", hovered && "bg-gus-border/70 text-gus-text"),

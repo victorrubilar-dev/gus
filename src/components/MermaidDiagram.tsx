@@ -71,11 +71,11 @@ export default function MermaidDiagram({ code }: MermaidDiagramProps) {
   return (
     <div className="gus-mermaid">
       {status === "drawing" && (
-        <p className="text-xs text-gus-muted">Dibujando el diagrama…</p>
+        <p className="text-body text-gus-muted">Dibujando el diagrama…</p>
       )}
 
       {status === "error" && (
-        <div className="flex flex-col gap-1 rounded-lg border border-rose-400/30 bg-rose-400/5 px-3 py-2 text-[11px] text-rose-300">
+        <div className="flex flex-col gap-1 rounded-lg border border-rose-400/30 bg-rose-400/5 px-3 py-2 text-meta text-rose-300">
           <span>No se pudo dibujar el diagrama.</span>
           {error && <span className="font-mono break-all">{error}</span>}
         </div>

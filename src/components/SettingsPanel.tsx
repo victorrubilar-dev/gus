@@ -141,7 +141,7 @@ function SpellLanguagePicker({
               aria-checked={isActive}
               onClick={() => onToggle(option.value)}
               className={clsx(
-                "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-gus-accent/70",
+                "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-body font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-gus-accent/70",
                 isActive
                   ? "bg-gus-accent text-gus-bg"
                   : "text-gus-muted hover:bg-gus-card hover:text-gus-text",
@@ -154,7 +154,7 @@ function SpellLanguagePicker({
         })}
       </div>
 
-      <p className="text-[11px] leading-snug text-gus-muted">{t("settings.spellLangsHint")}</p>
+      <p className="text-meta leading-snug text-gus-muted">{t("settings.spellLangsHint")}</p>
     </div>
   );
 }
@@ -220,7 +220,7 @@ function ShortcutRecorder({
     return (
       <span
         title={t("settings.shortcutsBrowser")}
-        className="inline-flex h-8 cursor-not-help items-center gap-1 rounded-lg border border-gus-border bg-gus-panel px-2.5 text-xs text-gus-muted/70"
+        className="inline-flex h-8 cursor-not-help items-center gap-1 rounded-lg border border-gus-border bg-gus-panel px-2.5 text-body text-gus-muted/70"
       >
         {label || "—"}
       </span>
@@ -239,7 +239,7 @@ function ShortcutRecorder({
         onBlur={() => setRecording(false)}
         onKeyDown={handleKeyDown}
         className={clsx(
-          "inline-flex h-8 min-w-[7.5rem] items-center justify-center gap-1 rounded-lg border px-2.5 text-xs font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-gus-accent/70",
+          "inline-flex h-8 min-w-[7.5rem] items-center justify-center gap-1 rounded-lg border px-2.5 text-body font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-gus-accent/70",
           recording
             ? "border-gus-accent bg-gus-accent/15 text-gus-accent"
             : "border-gus-border bg-gus-card text-gus-text hover:border-gus-accent/50",
@@ -251,7 +251,7 @@ function ShortcutRecorder({
       </button>
 
       {conflict && (
-        <p role="alert" className="max-w-[16rem] text-right text-[10px] text-amber-400">
+        <p role="alert" className="max-w-[16rem] text-right text-meta text-amber-400">
           {t("settings.shortcutsConflict", { name: t(conflict.labelKey) })}
         </p>
       )}
@@ -278,7 +278,7 @@ function ShortcutsEditor({
 
   return (
     <div className="flex w-full flex-col gap-3">
-      <p className="text-[11px] text-gus-muted">{t("settings.shortcutsHint")}</p>
+      <p className="text-meta text-gus-muted">{t("settings.shortcutsHint")}</p>
 
       {SHORTCUT_GROUPS.map((group) => {
         const entries = SHORTCUT_LIST.filter((entry) => entry.group === group.id);
@@ -286,7 +286,7 @@ function ShortcutsEditor({
 
         return (
           <div key={group.id} className="flex flex-col gap-1.5">
-            <h4 className="text-[10px] font-semibold tracking-wider text-gus-muted uppercase">
+            <h4 className="text-meta font-semibold tracking-wider text-gus-muted uppercase">
               {t(group.labelKey)}
             </h4>
 
@@ -296,7 +296,7 @@ function ShortcutsEditor({
                   key={definition.id}
                   className="flex items-center justify-between gap-4 bg-gus-card px-3 py-2"
                 >
-                  <span className="min-w-0 truncate text-xs text-gus-text">
+                  <span className="min-w-0 truncate text-body text-gus-text">
                     {t(definition.labelKey)}
                   </span>
 
@@ -419,7 +419,7 @@ function TextSetting({
       spellCheck={false}
       onChange={(event) => schedule(event.target.value)}
       onBlur={commitNow}
-      className={clsx(INPUT_CLASS, "w-full min-w-[18rem] resize-y font-mono text-xs leading-relaxed")}
+      className={clsx(INPUT_CLASS, "w-full min-w-[18rem] resize-y font-mono text-body leading-relaxed")}
     />
   ) : (
     <input
@@ -440,7 +440,7 @@ function TextSetting({
   return (
     <div className="flex w-full max-w-[24rem] flex-col gap-1.5">
       {field}
-      <p className="text-[11px] leading-snug text-gus-muted">{hint}</p>
+      <p className="text-meta leading-snug text-gus-muted">{hint}</p>
     </div>
   );
 }
@@ -526,7 +526,7 @@ export default function SettingsPanel({
                 aria-pressed={isActive}
                 onClick={() => update(definition.key, days)}
                 className={clsx(
-                  "rounded-md px-2.5 py-1 text-xs font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-gus-accent/70",
+                  "rounded-md px-2.5 py-1 text-body font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-gus-accent/70",
                   isActive
                     ? "bg-gus-accent text-gus-bg"
                     : "text-gus-muted hover:text-gus-text",
@@ -655,7 +655,7 @@ export default function SettingsPanel({
               );
             })}
           </div>
-          <p className="max-w-[16rem] text-right text-[11px] leading-snug text-gus-muted">
+          <p className="max-w-[16rem] text-right text-meta leading-snug text-gus-muted">
             {t("settings.languageHint")}
           </p>
         </div>
@@ -670,7 +670,7 @@ export default function SettingsPanel({
             onClick={onStartTour}
             className={clsx(
               INPUT_CLASS,
-              "inline-flex items-center gap-1.5 text-xs text-gus-muted hover:text-gus-text",
+              "inline-flex items-center gap-1.5 text-body text-gus-muted hover:text-gus-text",
             )}
           >
             <Compass className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
@@ -690,7 +690,7 @@ export default function SettingsPanel({
             disabled={checking}
             className={clsx(
               INPUT_CLASS,
-              "inline-flex items-center gap-1.5 text-xs text-gus-muted hover:text-gus-text",
+              "inline-flex items-center gap-1.5 text-body text-gus-muted hover:text-gus-text",
               checking && "opacity-60",
             )}
           >
@@ -702,7 +702,7 @@ export default function SettingsPanel({
             {checking ? t("update.checking") : t("settings.update")}
           </button>
 
-          <div role="status" aria-live="polite" className="text-right text-[11px] leading-snug">
+          <div role="status" aria-live="polite" className="text-right text-meta leading-snug">
             {available && (
               <p className="text-gus-accent">
                 {t("update.available", { version: available.version, current: APP_VERSION })}{" "}
@@ -830,7 +830,7 @@ export default function SettingsPanel({
           <h2 className="text-sm font-semibold tracking-wider text-gus-muted uppercase">
             {t("settings.title")}
           </h2>
-          <p className="text-xs text-gus-muted">{t("settings.subtitle")}</p>
+          <p className="text-body text-gus-muted">{t("settings.subtitle")}</p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -865,7 +865,7 @@ export default function SettingsPanel({
             title={t("settings.resetTitle")}
             className={clsx(
               INPUT_CLASS,
-              "inline-flex items-center gap-1.5 text-xs text-gus-muted hover:text-gus-text",
+              "inline-flex items-center gap-1.5 text-body text-gus-muted hover:text-gus-text",
             )}
           >
             <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
@@ -904,7 +904,7 @@ export default function SettingsPanel({
               >
                 <Icon className="h-4 w-4 shrink-0" strokeWidth={1.75} aria-hidden="true" />
                 <span className="truncate">{t(category.labelKey)}</span>
-                <span className="ml-auto text-[10px] text-gus-muted">{count}</span>
+                <span className="ml-auto text-meta text-gus-muted">{count}</span>
               </button>
             );
           })}
@@ -912,7 +912,7 @@ export default function SettingsPanel({
 
         <div className="gus-scrollbar min-h-0 flex-1 overflow-y-auto px-6 py-5">
           {searching && (
-            <p className="mb-4 text-xs text-gus-muted" role="status">
+            <p className="mb-4 text-body text-gus-muted" role="status">
               {t("settings.results", { count: totalResults, query: query.trim() })}
             </p>
           )}
@@ -926,7 +926,7 @@ export default function SettingsPanel({
               <button
                 type="button"
                 onClick={() => setQuery("")}
-                className={clsx(INPUT_CLASS, "text-xs text-gus-muted hover:text-gus-text")}
+                className={clsx(INPUT_CLASS, "text-body text-gus-muted hover:text-gus-text")}
               >
                 {t("settings.clearSearch")}
               </button>
@@ -938,7 +938,7 @@ export default function SettingsPanel({
                 <div key={group.category.id} className="mb-6 last:mb-0">
                   <div className="mb-2.5 flex items-center gap-2">
                     <Icon className="h-4 w-4 text-gus-accent" strokeWidth={1.75} aria-hidden="true" />
-                    <h3 className="text-xs font-semibold tracking-wider text-gus-muted uppercase">
+                    <h3 className="text-body font-semibold tracking-wider text-gus-muted uppercase">
                       {t(group.category.labelKey)}
                     </h3>
                     <span aria-hidden="true" className="h-px flex-1 bg-gus-border" />
@@ -954,7 +954,7 @@ export default function SettingsPanel({
                           <p className="text-sm font-medium text-gus-text">
                             {t(definition.labelKey)}
                           </p>
-                          <p className="mt-0.5 text-xs text-gus-muted">
+                          <p className="mt-0.5 text-body text-gus-muted">
                             {t(definition.descriptionKey)}
                           </p>
                         </div>

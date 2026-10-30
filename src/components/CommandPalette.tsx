@@ -115,7 +115,7 @@ export default function CommandPalette({
                   aria-label={t("palette.placeholder")}
                   className="min-w-0 flex-1 bg-transparent text-sm text-gus-text outline-none placeholder:text-gus-muted"
                 />
-                <kbd className="shrink-0 rounded border border-gus-border bg-gus-card px-1.5 py-0.5 text-[10px] text-gus-muted">
+                <kbd className="shrink-0 rounded border border-gus-border bg-gus-card px-1.5 py-0.5 text-meta text-gus-muted">
                   Esc
                 </kbd>
               </div>
@@ -138,7 +138,7 @@ export default function CommandPalette({
                   <>
                     <Command.Group
                       heading={t("app.tab.notes")}
-                      className="[&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:pt-2 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:text-[11px] [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:tracking-wider [&_[cmdk-group-heading]]:text-gus-muted [&_[cmdk-group-heading]]:uppercase"
+                      className="[&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:pt-2 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:text-meta [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:tracking-wider [&_[cmdk-group-heading]]:text-gus-muted [&_[cmdk-group-heading]]:uppercase"
                     >
                       {notes.map((note) => (
                         <Command.Item
@@ -153,7 +153,7 @@ export default function CommandPalette({
                         >
                           <FileText className="h-4 w-4 shrink-0" aria-hidden="true" />
                           <span className="min-w-0 truncate">{titleOf(note)}</span>
-                          <span className="ml-auto shrink-0 truncate pl-2 text-xs text-gus-muted">
+                          <span className="ml-auto shrink-0 truncate pl-2 text-body text-gus-muted">
                             {folderOf(note)}
                           </span>
                         </Command.Item>
@@ -168,7 +168,7 @@ export default function CommandPalette({
                 )}
               </Command.List>
 
-              <div className="flex items-center justify-between gap-2 border-t border-gus-border px-4 py-2 text-[11px] text-gus-muted">
+              <div className="flex items-center justify-between gap-2 border-t border-gus-border px-4 py-2 text-meta text-gus-muted">
                 <span>
                   <kbd className="rounded border border-gus-border bg-gus-card px-1 py-0.5">↑</kbd>{" "}
                   <kbd className="rounded border border-gus-border bg-gus-card px-1 py-0.5">↓</kbd>{" "}

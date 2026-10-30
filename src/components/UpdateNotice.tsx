@@ -73,7 +73,7 @@ export default function UpdateNotice({ info, current, offsetLeft, onDismiss }: U
         </span>
 
         <div className="min-w-0 flex-1">
-          <p className="text-xs leading-5 text-gus-text">
+          <p className="text-body leading-5 text-gus-text">
             {t("update.available", { version: info.version, current })}
           </p>
 
@@ -111,7 +111,7 @@ export default function UpdateNotice({ info, current, offsetLeft, onDismiss }: U
           </div>
 
           {error && (
-            <p role="alert" className="mt-2 text-xs leading-5 text-rose-300">
+            <p role="alert" className="mt-2 text-body leading-5 text-rose-300">
               {error}
             </p>
           )}
