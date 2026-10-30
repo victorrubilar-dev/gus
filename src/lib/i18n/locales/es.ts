@@ -47,6 +47,8 @@ export default {
   "app.trash": "Papelera",
   "app.settings": "Configuración",
   "app.loadingNote": "Cargando nota…",
+  "tabs.label": "Notas abiertas",
+  "tabs.close": "Cerrar {name}",
   "app.noteError": "No se pudo abrir la nota",
   "app.loadingImage": "Cargando imagen…",
   "app.imageError": "No se pudo abrir la imagen",

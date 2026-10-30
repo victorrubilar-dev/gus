@@ -49,6 +49,8 @@ const en: Record<keyof typeof es, string> = {
   "app.trash": "Trash",
   "app.settings": "Settings",
   "app.loadingNote": "Loading note…",
+  "tabs.label": "Open notes",
+  "tabs.close": "Close {name}",
   "app.noteError": "The note could not be opened",
   "app.loadingImage": "Loading image…",
   "app.imageError": "The image could not be opened",

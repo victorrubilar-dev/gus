@@ -28,6 +28,7 @@
     "bench:app": "node bench/prueba-app.mjs",
     "bench:botones": "node bench/prueba-botones.mjs",
     "bench:medida": "node bench/prueba-medida.mjs",
+    "bench:pestanas": "node bench/prueba-pestanas.mjs",
     "bench:capturas": "node bench/capturas.mjs",
     "bench:cursor": "node bench/prueba-cursor.mjs",
     "bench:tablas": "node bench/prueba-teclado-tablas.mjs",

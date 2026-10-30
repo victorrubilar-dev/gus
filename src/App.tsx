@@ -41,6 +41,7 @@ import MarkdownEditor, {
 } from "./components/MarkdownEditor";
 import SettingsPanel from "./components/SettingsPanel";
 import DailyNoteBar from "./components/DailyNoteBar";
+import NoteTabs, { type NoteTab } from "./components/NoteTabs";
 import TaskList from "./components/TaskList";
 import TrashView from "./components/TrashView";
 import VaultPicker, { type VaultAppConfig, type VaultInfo } from "./components/VaultPicker";
@@ -257,6 +258,8 @@ function App({
     setNewTaskOpen(true);
   };
   const [note, setNote] = useState<OpenNote | null>(null);
+  /** Notas abiertas, en el orden en que se abrieron; la visible es `note`. */
+  const [tabs, setTabs] = useState<NoteTab[]>([]);
   const [noteStatus, setNoteStatus] = useState<NoteStatus>("idle");
   const [noteError, setNoteError] = useState<string | null>(null);
   /**
@@ -636,10 +639,13 @@ function App({
     invoke<string>("read_vault_file", { path: file.id })
       .then((content) => {
         notePathRef.current = file.id;
-        setNote({ path: file.id, title: titleFromFileName(file.name), content });
+        const title = titleFromFileName(file.name);
+        setNote({ path: file.id, title, content });
+        setTabs((open) => (open.some((tab) => tab.path === file.id) ? open : [...open, { path: file.id, title }]));
         setNoteStatus("ready");
       })
       .catch((error: unknown) => {
+        setTabs((open) => open.filter((tab) => tab.path !== file.id));
         notePathRef.current = null;
         setNote(null);
         setNoteError(String(error));
@@ -652,6 +658,39 @@ function App({
    * «Exportar a PDF» desde el explorador: se abre la nota (si no lo estaba) y
    * el editor muestra el diálogo con la vista previa ya montada.
    */
+  /** Cambia de pestaña guardando antes lo que haya sin guardar en la nota actual. */
+  async function handleSelectTab(tab: NoteTab) {
+    if (tab.path === note?.path) return;
+    try {
+      if (notePathRef.current) await handleBeforeFileAction(notePathRef.current);
+    } catch (error: unknown) {
+      setNoteError(String(error));
+      return;
+    }
+    handleSelectNote({ id: tab.path, name: baseName(tab.path), kind: "note" });
+  }
+
+  async function handleCloseTab(tab: NoteTab) {
+    if (tab.path !== note?.path) {
+      setTabs((open) => open.filter((other) => other.path !== tab.path));
+      return;
+    }
+    try {
+      await handleBeforeFileAction(tab.path);
+    } catch (error: unknown) {
+      setNoteError(String(error));
+      return;
+    }
+    const index = tabs.findIndex((other) => other.path === tab.path);
+    const next = tabs[index + 1] ?? tabs[index - 1];
+    if (!next) {
+      closeOpenNote();
+      return;
+    }
+    setTabs((open) => open.filter((other) => other.path !== tab.path));
+    handleSelectNote({ id: next.path, name: baseName(next.path), kind: "note" });
+  }
+
   function handleExportPdf(file: NoteFile) {
     // Nota ya abierta: el evento va directo al editor montado. En otro caso la
     // petición viaja como prop y el editor la consume al montarse.
@@ -723,6 +762,8 @@ function App({
 
   function handleAutoSave(draft: EditorDraft) {
     if (notePathRef.current && notePathRef.current !== draft.path) {
+      const previous = notePathRef.current;
+      setTabs((open) => open.map((tab) => (tab.path === previous ? { path: draft.path, title: draft.title } : tab)));
       setVaultRefresh((key) => key + 1);
     }
     notePathRef.current = draft.path;
@@ -779,6 +820,7 @@ function App({
   );
 
   function handleFileDeleted(path: string) {
+    setTabs((open) => open.filter((tab) => !isInsidePath(tab.path, path)));
     if (image?.path === path) {
       imageRequestRef.current += 1;
       setImage(null);
@@ -1064,6 +1106,7 @@ function App({
   }
 
   function closeOpenNote() {
+    setTabs([]);
     imageRequestRef.current += 1;
     pdfRequestRef.current += 1;
     notePathRef.current = null;
@@ -1446,6 +1489,9 @@ function App({
 
       {showEntryPanel && (
         <div className="flex min-w-0 flex-1 flex-col">
+          {tabs.length > 0 && (
+            <NoteTabs tabs={tabs} activePath={note?.path ?? null} onSelect={(tab) => void handleSelectTab(tab)} onClose={(tab) => void handleCloseTab(tab)} />
+          )}
           {image ? (
             <div className="flex h-full min-h-0 flex-col">
               <div className="flex items-center justify-between gap-3 border-b border-gus-border bg-gus-panel px-4 py-2">
