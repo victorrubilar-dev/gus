@@ -237,7 +237,7 @@ export default {
   "welcome.newNote": "Nueva nota",
   "welcome.searchNote": "Buscar nota",
   "welcome.emptyVault":
-    "Todavía no hay notas en este vault. Crea la primera con el botón de arriba.",
+    "Todavía no hay notas en este vault. Crea la primera con «Nueva nota».",
   "welcome.hintDelete": "elimina lo resaltado",
   "welcome.hintContext": "clic derecho: opciones del archivo",
   "welcome.hintDrag": "arrastra para mover",
@@ -766,6 +766,8 @@ export default {
   "pdf.notes.placeholder": "Escribe tu nota…",
   "palette.loadError": "No se pudieron cargar las notas",
   "palette.hintNavigate": "navegar",
+  "palette.searchVault": "Buscar en el vault",
+  "palette.actions": "Acciones",
   "palette.hintOpen": "abrir",
   "explorer.readError": "error al leer",
   "explorer.folderCount": "{count} carpeta",
@@ -954,7 +956,7 @@ export default {
   "tour.finish": "Terminar",
   "tour.welcome.title": "Tu resumen",
   "tour.welcome.body":
-    "La primera pantalla resume tu día: próximas tareas, últimas notas editadas y los accesos rápidos.",
+    "El Resumen reúne tu día: próximas tareas, últimas notas editadas y los accesos rápidos.",
   "tour.sidebar.title": "El menú lateral",
   "tour.sidebar.body":
     "Desde aquí cambias de sección: Resumen, Notas, Tareas, Calendario y Grafo. Arrastra su borde para agrandarlo o achicarlo.",

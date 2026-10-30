@@ -4,7 +4,7 @@ import { Command } from "cmdk";
 import { useT } from "../lib/i18n";
 import { comboFor, comboLabel, type ShortcutMap } from "../lib/shortcuts";
 import { invoke } from "@tauri-apps/api/core";
-import { FileText, Loader2, Search } from "lucide-react";
+import { FileText, Loader2, Search, TextSearch } from "lucide-react";
 
 export interface VaultNote {
   name: string;
@@ -18,9 +18,16 @@ export interface CommandPaletteProps {
   onOpenChange: (open: boolean) => void;
   vaultPath: string | null;
   onSelectNote: (note: { path: string; name: string }) => void;
+  /** Abre la pestaña de búsqueda en el contenido de las notas. */
+  onOpenSearch: () => void;
   /** Atajos vigentes: la pista de abajo enseña el que se ha configurado. */
   shortcuts?: ShortcutMap;
 }
+
+const GROUP_CLASS =
+  "[&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:pt-2 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:text-meta [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:tracking-wider [&_[cmdk-group-heading]]:text-gus-muted [&_[cmdk-group-heading]]:uppercase";
+const ITEM_CLASS =
+  "group flex cursor-pointer items-center gap-2 rounded-lg border border-transparent px-3 py-2 text-sm text-gus-text outline-none transition-colors data-[selected=true]:border-gus-accent/40 data-[selected=true]:bg-gus-accent/15 data-[selected=true]:text-gus-accent";
 
 type LoadState = "loading" | "ready" | "error";
 
@@ -38,6 +45,7 @@ export default function CommandPalette({
   onOpenChange,
   vaultPath,
   onSelectNote,
+  onOpenSearch,
   shortcuts,
 }: CommandPaletteProps) {
   const t = useT();
@@ -138,7 +146,7 @@ export default function CommandPalette({
                   <>
                     <Command.Group
                       heading={t("app.tab.notes")}
-                      className="[&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:pt-2 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:text-meta [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:tracking-wider [&_[cmdk-group-heading]]:text-gus-muted [&_[cmdk-group-heading]]:uppercase"
+                      className={GROUP_CLASS}
                     >
                       {notes.map((note) => (
                         <Command.Item
@@ -149,7 +157,7 @@ export default function CommandPalette({
                             onOpenChange(false);
                             onSelectNote(note);
                           }}
-                          className="group flex cursor-pointer items-center gap-2 rounded-lg border border-transparent px-3 py-2 text-sm text-gus-text outline-none transition-colors data-[selected=true]:border-gus-accent/40 data-[selected=true]:bg-gus-accent/15 data-[selected=true]:text-gus-accent"
+                          className={ITEM_CLASS}
                         >
                           <FileText className="h-4 w-4 shrink-0" aria-hidden="true" />
                           <span className="min-w-0 truncate">{titleOf(note)}</span>
@@ -158,6 +166,25 @@ export default function CommandPalette({
                           </span>
                         </Command.Item>
                       ))}
+                    </Command.Group>
+
+                    {/* Después de las notas: Enter abre la primera nota, como antes. */}
+                    <Command.Group
+                      heading={t("palette.actions")}
+                      className={GROUP_CLASS}
+                    >
+                      <Command.Item
+                        value={t("palette.searchVault")}
+                        keywords={["buscar", "search", "contenido"]}
+                        onSelect={() => {
+                          onOpenChange(false);
+                          onOpenSearch();
+                        }}
+                        className={ITEM_CLASS}
+                      >
+                        <TextSearch className="h-4 w-4 shrink-0" aria-hidden="true" />
+                        <span className="min-w-0 truncate">{t("palette.searchVault")}</span>
+                      </Command.Item>
                     </Command.Group>
 
                     {/* Solo con la lista cargada: durante la carga cmdk contaría «sin coincidencias». */}

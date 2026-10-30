@@ -1629,8 +1629,6 @@ function App({
 
               <div aria-hidden="true" className="my-1 h-px w-8 bg-gus-border" />
 
-              <div aria-hidden="true" className="my-1 h-px w-8 bg-gus-border" />
-
               {TABS.map(({ id, labelKey, Icon }) => {
                 const label = t(labelKey);
                 const isActive = activeTab === id;
@@ -1885,6 +1883,7 @@ function App({
             onOpenChange={setPaletteOpen}
             vaultPath={currentVault}
             onSelectNote={handlePaletteSelectNote}
+            onOpenSearch={() => setActiveTab("search")}
             shortcuts={settings.shortcuts}
           />
 

@@ -239,7 +239,7 @@ const en: Record<keyof typeof es, string> = {
   "welcome.newNote": "New note",
   "welcome.searchNote": "Search notes",
   "welcome.emptyVault":
-    "There are no notes in this vault yet. Create the first one with the button above.",
+    "There are no notes in this vault yet. Create the first one with “New note”.",
   "welcome.hintDelete": "deletes the selection",
   "welcome.hintContext": "right click: file options",
   "welcome.hintDrag": "drag to move",
@@ -769,6 +769,8 @@ const en: Record<keyof typeof es, string> = {
   "pdf.notes.placeholder": "Write your note…",
   "palette.loadError": "The notes could not be loaded",
   "palette.hintNavigate": "to move",
+  "palette.searchVault": "Search the vault",
+  "palette.actions": "Actions",
   "palette.hintOpen": "to open",
   "explorer.readError": "read error",
   "explorer.folderCount": "{count} folder",
@@ -957,7 +959,7 @@ const en: Record<keyof typeof es, string> = {
   "tour.finish": "Finish",
   "tour.welcome.title": "Your overview",
   "tour.welcome.body":
-    "The first screen summarises your day: upcoming tasks, recently edited notes and quick actions.",
+    "The Summary gathers your day: upcoming tasks, recently edited notes and quick actions.",
   "tour.sidebar.title": "The sidebar",
   "tour.sidebar.body":
     "Switch sections from here: Overview, Notes, Tasks, Calendar and Graph. Drag its edge to resize it.",
