@@ -11,6 +11,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
+import { LucideProvider } from "lucide-react";
 import { AnimatePresence, domMax, LazyMotion, m, MotionConfig } from "framer-motion";
 import {
   CalendarDays,
@@ -1648,6 +1649,7 @@ function App({
   return (
     // LazyMotion + m: solo se empaqueta el motor que se usa (domMax incluye
     // animaciones, gestos y la prop `layout` de las listas).
+    <LucideProvider strokeWidth={1.75}>
     <LazyMotion features={domMax}>
       <MotionConfig reducedMotion={settings.animations ? "user" : "always"}>
         <div
@@ -1844,7 +1846,7 @@ function App({
                   initial={{ opacity: 0, x: 16 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: -16 }}
-                  transition={{ duration: 0.2, ease: "easeOut" }}
+                  transition={{ duration: 0.15, ease: "easeOut" }}
                   className="h-full w-full overflow-hidden"
                 >
                   {activeTab === "home" ? (
@@ -2014,6 +2016,7 @@ function App({
         </div>
       </MotionConfig>
     </LazyMotion>
+    </LucideProvider>
   );
 }
 

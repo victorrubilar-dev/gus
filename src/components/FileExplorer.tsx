@@ -1497,9 +1497,9 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
                 data-entry-kind="file"
                 layout
                 initial={false}
-                exit={{ opacity: 0, x: -16, transition: { duration: 0.18 } }}
+                exit={{ opacity: 0, x: -16, transition: { duration: 0.15 } }}
                 transition={{
-                  duration: 0.18,
+                  duration: 0.15,
                   ease: "easeOut",
                   layout: { type: "spring", stiffness: 500, damping: 45 },
                 }}
@@ -1518,7 +1518,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
                   <m.div
                     initial={{ opacity: 0, y: -6 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.18, ease: "easeOut" }}
+                    transition={{ duration: 0.15, ease: "easeOut" }}
                     className="flex items-center"
                   >
                     {isRenaming ? (

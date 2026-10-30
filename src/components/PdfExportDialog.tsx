@@ -231,7 +231,7 @@ export default function PdfExportDialog({ title, children, onClose }: PdfExportD
         tabIndex={-1}
         initial={{ opacity: 0, y: 12, scale: 0.985 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 0.18, ease: "easeOut" }}
+        transition={{ duration: 0.15, ease: "easeOut" }}
         className="relative flex h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-gus-border bg-gus-panel shadow-2xl focus:outline-none"
       >
         <header className="flex shrink-0 items-center gap-3 border-b border-gus-border px-4 py-3">

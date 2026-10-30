@@ -273,7 +273,7 @@ export default function TrashView({ vaultPath, onRestore }: TrashViewProps) {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, x: -24 }}
                 transition={{
-                  duration: 0.2,
+                  duration: 0.15,
                   ease: "easeOut",
                   layout: { type: "spring", stiffness: 500, damping: 45 },
                 }}

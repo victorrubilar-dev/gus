@@ -283,7 +283,7 @@ export default function Tour({ open, onFinish, onStepChange }: TourProps) {
           />
           <div
             aria-hidden="true"
-            className="pointer-events-none fixed rounded-xl ring-2 ring-gus-accent transition-[top,left,width,height] duration-200"
+            className="pointer-events-none fixed rounded-xl ring-2 ring-gus-accent transition-[top,left,width,height] duration-150"
             style={{ top: local.top - 3, left: local.left - 3, width: local.width + 6, height: local.height + 6 }}
           />
         </>
@@ -295,7 +295,7 @@ export default function Tour({ open, onFinish, onStepChange }: TourProps) {
         key={stepIndex}
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.2, ease: "easeOut" }}
+        transition={{ duration: 0.15, ease: "easeOut" }}
         style={style}
         className="fixed rounded-2xl border border-gus-border bg-gus-panel p-4 shadow-2xl shadow-black/50"
       >

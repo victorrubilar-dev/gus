@@ -97,7 +97,7 @@ export default function WelcomePanel({
       <m.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.2, ease: "easeOut" }}
+        transition={{ duration: 0.15, ease: "easeOut" }}
         className="m-auto flex w-full max-w-md flex-col items-center gap-5 px-6 py-10 text-center"
       >
         <span className="flex h-12 w-12 items-center justify-center rounded-2xl border border-gus-border bg-gus-card text-gus-muted">

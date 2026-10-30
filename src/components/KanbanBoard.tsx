@@ -115,7 +115,7 @@ export default function KanbanBoard({
                       initial={{ opacity: 0, y: -6 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, x: 24 }}
-                      transition={{ duration: 0.16, ease: "easeOut" }}
+                      transition={{ duration: 0.15, ease: "easeOut" }}
                     >
                       <div
                         draggable

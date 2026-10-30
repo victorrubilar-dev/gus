@@ -60,7 +60,7 @@ export default function UpdateNotice({ info, current, offsetLeft, onDismiss }: U
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 12 }}
-      transition={{ duration: 0.2, ease: "easeOut" }}
+      transition={{ duration: 0.15, ease: "easeOut" }}
       style={{
         left: offsetLeft,
         width: `min(20rem, calc(100vw - ${offsetLeft + 16}px))`,

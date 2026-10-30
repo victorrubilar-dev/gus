@@ -282,7 +282,7 @@ export default function DashboardView({
               onClick={() => onNavigate(tab)}
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.2, delay: index * 0.04 }}
+              transition={{ duration: 0.15, delay: index * 0.04 }}
               className={clsx(
                 CARD,
                 "group flex items-center justify-between px-3 py-2.5 text-left outline-none transition-colors hover:border-gus-accent/40 focus-visible:ring-2 focus-visible:ring-gus-accent/60",
