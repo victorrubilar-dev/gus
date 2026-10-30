@@ -33,6 +33,7 @@
     "bench:regresion": "node bench/prueba-regresion.mjs",
     "bench:foco": "node bench/prueba-foco.mjs",
     "bench:corrector": "node bench/prueba-corrector.mjs",
+    "bench:portapapeles": "node bench/prueba-portapapeles.mjs",
     "bench:cursor": "node bench/prueba-cursor.mjs",
     "bench:tablas": "node bench/prueba-teclado-tablas.mjs",
     "traza": "node bench/colector.mjs"
