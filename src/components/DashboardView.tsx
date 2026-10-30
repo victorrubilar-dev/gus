@@ -43,7 +43,7 @@ export interface DashboardViewProps {
 }
 
 const ICON_BOX =
-  "flex h-10 w-10 items-center justify-center rounded-xl border border-gus-accent/40 bg-gus-accent/15 text-gus-accent";
+  "flex h-10 w-10 items-center justify-center rounded-xl border border-gus-border bg-gus-card text-gus-muted";
 
 const CARD = "rounded-xl border border-gus-border bg-gus-card";
 
@@ -307,7 +307,7 @@ export default function DashboardView({
             <div className={clsx(CARD, "flex flex-col gap-3 p-4")}>
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
-                  <ListTodo className="h-4 w-4 text-gus-accent" strokeWidth={1.75} aria-hidden="true" />
+                  <ListTodo className="h-4 w-4 text-gus-muted" strokeWidth={1.75} aria-hidden="true" />
                   <h3 className="text-sm font-semibold">{t("dashboard.nextTasks")}</h3>
                   {upcoming.length > 0 && (
                     <span className="rounded-full border border-gus-border bg-gus-panel px-2 py-0.5 text-meta text-gus-muted">
@@ -319,7 +319,7 @@ export default function DashboardView({
                 <button
                   type="button"
                   onClick={() => onNavigate("tasks")}
-                  className="gus-btn gus-btn-ghost w-auto px-2 text-body text-gus-accent focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
+                  className="gus-btn gus-btn-ghost w-auto px-2 text-body focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
                 >
                   {t("dashboard.openTasks")}
                 </button>
@@ -427,14 +427,14 @@ export default function DashboardView({
             <div className={clsx(CARD, "flex flex-col gap-3 p-4")}>
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
-                  <StickyNote className="h-4 w-4 text-gus-accent" strokeWidth={1.75} aria-hidden="true" />
+                  <StickyNote className="h-4 w-4 text-gus-muted" strokeWidth={1.75} aria-hidden="true" />
                   <h3 className="text-sm font-semibold">{t("dashboard.recentNotes")}</h3>
                 </div>
 
                 <button
                   type="button"
                   onClick={() => onNavigate("notes")}
-                  className="gus-btn gus-btn-ghost w-auto px-2 text-body text-gus-accent focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
+                  className="gus-btn gus-btn-ghost w-auto px-2 text-body focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
                 >
                   Ver todas
                 </button>

@@ -306,7 +306,7 @@ export default function CalendarView({
                   "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-meta capitalize transition hover:opacity-80 focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none",
                   active
                     ? "border-gus-accent/60 bg-gus-accent/20 text-gus-accent ring-2 ring-gus-accent/70"
-                    : "border-gus-accent/40 bg-gus-accent/15 text-gus-accent",
+                    : "border-gus-border bg-gus-card text-gus-muted hover:text-gus-text",
                 )}
               >
                 {label}
@@ -532,7 +532,7 @@ export default function CalendarView({
                     <button
                       type="button"
                       onClick={onOpenTasks}
-                      className="gus-btn gus-btn-ghost w-auto px-2 text-body text-gus-accent"
+                      className="gus-btn gus-btn-ghost w-auto px-2 text-body"
                     >
                       {t("calendar.allTasks")}
                     </button>
@@ -616,7 +616,7 @@ export default function CalendarView({
                                       "rounded-full border px-1.5 py-px text-meta transition hover:opacity-80 focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none",
                                       active
                                         ? "border-gus-accent/60 bg-gus-accent/20 text-gus-accent ring-2 ring-gus-accent/70"
-                                        : "border-gus-accent/40 bg-gus-accent/15 text-gus-accent",
+                                        : "border-gus-border bg-gus-card text-gus-muted hover:text-gus-text",
                                     )}
                                   >
                                     {tag}

@@ -43,7 +43,7 @@ export default function NoteTabs({ tabs, activePath, onSelect, onClose }: NoteTa
               onAuxClick={(event) => {
                 if (event.button === 1) onClose(tab);
               }}
-              className="h-9 max-w-44 min-w-20 truncate rounded-md px-2 text-body outline-none transition-colors hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60"
+              className={clsx("h-9 max-w-44 min-w-20 truncate rounded-md px-2 text-body outline-none transition-colors hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60", active && "font-mono text-gus-text")}
             >
               {tab.title}
             </button>

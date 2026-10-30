@@ -1545,7 +1545,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
                         {isActive && (
                           <m.span
                             layoutId="file-active"
-                            className="absolute inset-0 rounded-lg border border-gus-accent/40 bg-gus-card"
+                            className="absolute inset-0 rounded-lg border-l-2 border-gus-accent bg-gus-card"
                             transition={{ type: "spring", stiffness: 500, damping: 40 }}
                           />
                         )}
@@ -1553,7 +1553,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
                           <ImageIcon
                             className={clsx(
                               "relative h-4 w-4 shrink-0",
-                              isActive ? "text-gus-accent" : "text-gus-muted",
+                              isActive ? "text-gus-text" : "text-gus-muted",
                             )}
                             strokeWidth={1.75}
                             aria-hidden="true"
@@ -1562,7 +1562,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
                           <FileIcon
                             className={clsx(
                               "relative h-4 w-4 shrink-0",
-                              isActive ? "text-gus-accent" : "text-gus-muted",
+                              isActive ? "text-gus-text" : "text-gus-muted",
                             )}
                             strokeWidth={1.75}
                             aria-hidden="true"
@@ -1571,7 +1571,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
                           <FileText
                             className={clsx(
                               "relative h-4 w-4 shrink-0",
-                              isActive ? "text-gus-accent" : "text-gus-muted",
+                              isActive ? "text-gus-text" : "text-gus-muted",
                             )}
                             strokeWidth={1.75}
                             aria-hidden="true"

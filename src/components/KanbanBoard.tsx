@@ -194,7 +194,7 @@ export default function KanbanBoard({
                                     "rounded-full border px-1.5 py-0.5 text-meta capitalize transition-colors",
                                     active
                                       ? "border-gus-accent/60 bg-gus-accent/20 text-gus-accent"
-                                      : "border-gus-accent/40 bg-gus-accent/15 text-gus-accent hover:opacity-80",
+                                      : "border-gus-border bg-gus-card text-gus-muted hover:text-gus-text",
                                     onTagClick &&
                                       "focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none",
                                     !onTagClick && "cursor-default",

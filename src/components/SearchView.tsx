@@ -385,7 +385,7 @@ export default function SearchView({
                           {match.tags.map((entry) => (
                             <span
                               key={entry}
-                              className="rounded-full border border-gus-accent/40 bg-gus-accent/15 px-1.5 text-meta text-gus-accent"
+                              className="gus-chip"
                             >
                               {entry}
                             </span>

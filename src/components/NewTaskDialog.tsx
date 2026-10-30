@@ -201,7 +201,7 @@ export default function NewTaskDialog({ open, onOpenChange }: NewTaskDialogProps
                     {tags.map((tag) => (
                       <span
                         key={tag}
-                        className="inline-flex items-center gap-1 rounded-full border border-gus-accent/40 bg-gus-accent/15 px-2 py-0.5 text-meta capitalize text-gus-accent"
+                        className="gus-chip gap-1 capitalize"
                       >
                         {tag}
                         <button

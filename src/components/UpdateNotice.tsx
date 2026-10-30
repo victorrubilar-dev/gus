@@ -68,7 +68,7 @@ export default function UpdateNotice({ info, current, offsetLeft, onDismiss }: U
       className="fixed bottom-4 z-50 rounded-xl border border-gus-accent/40 bg-gus-panel p-3.5 shadow-2xl shadow-black/40"
     >
       <div className="flex items-start gap-3">
-        <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gus-accent/40 bg-gus-accent/15 text-gus-accent">
+        <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gus-border bg-gus-card text-gus-muted">
           <ArrowUpCircle className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
         </span>
 

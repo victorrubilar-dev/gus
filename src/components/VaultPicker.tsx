@@ -716,7 +716,7 @@ export default function VaultPicker({
                         {vault.name}
                       </span>
                       {lastVault === vault.path && (
-                        <span className="shrink-0 rounded-full border border-gus-accent/50 bg-gus-accent/20 px-1.5 py-px text-meta tracking-wide text-gus-accent uppercase backdrop-blur">
+                        <span className="shrink-0 gus-chip tracking-wide uppercase backdrop-blur">
                           {t("vaults.lastUsed")}
                         </span>
                       )}

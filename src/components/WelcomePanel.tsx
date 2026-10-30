@@ -100,7 +100,7 @@ export default function WelcomePanel({
         transition={{ duration: 0.2, ease: "easeOut" }}
         className="m-auto flex w-full max-w-md flex-col items-center gap-5 px-6 py-10 text-center"
       >
-        <span className="flex h-12 w-12 items-center justify-center rounded-2xl border border-gus-accent/40 bg-gus-accent/15 text-gus-accent">
+        <span className="flex h-12 w-12 items-center justify-center rounded-2xl border border-gus-border bg-gus-card text-gus-muted">
           <StickyNote className="h-6 w-6" strokeWidth={1.75} aria-hidden="true" />
         </span>
 

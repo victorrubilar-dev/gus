@@ -83,7 +83,7 @@ export default function BacklinksPanel({
         onClick={() => setOpen((value) => !value)}
         className="flex w-full items-center gap-2 px-4 py-2 text-left outline-none transition-colors hover:bg-gus-card focus-visible:bg-gus-card"
       >
-        <Link2 className="h-3.5 w-3.5 shrink-0 text-gus-accent" strokeWidth={1.75} aria-hidden="true" />
+        <Link2 className="h-3.5 w-3.5 shrink-0 text-gus-muted" strokeWidth={1.75} aria-hidden="true" />
         <span className="text-body font-semibold tracking-wide text-gus-text">
           {t("backlinks.title")}
         </span>
@@ -93,7 +93,7 @@ export default function BacklinksPanel({
         )}
 
         {backlinks.length > 0 && (
-          <span className="rounded-full border border-gus-accent/40 bg-gus-accent/15 px-1.5 text-meta tabular-nums text-gus-accent">
+          <span className="gus-chip tabular-nums">
             {backlinks.length}
           </span>
         )}

@@ -1496,7 +1496,7 @@ function App({
             <div className="flex h-full min-h-0 flex-col">
               <div className="flex items-center justify-between gap-3 border-b border-gus-border bg-gus-panel px-4 py-2">
                 <span className="truncate font-mono text-body text-gus-muted">{image.title}</span>
-                <span className="shrink-0 rounded-full border border-gus-accent/40 bg-gus-accent/15 px-2 py-0.5 text-meta uppercase tracking-wide text-gus-accent">
+                <span className="shrink-0 gus-chip uppercase tracking-wide">
                   {t("app.badge.image")}
                 </span>
               </div>
@@ -1535,7 +1535,7 @@ function App({
             <div className="flex h-full min-h-0 flex-col">
               <div className="flex items-center justify-between gap-3 border-b border-gus-border bg-gus-panel px-4 py-2">
                 <span className="truncate font-mono text-body text-gus-muted">{pdf.title}</span>
-                <span className="shrink-0 rounded-full border border-gus-accent/40 bg-gus-accent/15 px-2 py-0.5 text-meta uppercase tracking-wide text-gus-accent">
+                <span className="shrink-0 gus-chip uppercase tracking-wide">
                   PDF
                 </span>
               </div>

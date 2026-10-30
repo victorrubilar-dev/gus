@@ -539,4 +539,16 @@ body {
   background: var(--color-gus-card);
   color: var(--color-gus-text);
 }
+
+/* Etiquetas e insignias: neutras. El acento queda para acción, selección y foco. */
+.gus-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border: 1px solid var(--color-gus-border);
+  border-radius: 9999px;
+  background: var(--color-gus-card);
+  color: var(--color-gus-muted);
+  font-size: var(--text-meta);
+}
 }

@@ -47,7 +47,7 @@ export default function DailyNoteBar({ date, busy = false, onNavigate }: DailyNo
         {dailyTitle(date)}
       </p>
 
-      <span className="rounded-full border border-gus-accent/40 bg-gus-accent/15 px-2 py-0.5 text-meta font-medium uppercase tracking-wide text-gus-accent">
+      <span className="gus-chip font-medium uppercase tracking-wide">
         {t("daily.badge")}
       </span>
 

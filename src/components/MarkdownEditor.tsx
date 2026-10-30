@@ -4075,7 +4075,7 @@ export default function MarkdownEditor({
           {noteTags.map((tag) => (
             <span
               key={tag}
-              className="inline-flex items-center gap-1 rounded-full border border-gus-accent/40 bg-gus-accent/15 px-2 py-0.5 text-meta text-gus-accent"
+              className="gus-chip gap-1"
             >
               {tag}
               <button
