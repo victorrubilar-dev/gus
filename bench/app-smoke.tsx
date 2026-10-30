@@ -25,6 +25,7 @@ const archivos = new Map<string, string>([
 const tema = new URLSearchParams(location.search).get("tema");
 const llamadas: { cmd: string; args: Record<string, unknown> }[] = [];
 const tareas: unknown[] = [];
+const biblioteca: { shelves: string[]; assign: Record<string, string> } = { shelves: [], assign: {} };
 
 /**
  * Con `?semilla` el vault trae contenido de verdad (notas largas con etiquetas,
@@ -85,6 +86,14 @@ const respuestas: Record<string, (args: Record<string, unknown>) => unknown> = {
     return args.path;
   },
   read_vault_pdf: () => PDF_DE_PRUEBA,
+  list_vault_pdfs: () => [
+    { name: "manual.pdf", path: "/vault/manual.pdf", relative: "manual.pdf", modified_ms: ahora },
+  ],
+  load_library: () => biblioteca,
+  save_library: (args) => {
+    Object.assign(biblioteca, args.store as object);
+    return null;
+  },
   load_tasks: () => tareas,
   save_tasks: (args) => {
     tareas.splice(0, tareas.length, ...(args.tasks as unknown[]));

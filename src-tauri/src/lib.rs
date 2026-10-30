@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_opener::OpenerExt;
 
+mod biblioteca;
 mod busqueda;
 mod archivos;
 mod configuracion;
@@ -431,6 +432,9 @@ pub fn run() {
             listados::list_recent_notes,
             listados::list_vault_notes,
             listados::list_vault_images,
+            listados::list_vault_pdfs,
+            biblioteca::load_library,
+            biblioteca::save_library,
             listados::list_vault_tags,
             enlaces::build_link_graph,
             busqueda::build_search_index,

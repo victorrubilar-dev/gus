@@ -290,20 +290,22 @@ pub(crate) fn list_vault_notes(path: String) -> Result<Vec<RecentNote>, String> 
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct VaultImage {
+pub struct VaultAsset {
     pub name: String,
     pub path: String,
     pub relative: String,
     pub modified_ms: Option<u64>,
 }
 
-/// Recorre el vault buscando imágenes, con la misma poda que `collect_notes`
-/// (nada de ocultas ni más allá de ocho niveles).
-pub(crate) fn collect_images(
+/// Recorre el vault buscando los archivos que cumplan `keep` (imágenes, PDF…),
+/// con la misma poda que `collect_notes` (nada de ocultas ni más allá de ocho
+/// niveles).
+pub(crate) fn collect_assets(
     dir: &std::path::Path,
     relative: &str,
     depth: usize,
-    out: &mut Vec<VaultImage>,
+    keep: fn(&std::path::Path) -> bool,
+    out: &mut Vec<VaultAsset>,
 ) {
     if depth >= 8 {
         return;
@@ -331,9 +333,9 @@ pub(crate) fn collect_images(
         };
 
         if metadata.is_dir() {
-            collect_images(&child, &relative, depth + 1, out);
-        } else if metadata.is_file() && is_image_file(&child) {
-            out.push(VaultImage {
+            collect_assets(&child, &relative, depth + 1, keep, out);
+        } else if metadata.is_file() && keep(&child) {
+            out.push(VaultAsset {
                 name,
                 path: child.to_string_lossy().into_owned(),
                 relative,
@@ -348,7 +350,7 @@ pub(crate) fn collect_images(
  * recientes, que son las que suele querer quien inserta una imagen.
  */
 #[tauri::command]
-pub(crate) fn list_vault_images(path: String) -> Result<Vec<VaultImage>, String> {
+pub(crate) fn list_vault_images(path: String) -> Result<Vec<VaultAsset>, String> {
     let root = expand_home(&path);
     let root = std::path::Path::new(&root);
     if !root.is_dir() {
@@ -356,7 +358,7 @@ pub(crate) fn list_vault_images(path: String) -> Result<Vec<VaultImage>, String>
     }
 
     let mut images = Vec::new();
-    collect_images(root, "", 0, &mut images);
+    collect_assets(root, "", 0, is_image_file, &mut images);
     images.sort_by(|a, b| {
         b.modified_ms
             .cmp(&a.modified_ms)
@@ -365,6 +367,22 @@ pub(crate) fn list_vault_images(path: String) -> Result<Vec<VaultImage>, String>
     images.truncate(500);
 
     Ok(images)
+}
+
+/// PDF de todo el vault para la biblioteca: por orden alfabético de ruta.
+#[tauri::command]
+pub(crate) fn list_vault_pdfs(path: String) -> Result<Vec<VaultAsset>, String> {
+    let root = expand_home(&path);
+    let root = std::path::Path::new(&root);
+    if !root.is_dir() {
+        return Err(format!("No existe la carpeta «{}»", root.display()));
+    }
+
+    let mut pdfs = Vec::new();
+    collect_assets(root, "", 0, is_pdf_file, &mut pdfs);
+    pdfs.sort_by_key(|pdf| pdf.relative.to_lowercase());
+
+    Ok(pdfs)
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]

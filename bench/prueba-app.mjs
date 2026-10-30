@@ -96,6 +96,29 @@ await page.getByText("manual.pdf", { exact: true }).first().click();
 await page.locator("canvas").first().waitFor({ timeout: 15000 });
 ok(true, "el visor PDF pinta la página (worker de pdf.js bajo la CSP)");
 
+// Biblioteca de PDF: portada con pdf.js, estantería nueva y asignación.
+await page.getByRole("button", { name: "Biblioteca", exact: true }).first().click();
+await page.locator('li img[src^="data:image/jpeg"]').first().waitFor({ timeout: 15000 });
+ok(true, "la biblioteca pinta la portada del PDF (pdf.js + canvas bajo la CSP)");
+
+await page.getByRole("button", { name: "Nueva estantería" }).click();
+await page.getByPlaceholder("Nombre de la estantería").fill("Clases");
+await page.keyboard.press("Enter");
+await page.getByRole("button", { name: /^Todos/ }).click();
+await page.getByLabel("Estantería de manual.pdf").selectOption("Clases");
+await page.waitForFunction(
+  () => window.__smoke.llamadas.some(
+    (c) => c.cmd === "save_library" && c.args.store?.assign?.["manual.pdf"] === "Clases",
+  ),
+  null,
+  { timeout: 8000 },
+);
+ok(true, "asignar un PDF a una estantería se guarda en el backend (save_library)");
+
+await page.locator("li button", { hasText: "manual" }).first().click();
+await page.locator("canvas").first().waitFor({ timeout: 15000 });
+ok(true, "abrir una tarjeta de la biblioteca muestra el PDF en el visor");
+
 await browser.close();
 console.log(fallos.length === 0 ? "\nTODO EN VERDE" : `\n${fallos.length} fallo(s)`);
 process.exit(fallos.length === 0 ? 0 : 1);

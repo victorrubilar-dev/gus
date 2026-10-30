@@ -18,6 +18,7 @@ import {
   LayoutDashboard,
   ListTodo,
   LogOut,
+  Library,
   Network,
   PanelLeftClose,
   PanelLeftOpen,
@@ -103,7 +104,7 @@ import UpdateNotice from "./components/UpdateNotice";
 import gusIcon from "./assets/gus-icon-512.png";
 import "./App.css";
 
-type TabId = "home" | "notes" | "tasks" | "calendar" | "graph" | "search" | "settings" | "trash";
+type TabId = "home" | "notes" | "tasks" | "calendar" | "graph" | "library" | "search" | "settings" | "trash";
 type NoteStatus = "idle" | "loading" | "ready" | "error";
 
 interface OpenNote {
@@ -132,6 +133,7 @@ const TABS: { id: TabId; labelKey: MessageKey; Icon: LucideIcon }[] = [
   { id: "tasks", labelKey: "app.tab.tasks", Icon: ListTodo },
   { id: "calendar", labelKey: "app.tab.calendar", Icon: CalendarDays },
   { id: "graph", labelKey: "app.tab.graph", Icon: Network },
+  { id: "library", labelKey: "app.tab.library", Icon: Library },
 ];
 
 const DEFAULT_BASE_DIR = "~/Documents/gus-vaults";
@@ -222,6 +224,7 @@ function titleFromFileName(name: string): string {
 
 // Visor de PDF: carga pdf.js solo cuando se abre el primer documento.
 const PdfViewer = lazy(() => import("./components/PdfViewer"));
+const LibraryView = lazy(() => import("./components/LibraryView"));
 
 /**
  * Raíz de la app: solo monta el proveedor de idioma con lo que hay en
@@ -2023,6 +2026,17 @@ function App({
                       onNewTask={openNewTask}
                       showCompleted={settings.calendarShowCompleted}
                     />
+                  ) : activeTab === "library" ? (
+                    <Suspense fallback={<p className="p-6 text-sm text-gus-muted">{t("app.loadingViewer")}</p>}>
+                      <LibraryView
+                        vaultPath={currentVault}
+                        refreshKey={vaultRefresh}
+                        onOpenPdf={(pdf) => {
+                          setActiveTab("notes");
+                          handleSelectNote({ id: pdf.path, name: pdf.name, kind: "pdf" });
+                        }}
+                      />
+                    </Suspense>
                   ) : activeTab === "graph" ? (
                     <GraphView
                       vaultPath={currentVault}
