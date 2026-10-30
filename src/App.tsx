@@ -18,6 +18,7 @@ import {
   LayoutDashboard,
   ListTodo,
   LogOut,
+  Flame,
   Library,
   Network,
   PanelLeftClose,
@@ -48,6 +49,7 @@ import MarkdownEditor, {
 } from "./components/MarkdownEditor";
 import SettingsPanel from "./components/SettingsPanel";
 import DailyNoteBar from "./components/DailyNoteBar";
+import HabitsView from "./components/HabitsView";
 import NoteTabs, { type NoteTab } from "./components/NoteTabs";
 import TaskList from "./components/TaskList";
 import TrashView from "./components/TrashView";
@@ -105,7 +107,7 @@ import UpdateNotice from "./components/UpdateNotice";
 import gusIcon from "./assets/gus-icon-512.png";
 import "./App.css";
 
-type TabId = "home" | "notes" | "tasks" | "calendar" | "graph" | "library" | "search" | "settings" | "trash";
+type TabId = "home" | "notes" | "tasks" | "calendar" | "graph" | "library" | "habits" | "search" | "settings" | "trash";
 type NoteStatus = "idle" | "loading" | "ready" | "error";
 
 interface OpenNote {
@@ -135,6 +137,7 @@ const TABS: { id: TabId; labelKey: MessageKey; Icon: LucideIcon }[] = [
   { id: "calendar", labelKey: "app.tab.calendar", Icon: CalendarDays },
   { id: "graph", labelKey: "app.tab.graph", Icon: Network },
   { id: "library", labelKey: "app.tab.library", Icon: Library },
+  { id: "habits", labelKey: "app.tab.habits", Icon: Flame },
 ];
 
 const DEFAULT_BASE_DIR = "~/Documents/gus-vaults";
@@ -2050,6 +2053,8 @@ function App({
                       onNewTask={openNewTask}
                       showCompleted={settings.calendarShowCompleted}
                     />
+                  ) : activeTab === "habits" ? (
+                    <HabitsView vaultPath={currentVault} />
                   ) : activeTab === "library" ? (
                     <Suspense fallback={<p className="p-6 text-sm text-gus-muted">{t("app.loadingViewer")}</p>}>
                       <LibraryView

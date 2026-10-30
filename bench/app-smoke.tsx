@@ -31,6 +31,7 @@ const llamadas: { cmd: string; args: Record<string, unknown> }[] = [];
 const tareas: unknown[] = location.search.includes("semilla")
   ? []
   : [{ id: "base", title: "Tarea base", tags: [], completes: false }];
+const habitos: { habits: unknown[]; log: Record<string, string[]> } = { habits: [], log: {} };
 const biblioteca: { shelves: string[]; assign: Record<string, string> } = { shelves: [], assign: {} };
 
 /**
@@ -104,6 +105,11 @@ const respuestas: Record<string, (args: Record<string, unknown>) => unknown> = {
   list_vault_pdfs: () => [
     { name: "manual.pdf", path: "/vault/manual.pdf", relative: "manual.pdf", modified_ms: ahora },
   ],
+  load_habits: () => habitos,
+  save_habits: (args) => {
+    Object.assign(habitos, args.store as object);
+    return null;
+  },
   load_library: () => biblioteca,
   save_library: (args) => {
     Object.assign(biblioteca, args.store as object);

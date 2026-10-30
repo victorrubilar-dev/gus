@@ -7,6 +7,7 @@ mod busqueda;
 mod archivos;
 mod configuracion;
 mod enlaces;
+mod habitos;
 mod importar;
 mod listados;
 mod menu;
@@ -436,6 +437,8 @@ pub fn run() {
             listados::list_notes_with_checkboxes,
             biblioteca::load_library,
             biblioteca::save_library,
+            habitos::load_habits,
+            habitos::save_habits,
             listados::list_vault_tags,
             enlaces::build_link_graph,
             busqueda::build_search_index,

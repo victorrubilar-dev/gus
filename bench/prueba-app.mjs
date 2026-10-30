@@ -123,6 +123,22 @@ await page.waitForFunction(
 );
 ok(true, "marcar un checkbox en la lista de tareas lo reescribe en su nota");
 
+// Hábitos: crear uno y marcar hoy.
+await page.getByRole("button", { name: "Hábitos", exact: true }).first().click();
+await page.getByRole("button", { name: "Nuevo hábito" }).click();
+await page.getByLabel("Hábito", { exact: true }).fill("Leer 20 minutos");
+await page.getByRole("button", { name: "Guardar" }).click();
+await page.getByText("Leer 20 minutos").waitFor({ timeout: 8000 });
+await page.getByRole("checkbox", { name: /Leer 20 minutos/ }).check({ force: true });
+await page.waitForFunction(
+  () => window.__smoke.llamadas.some(
+    (c) => c.cmd === "save_habits" && Object.values(c.args.store?.log ?? {}).some((days) => days.length === 1),
+  ),
+  null,
+  { timeout: 8000 },
+);
+ok(true, "crear un hábito y marcar hoy se guarda en el backend (save_habits)");
+
 // Biblioteca de PDF: portada con pdf.js, estantería nueva y asignación.
 await page.getByRole("button", { name: "Biblioteca", exact: true }).first().click();
 await page.locator('li img[src^="data:image/jpeg"]').first().waitFor({ timeout: 15000 });
