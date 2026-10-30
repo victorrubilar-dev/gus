@@ -21,6 +21,7 @@ export interface EditorImagesDeps {
   caretAtPoint: (clientX: number, clientY: number) => number | null;
 }
 
+/** Entrada del explorador que se arrastra, si es que lo es. */
 export function readExplorerEntry(dataTransfer: DataTransfer): DragEntry | null {
   try {
     const raw = dataTransfer.getData(DRAG_ENTRY_MIME);
@@ -214,6 +215,7 @@ export function useEditorImages(deps: EditorImagesDeps) {
     return result;
   }
 
+  /** Imagen elegida en el selector del vault: se enlaza relativa a la nota. */
   function insertVaultImage(image: VaultImage) {
     const area = textareaRef.current;
     const start =
