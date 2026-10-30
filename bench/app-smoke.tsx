@@ -21,6 +21,8 @@ const archivos = new Map<string, string>([
   ["/vault/bienvenida.md", "# Bienvenida\n"],
   ["/vault/manual.pdf", ""],
 ]);
+/** Sin `?semilla`: una nota con un checkbox para el smoke test de la lista de tareas. */
+if (!location.search.includes("semilla")) archivos.set("/vault/pendientes.md", "# Pendientes\n\n- [ ] comprar pan\n");
 /** `?tema=<clave>` fija el tema de la configuración simulada (ver `bench/capturas.mjs`). */
 const tema = new URLSearchParams(location.search).get("tema");
 const llamadas: { cmd: string; args: Record<string, unknown> }[] = [];
@@ -86,6 +88,15 @@ const respuestas: Record<string, (args: Record<string, unknown>) => unknown> = {
     return args.path;
   },
   read_vault_pdf: () => PDF_DE_PRUEBA,
+  list_notes_with_checkboxes: () =>
+    [...archivos.entries()]
+      .filter(([ruta, texto]) => ruta.endsWith(".md") && /^\s*- \[[ xX]\]/m.test(texto))
+      .map(([path, text]) => ({
+        name: path.split("/").pop() as string,
+        path,
+        relative: path.replace("/vault/", ""),
+        text,
+      })),
   list_vault_pdfs: () => [
     { name: "manual.pdf", path: "/vault/manual.pdf", relative: "manual.pdf", modified_ms: ahora },
   ],

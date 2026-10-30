@@ -96,6 +96,18 @@ await page.getByText("manual.pdf", { exact: true }).first().click();
 await page.locator("canvas").first().waitFor({ timeout: 15000 });
 ok(true, "el visor PDF pinta la página (worker de pdf.js bajo la CSP)");
 
+// Checkboxes de las notas en la lista de tareas (REQ-09).
+await page.getByRole("button", { name: "Tareas", exact: true }).first().click();
+await page.getByRole("tab", { name: "Notas" }).click();
+await page.getByText("comprar pan").waitFor({ timeout: 8000 });
+await page.getByText("comprar pan").click();
+await page.waitForFunction(
+  () => window.__smoke.archivos.get("/vault/pendientes.md")?.includes("- [x] comprar pan"),
+  null,
+  { timeout: 8000 },
+);
+ok(true, "marcar un checkbox en la lista de tareas lo reescribe en su nota");
+
 // Biblioteca de PDF: portada con pdf.js, estantería nueva y asignación.
 await page.getByRole("button", { name: "Biblioteca", exact: true }).first().click();
 await page.locator('li img[src^="data:image/jpeg"]').first().waitFor({ timeout: 15000 });

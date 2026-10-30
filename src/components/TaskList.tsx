@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useEffectEvent, useRef, useState, type KeyboardEvent } from "react";
 import { AnimatePresence, m } from "framer-motion";
-import { Calendar, Check, Flag, ListTodo, Plus, RefreshCw, SquareKanban, Trash2, X } from "lucide-react";
+import { Calendar, Flag, ListTodo, Plus, RefreshCw, SquareKanban, StickyNote, Trash2, X } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import clsx from "clsx";
@@ -18,6 +18,9 @@ import { NEW_TASK_EVENT, type NewTask } from "../lib/newTask";
 import EmptyState from "./EmptyState";
 import SegmentedControl from "./SegmentedControl";
 import ViewHeader from "./ViewHeader";
+import CheckboxVisual from "./CheckboxVisual";
+import NoteTasksView from "./NoteTasksView";
+import type { NoteTask } from "../lib/noteTasks";
 import KanbanBoard, { type KanbanColumnId } from "./KanbanBoard";
 
 export type { Task };
@@ -30,6 +33,9 @@ export interface TaskListProps {
   onTasksChange?: (tasks: Task[]) => void;
   hideCompleted?: boolean;
   onNewTask: () => void;
+  /** Checkboxes de las notas (REQ-09): marcarlos reescribe la línea de su nota. */
+  onToggleNoteTask?: (task: NoteTask) => Promise<void>;
+  onOpenNote?: (path: string) => void;
 }
 
 const TAG_COLORS = [
@@ -97,26 +103,14 @@ function dueState(
   return { due, title: plain, className: normal };
 }
 
-function CheckboxVisual({ checked }: { checked: boolean }) {
-  return (
-    <span className="relative grid h-5 w-5 shrink-0 place-items-center rounded-md border border-gus-border bg-gus-panel transition-colors peer-checked:border-gus-accent peer-checked:bg-gus-accent peer-focus-visible:ring-2 peer-focus-visible:ring-gus-accent/60">
-      <m.span
-        initial={false}
-        animate={{ scale: checked ? 1 : 0, opacity: checked ? 1 : 0 }}
-        transition={{ type: "spring", stiffness: 500, damping: 30 }}
-      >
-        <Check className="h-3.5 w-3.5 text-gus-bg" strokeWidth={3} aria-hidden="true" />
-      </m.span>
-    </span>
-  );
-}
-
 export default function TaskList({
   tasks = [],
   vaultPath,
   onTasksChange,
   hideCompleted = false,
   onNewTask,
+  onToggleNoteTask,
+  onOpenNote,
 }: TaskListProps) {
   const t = useT();
   const fileMode = vaultPath != null && vaultPath !== "";
@@ -138,7 +132,7 @@ export default function TaskList({
   const [reloadKey, setReloadKey] = useState(0);
 
   const [tagFilter, setTagFilter] = useState<string | null>(null);
-  const [view, setView] = useState<"list" | "board">("board");
+  const [view, setView] = useState<"list" | "board" | "notes">("board");
 
   const writeQueueRef = useRef<Promise<unknown>>(Promise.resolve());
   // Último callback del padre. Al llamarse también desde handlers (no solo
@@ -403,6 +397,9 @@ export default function TaskList({
               options={[
                 { value: "board", label: t("tasks.viewBoard"), title: t("tasks.kanban"), icon: SquareKanban },
                 { value: "list", label: t("tasks.viewList"), title: t("tasks.list"), icon: ListTodo },
+                ...(fileMode && onToggleNoteTask
+                  ? [{ value: "notes" as const, label: t("tasks.viewNotes"), title: t("tasks.notesTitle"), icon: StickyNote }]
+                  : []),
               ]}
             />
             <span className="text-body text-gus-muted">
@@ -507,6 +504,16 @@ export default function TaskList({
               />
             )}
           </div>
+        )}
+
+        {view === "notes" && vaultPath && onToggleNoteTask && (
+          <NoteTasksView
+            key="notes"
+            vaultPath={vaultPath}
+            hideCompleted={hideCompleted}
+            onToggle={onToggleNoteTask}
+            onOpenNote={onOpenNote}
+          />
         )}
 
         {view === "list" && (

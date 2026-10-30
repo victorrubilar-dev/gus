@@ -289,6 +289,56 @@ pub(crate) fn list_vault_notes(path: String) -> Result<Vec<RecentNote>, String> 
     Ok(notes)
 }
 
+/// Nota que contiene al menos un checkbox `- [ ]` / `- [x]`, con su texto.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct NoteWithTasks {
+    pub name: String,
+    pub path: String,
+    pub relative: String,
+    pub text: String,
+}
+
+/// Más allá de esto una nota no se lee entera solo para buscar checkboxes.
+const MAX_TASK_NOTE_BYTES: u64 = 1024 * 1024;
+
+fn has_checkbox_line(text: &str) -> bool {
+    text.lines().any(|line| {
+        let line = line.trim_start();
+        ["- [ ]", "- [x]", "- [X]"].iter().any(|prefix| line.starts_with(prefix))
+    })
+}
+
+/// Notas del vault con checkboxes (REQ-09). Rust solo filtra: el análisis fino
+/// (bloques de código, etiquetas, fechas) vive en `lib/markdownTasks.ts`.
+#[tauri::command]
+pub(crate) fn list_notes_with_checkboxes(path: String) -> Result<Vec<NoteWithTasks>, String> {
+    let root = expand_home(&path);
+    let root = std::path::Path::new(&root);
+    if !root.is_dir() {
+        return Err(format!("No existe la carpeta «{}»", root.display()));
+    }
+
+    let mut notes = Vec::new();
+    collect_notes(root, "", 0, &mut notes);
+    notes.sort_by_key(|note| note.relative.to_lowercase());
+
+    Ok(notes
+        .into_iter()
+        .filter(|note| {
+            std::fs::metadata(&note.path).is_ok_and(|meta| meta.len() <= MAX_TASK_NOTE_BYTES)
+        })
+        .filter_map(|note| {
+            let text = std::fs::read_to_string(&note.path).ok()?;
+            has_checkbox_line(&text).then_some(NoteWithTasks {
+                name: note.name,
+                path: note.path,
+                relative: note.relative,
+                text,
+            })
+        })
+        .collect())
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct VaultAsset {
     pub name: String,

@@ -1976,3 +1976,20 @@ fn expone_las_carpetas_y_etiquetas_para_los_filtros() {
 
     std::fs::remove_dir_all(&vault).ok();
 }
+
+#[test]
+fn list_notes_with_checkboxes_solo_trae_notas_con_checkbox() {
+    let dir = temp_vault("checkboxes");
+    std::fs::create_dir(dir.join("sub")).expect("mkdir");
+    std::fs::write(dir.join("con.md"), "# a\n- [ ] pendiente\n").expect("con");
+    std::fs::write(dir.join("sub").join("hecha.md"), "  - [x] hecha\n").expect("hecha");
+    std::fs::write(dir.join("sin.md"), "# nada\n- una lista\n").expect("sin");
+
+    let notas = list_notes_with_checkboxes(dir.to_string_lossy().into_owned()).expect("lista");
+    let relativas: Vec<&str> = notas.iter().map(|nota| nota.relative.as_str()).collect();
+
+    assert_eq!(relativas, vec!["con.md", "sub/hecha.md"]);
+    assert!(notas[0].text.contains("pendiente"));
+
+    std::fs::remove_dir_all(&dir).ok();
+}

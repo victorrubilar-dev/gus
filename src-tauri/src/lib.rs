@@ -433,6 +433,7 @@ pub fn run() {
             listados::list_vault_notes,
             listados::list_vault_images,
             listados::list_vault_pdfs,
+            listados::list_notes_with_checkboxes,
             biblioteca::load_library,
             biblioteca::save_library,
             listados::list_vault_tags,

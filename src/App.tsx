@@ -31,6 +31,7 @@ import {
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { externalAction } from "./lib/externalChange";
+import { toggleNoteTaskText, type NoteTask } from "./lib/noteTasks";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import clsx from "clsx";
 import CalendarView from "./components/CalendarView";
@@ -557,6 +558,24 @@ function App({
       cancelled = true;
     };
   }, [bootStatus, currentVault, settings.notificationsEnabled]);
+
+  /**
+   * Marca o desmarca un checkbox de una nota desde la lista de tareas (REQ-09).
+   * Vuelca antes lo que haya sin guardar en esa nota y, si es la abierta, la
+   * recarga: si no, el editor guardaría luego su texto viejo encima.
+   */
+  async function toggleNoteTask(task: NoteTask): Promise<void> {
+    await handleBeforeFileAction(task.notePath);
+    const text = await invoke<string>("read_vault_file", { path: task.notePath });
+    const next = toggleNoteTaskText(text, task);
+    if (next === null) throw new Error(t("tasks.noteChanged", { name: task.noteName }));
+
+    await invoke("write_vault_file", { path: task.notePath, content: next });
+    if (notePathRef.current === task.notePath) {
+      handleSelectNote({ id: task.notePath, name: baseName(task.notePath), kind: "note" });
+    }
+    setVaultRefresh((key) => key + 1);
+  }
 
   /**
    * Cambios hechos fuera de la app (REQ-13): el backend vigila el vault y avisa
@@ -2018,6 +2037,11 @@ function App({
                       vaultPath={currentVault}
                       hideCompleted={settings.hideCompletedTasks}
                       onNewTask={openNewTask}
+                      onToggleNoteTask={toggleNoteTask}
+                      onOpenNote={(path) => {
+                        setActiveTab("notes");
+                        handleSelectNote({ id: path, name: baseName(path), kind: "note" });
+                      }}
                     />
                   ) : activeTab === "calendar" ? (
                     <CalendarView
