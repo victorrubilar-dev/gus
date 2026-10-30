@@ -25,3 +25,6 @@ dist-ssr
 
 #Archivos tasks fix app and new features
 task/
+# Capturas generadas por los benchmarks
+/capturas/
+/medida-*.png
