@@ -4302,7 +4302,7 @@ export default function MarkdownEditor({
               // break-spaces: los espacios finales envuelven en vez de «colgar»
               // fuera del borde derecho; el cursor baja al pulsar espacio y el
               // overlay maqueta igual (mismo white-space en InlinePreview).
-              "gus-scrollbar relative h-full w-full resize-none whitespace-break-spaces px-10 py-4 font-mono text-sm leading-[23px] text-gus-text outline-none placeholder:text-gus-muted focus:outline-none",
+              "gus-scrollbar relative h-full w-full resize-none whitespace-break-spaces gus-editor-pad py-4 font-mono text-sm leading-[23px] text-gus-text outline-none placeholder:text-gus-muted focus:outline-none",
               inlineActive && "gus-source-area",
               tableCaret && !composing && "gus-cell-edit",
               overlayMark && "gus-mark-edit",

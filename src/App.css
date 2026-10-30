@@ -465,6 +465,13 @@ body {
 /* Las clases de botón van en una capa de componentes: así las utilidades de
    Tailwind (w-auto, text-xs, text-gus-accent) pueden ajustarlas en un caso concreto. */
 @layer components {
+
+/* Medida de lectura del editor: el texto ocupa 680 px centrados y, en paneles
+   más estrechos, deja 2,5 rem a cada lado. El textarea y su overlay comparten
+   esta clase: si difirieran, el cursor y el texto dibujado se desalinearían. */
+.gus-editor-pad {
+  padding-inline: max(2.5rem, calc((100% - 680px) / 2));
+}
 /* Sistema de botones: tres tipos y una sola altura de control (28 px, la de
    escritorio por defecto). Las vistas los usan en vez de clases sueltas. */
 .gus-btn {

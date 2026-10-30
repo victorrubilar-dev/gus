@@ -1212,7 +1212,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
             Notas
           </h2>
           <p
-            className="truncate text-meta text-gus-muted"
+            className="text-meta leading-snug text-gus-muted"
             title={staticMode ? "lista estática" : currentDir}
           >
             {summary}

@@ -1230,7 +1230,7 @@ export default function InlinePreview({
         ref={overlayRef}
         aria-hidden="true"
         style={rootStyle}
-        className="gus-source-overlay pointer-events-none absolute inset-y-0 left-0 overflow-hidden bg-gus-bg px-10 py-4 font-mono text-sm"
+        className="gus-source-overlay pointer-events-none absolute inset-y-0 left-0 overflow-hidden bg-gus-bg gus-editor-pad py-4 font-mono text-sm"
       >
       {segments.map((segment) => {
         if (segment.kind === "table") {
