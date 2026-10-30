@@ -16,12 +16,12 @@ App de escritorio **local-first** para notas Markdown y tareas personales. Tauri
 pnpm install
 pnpm tauri dev            # Vite en :1420 + ventana Tauri
 pnpm build                # tsc + vite build
-pnpm test                 # Vitest: 195 tests en 15 ficheros
+pnpm test                 # Vitest: 228 tests en 20 ficheros
 npx tsc --noEmit
-cd src-tauri && cargo test   # Rust: 66 tests (en lib.rs)
+cd src-tauri && cargo test   # Rust: 68 tests
 ```
 
-Benchmarks: `pnpm bench`, `pnpm bench:menu`, `pnpm bench:images`, `pnpm bench:explorer`, `pnpm traza` (Playwright, en `bench/`).
+Benchmarks (Playwright, en `bench/`; casi todos necesitan `npx vite --port 5199` en marcha): `pnpm bench`, `bench:menu`, `bench:images`, `bench:explorer`, `bench:app`, `bench:botones`, `bench:medida`, `bench:pestanas`, `bench:foco`, `bench:corrector`, `bench:portapapeles`, `bench:tablas`, `bench:cursor` y `bench:regresion` (capturas contra `bench/linea-base/`, de esta máquina; `--actualizar` tras un cambio visual aceptado). `pnpm traza` aparte.
 
 ## Arquitectura
 
@@ -29,6 +29,7 @@ Benchmarks: `pnpm bench`, `pnpm bench:menu`, `pnpm bench:images`, `pnpm bench:ex
 - **Frontend** `src/`:
   - `App.tsx`: raíz (vaults, pestañas, drag & drop).
   - `components/MarkdownEditor.tsx`: editor propio (un `<textarea>` transparente sobre un overlay renderizado). No usa CodeMirror ni Monaco.
+    Partido en `EditorPreview`, `NoteTagBar` y los hooks `useEditorImages`, `useEditorSpell`, `useEditorClipboard`, `useEditorHistory`, `useTableKeyboard` y `useTableResize`. Lo que queda (ratón, teclado, acciones de tabla) comparte refs y estado: no cortar sin `bench`, `bench:tablas` y `bench:cursor` en verde.
   - `lib/`: utilidades puras, con test `.test.ts` junto al fichero.
   - `lib/i18n/`: catálogos `locales/es.ts` y `locales/en.ts`. `i18n.test.ts` comprueba que las claves coincidan.
 - **IPC**: `invoke("comando", { args })`. Los errores son `Result<T, String>`. Los structs usan `#[serde(rename_all = "camelCase")]`.
