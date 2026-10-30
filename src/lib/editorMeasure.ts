@@ -57,3 +57,45 @@ export function insideRect(element: Element, x: number, y: number): boolean {
   const rect = element.getBoundingClientRect();
   return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
 }
+
+export function sameWidths(a: number[] | undefined, b: number[]): boolean {
+  if (!a || a.length !== b.length) return false;
+  return a.every((width, index) => width === b[index]);
+}
+
+/**
+ * Entra en caja una lista de anchuras en el ancho de la fila. Si se pasan, se
+ * encogen **en la misma proporción** (no solo la más ancha): así, al estrechar
+ * la ventana todas las columnas ceden un poco y la tabla sigue leyéndose, en
+ * vez de aplastar unas contra el mínimo y dejar otras enormes. Ninguna baja del
+ * mínimo y, si con eso todavía no cabe, se sale (mandará el resto del texto).
+ */
+export function clampColumnWidths(widths: number[], limit: number): number[] {
+  if (widths.length === 0) return widths;
+  let next = [...widths];
+  for (let round = 0; round < 24; round += 1) {
+    const total = next.reduce((sum, width) => sum + width, 0);
+    if (total <= limit) return next;
+    const ratio = limit / total;
+    let moved = false;
+    next = next.map((width) => {
+      const scaled = Math.max(MIN_COL_WIDTH, Math.round(width * ratio));
+      if (scaled !== width) moved = true;
+      return scaled;
+    });
+    // El redondeo puede dejar el total un par de píxeles por encima (si son
+    // muchas columnas, uno por columna): se corrige de la más ancha.
+    let sum = next.reduce((acc, width) => acc + width, 0);
+    while (sum > limit) {
+      let widest = 0;
+      for (let i = 1; i < next.length; i += 1) if (next[i] > next[widest]) widest = i;
+      if (next[widest] <= MIN_COL_WIDTH) break;
+      next[widest] -= 1;
+      sum -= 1;
+      moved = true;
+    }
+    // Todas están ya en el mínimo: no queda nada que ceder.
+    if (!moved) break;
+  }
+  return next;
+}

@@ -1320,4 +1320,19 @@ export function isTableUnmergePossible(
   return !!cur && (cur.isContinuation || cur.colSpan > 1 || cur.rowSpan > 1);
 }
 
+/**
+ * Posición de cursor segura tras un borrado protegido: si cae justo antes de
+ * la «|» de una fila (o dentro del separador), se mete dentro de la primera
+ * celda para que el siguiente texto no rompa la fila.
+ */
+export function safeTableCaret(text: string, offset: number): number {
+  const rowLines = text.split("\n").map((row) => ({ text: row, code: false }));
+  const line = lineIndexOf(text, offset);
+  const block = tableBlockAt(rowLines, line);
+  if (!block) return offset;
+  if (line !== block.start + 1 && offset > lineStartOffset(rowLines, line)) return offset;
 
+  const target = line === block.start + 1 ? block.start : line;
+  const range = tableCellRange(rowLines, target, 0);
+  return range ? range.start : offset;
+}

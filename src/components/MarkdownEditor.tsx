@@ -19,7 +19,7 @@ import { comboFor, comboLabel, matchesCombo, type ShortcutId, type ShortcutMap }
 import { useT } from "../lib/i18n";
 import { charWidthPx, offsetAtPointer } from "../lib/pointerOffset";
 import { toLocalCoord, uiZoomFactor } from "../lib/uiZoom";
-import { alignTableColumn, cellRectClipboard, cellIndexAtPointer, clearTableCells, computeTableMerges, duplicateTableRow, insertTableColumn, insertTableRow, isTableMergePossible, isTableTaskCell, isTableUnmergePossible, lineIndexOf, lineStartOffset, actionRect, mergeTableCells, moveTableRow, planTableDeletion, removeTable, removeTableColumn, removeTableRow, resolveTableCaret, sortTableRows, sourceSegments, splitTableCells, tableBlockAt, tableCellRange, tableFromDelimited, tableIntersects, tableSkeleton, toggleTableTask, unmergeTableCells, visualLength, wordRangeAt, type TableCellCaret, type TableCellRect, type TableEdit, type TableLine } from "../lib/tableLayout";
+import { alignTableColumn, cellRectClipboard, cellIndexAtPointer, clearTableCells, computeTableMerges, duplicateTableRow, insertTableColumn, insertTableRow, isTableMergePossible, isTableTaskCell, isTableUnmergePossible, lineIndexOf, lineStartOffset, actionRect, mergeTableCells, moveTableRow, planTableDeletion, removeTable, removeTableColumn, removeTableRow, resolveTableCaret, safeTableCaret, sortTableRows, sourceSegments, splitTableCells, tableBlockAt, tableCellRange, tableFromDelimited, tableIntersects, tableSkeleton, toggleTableTask, unmergeTableCells, visualLength, wordRangeAt, type TableCellCaret, type TableCellRect, type TableEdit, type TableLine } from "../lib/tableLayout";
 import { recordHistory, redoHistory, undoHistory, type HistorySnapshot } from "../lib/editorHistory";
 import { stripPasteFormatting } from "../lib/pasteText";
 import { frontmatterLineOffset, replaceBody, stripFrontmatter } from "../lib/noteTags";
@@ -32,10 +32,10 @@ import EditorContextMenu, { type ContextSpell, type FormatKind, type TableAction
 import PdfExportDialog from "./PdfExportDialog";
 import { useTableKeyboard } from "./useTableKeyboard";
 import { useTableResize } from "./useTableResize";
-import { MIN_COL_WIDTH, insideRect } from "../lib/editorMeasure";
+import { MIN_COL_WIDTH, clampColumnWidths, insideRect, sameWidths } from "../lib/editorMeasure";
 import { useEditorHistory } from "./useEditorHistory";
 import type { BlockDrift, EditorMenu, ContextMenuState, ImageResizeDrag, SaveState, SpellPopup, ViewMode } from "./markdownEditorTypes";
-import { countWords, lineRangeAt } from "../lib/editorText";
+import { countWords, deletionRange, lineRangeAt } from "../lib/editorText";
 import { measureRowPitch, measureTableCols } from "../lib/editorMeasure";
 import { MarkdownBody } from "./markdownPreview";
 import EditorPreview, { usePreviewComponents } from "./EditorPreview";
@@ -2591,53 +2591,6 @@ export default function MarkdownEditor({
   }
 
   /**
-   * Rango que borraría Supr/Backspace. Con Ctrl/Meta se aproxima al borrado
-   * de palabra, que nunca cruza el salto de línea.
-   */
-  function deletionRangeFor(
-    area: HTMLTextAreaElement,
-    backspace: boolean,
-    mod: boolean,
-  ): [number, number] {
-    const start = area.selectionStart;
-    const end = area.selectionEnd;
-    if (end > start) return [start, end];
-
-    const value = area.value;
-    if (backspace) {
-      if (start === 0) return [0, 0];
-      if (!mod) return [start - 1, start];
-      let at = start;
-      while (at > 0 && /\s/.test(value[at - 1]) && value[at - 1] !== "\n") at -= 1;
-      while (at > 0 && !/\s/.test(value[at - 1])) at -= 1;
-      return [at, start];
-    }
-
-    if (start >= value.length) return [start, start];
-    if (!mod) return [start, start + 1];
-    let at = start;
-    while (at < value.length && !/\s/.test(value[at])) at += 1;
-    return [start, at];
-  }
-
-  /**
-   * Posición de cursor segura tras un borrado protegido: si cae justo antes de
-   * la «|» de una fila (o dentro del separador), se mete dentro de la primera
-   * celda para que el siguiente texto no rompa la fila.
-   */
-  function safeTableCaret(text: string, offset: number): number {
-    const rowLines = text.split("\n").map((row) => ({ text: row, code: false }));
-    const line = lineIndexOf(text, offset);
-    const block = tableBlockAt(rowLines, line);
-    if (!block) return offset;
-    if (line !== block.start + 1 && offset > lineStartOffset(rowLines, line)) return offset;
-
-    const target = line === block.start + 1 ? block.start : line;
-    const range = tableCellRange(rowLines, target, 0);
-    return range ? range.start : offset;
-  }
-
-  /**
    * Supr / Backspace con una tabla de por medio: si el rango toca su
    * estructura, el borrado se reescribe aquí dejando intactos los «|», la fila
    * del separador y los saltos que la unen al resto del documento. Así la
@@ -2665,7 +2618,7 @@ export default function MarkdownEditor({
     }
 
     const backspace = event.key === "Backspace";
-    const [start, end] = deletionRangeFor(area, backspace, event.metaKey || event.ctrlKey);
+    const [start, end] = deletionRange(area.value, area.selectionStart, area.selectionEnd, backspace, event.metaKey || event.ctrlKey);
     if (end <= start) return false;
 
     const plan = planTableDeletion(sourceInfo, area.value, start, end);
@@ -3422,48 +3375,6 @@ export default function MarkdownEditor({
   }, [sourceInfo]);
 
   /** ¿Son las dos listas de anchuras la misma? */
-  function sameWidths(a: number[] | undefined, b: number[]): boolean {
-    if (!a || a.length !== b.length) return false;
-    return a.every((width, index) => width === b[index]);
-  }
-
-  /**
-   * Entra en caja una lista de anchuras en el ancho de la fila. Si se pasan, se
-   * encogen **en la misma proporción** (no solo la más ancha): así, al estrechar
-   * la ventana todas las columnas ceden un poco y la tabla sigue leyéndose, en
-   * vez de aplastar unas contra el mínimo y dejar otras enormes. Ninguna baja del
-   * mínimo y, si con eso todavía no cabe, se sale (mandará el resto del texto).
-   */
-  function clampColumnWidths(widths: number[], limit: number): number[] {
-    if (widths.length === 0) return widths;
-    let next = [...widths];
-    for (let round = 0; round < 24; round += 1) {
-      const total = next.reduce((sum, width) => sum + width, 0);
-      if (total <= limit) return next;
-      const ratio = limit / total;
-      let moved = false;
-      next = next.map((width) => {
-        const scaled = Math.max(MIN_COL_WIDTH, Math.round(width * ratio));
-        if (scaled !== width) moved = true;
-        return scaled;
-      });
-      // El redondeo puede dejar el total un par de píxeles por encima (si son
-      // muchas columnas, uno por columna): se corrige de la más ancha.
-      let sum = next.reduce((acc, width) => acc + width, 0);
-      while (sum > limit) {
-        let widest = 0;
-        for (let i = 1; i < next.length; i += 1) if (next[i] > next[widest]) widest = i;
-        if (next[widest] <= MIN_COL_WIDTH) break;
-        next[widest] -= 1;
-        sum -= 1;
-        moved = true;
-      }
-      // Todas están ya en el mínimo: no queda nada que ceder.
-      if (!moved) break;
-    }
-    return next;
-  }
-
   /**
    * Anchura de cada columna de cada tabla, medida una vez sobre el overlay y ya
    * no suelta. Es lo que evita que la tabla «respire» al escribir: si el ancho

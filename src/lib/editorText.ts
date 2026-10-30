@@ -14,3 +14,32 @@ export function lineRangeAt(value: string, at: number): [number, number] {
   const newline = value.indexOf("\n", at);
   return [start, newline === -1 ? value.length : newline + 1];
 }
+
+/**
+ * Rango que borraría Supr/Backspace. Con Ctrl/Meta se aproxima al borrado
+ * de palabra, que nunca cruza el salto de línea.
+ */
+export function deletionRange(
+  value: string,
+  start: number,
+  end: number,
+  backspace: boolean,
+  mod: boolean,
+): [number, number] {
+  if (end > start) return [start, end];
+
+  if (backspace) {
+    if (start === 0) return [0, 0];
+    if (!mod) return [start - 1, start];
+    let at = start;
+    while (at > 0 && /\s/.test(value[at - 1]) && value[at - 1] !== "\n") at -= 1;
+    while (at > 0 && !/\s/.test(value[at - 1])) at -= 1;
+    return [at, start];
+  }
+
+  if (start >= value.length) return [start, start];
+  if (!mod) return [start, start + 1];
+  let at = start;
+  while (at < value.length && !/\s/.test(value[at])) at += 1;
+  return [start, at];
+}
