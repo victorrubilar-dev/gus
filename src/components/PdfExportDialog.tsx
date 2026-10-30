@@ -364,7 +364,7 @@ export default function PdfExportDialog({ title, children, onClose }: PdfExportD
             type="button"
             onClick={requestClose}
             disabled={busy}
-            className="shrink-0 rounded-lg border border-gus-border bg-gus-card px-3 py-1.5 text-xs text-gus-muted transition-colors hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none disabled:opacity-50"
+            className="gus-btn gus-btn-secondary shrink-0"
           >
             {t("common.cancel")}
           </button>
@@ -373,7 +373,7 @@ export default function PdfExportDialog({ title, children, onClose }: PdfExportD
             type="button"
             onClick={() => void handleExport()}
             disabled={busy}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-gus-accent px-3 py-1.5 text-xs font-medium text-gus-bg transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none disabled:opacity-60"
+            className="gus-btn gus-btn-primary shrink-0"
           >
             <FileDown className="h-3.5 w-3.5" aria-hidden="true" />
             {t(busy ? "pdf.export.exporting" : "pdf.export.export")}

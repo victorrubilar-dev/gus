@@ -83,7 +83,7 @@ export default function UpdateNotice({ info, current, offsetLeft, onDismiss }: U
                 type="button"
                 onClick={() => void downloadInstaller()}
                 disabled={downloading}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-gus-accent px-3 py-1.5 text-xs font-semibold text-gus-bg outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:ring-offset-2 focus-visible:ring-offset-gus-panel disabled:opacity-50"
+                className="gus-btn gus-btn-primary"
               >
                 {downloading ? t("update.downloading") : t("update.download")}
               </button>
@@ -94,10 +94,8 @@ export default function UpdateNotice({ info, current, offsetLeft, onDismiss }: U
               onClick={() => void openRelease()}
               disabled={opening}
               className={clsx(
-                "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs outline-none transition-opacity focus-visible:ring-2 focus-visible:ring-gus-accent/60 disabled:opacity-50",
-                info.installer
-                  ? "text-gus-muted hover:text-gus-text"
-                  : "bg-gus-accent font-semibold text-gus-bg hover:opacity-90 focus-visible:ring-offset-2 focus-visible:ring-offset-gus-panel",
+                "gus-btn w-auto px-2.5",
+                info.installer ? "gus-btn-ghost" : "gus-btn-primary",
               )}
             >
               {t("update.openRelease")}
@@ -106,10 +104,7 @@ export default function UpdateNotice({ info, current, offsetLeft, onDismiss }: U
             <button
               type="button"
               onClick={onDismiss}
-              className={clsx(
-                "rounded-lg px-2.5 py-1.5 text-xs text-gus-muted outline-none transition-colors",
-                "hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60",
-              )}
+              className="gus-btn gus-btn-ghost w-auto px-2.5"
             >
               {t("update.later")}
             </button>

@@ -251,7 +251,7 @@ export default function NewTaskDialog({ open, onOpenChange }: NewTaskDialogProps
                           aria-checked={active}
                           onClick={() => setPriority(option)}
                           className={clsx(
-                            "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] capitalize transition-colors focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none",
+                            "inline-flex h-7 items-center gap-1 rounded-full border px-2.5 text-[11px] capitalize transition-colors focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none",
                             active
                               ? option
                                 ? `${PRIORITY_CLASS[option]} font-medium`
@@ -327,18 +327,14 @@ export default function NewTaskDialog({ open, onOpenChange }: NewTaskDialogProps
                   {t("tasks.hintClose")}
                 </span>
                 <div className="flex gap-2">
-                  <button
-                    type="submit"
-                    disabled={sending}
-                    className="rounded-lg bg-gus-accent px-4 py-1.5 text-sm font-medium text-gus-bg transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none disabled:opacity-50"
-                  >
+                  <button type="submit" disabled={sending} className="gus-btn gus-btn-primary">
                     {sending ? t("tasks.creating") : t("tasks.create")}
                   </button>
                   <button
                     type="button"
                     onClick={() => onOpenChange(false)}
                     disabled={sending}
-                    className="rounded-lg border border-gus-border px-4 py-1.5 text-sm text-gus-muted transition-colors hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none disabled:opacity-50"
+                    className="gus-btn gus-btn-secondary"
                   >
                     Cancelar
                   </button>

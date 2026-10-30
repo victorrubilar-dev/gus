@@ -542,7 +542,7 @@ export default function CalendarView({
                     <button
                       type="button"
                       onClick={onOpenTasks}
-                      className="text-xs text-gus-accent underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
+                      className="gus-btn gus-btn-ghost w-auto px-2 text-xs text-gus-accent"
                     >
                       {t("calendar.allTasks")}
                     </button>

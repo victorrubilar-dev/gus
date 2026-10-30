@@ -57,7 +57,7 @@ export default function DatePicker({ value, onChange }: DatePickerProps) {
           <button
             type="button"
             onClick={selectToday}
-            className="rounded-lg border border-gus-border px-2 py-1 text-[11px] text-gus-muted transition-colors hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
+            className="gus-btn gus-btn-secondary w-auto px-2.5"
           >
             Hoy
           </button>

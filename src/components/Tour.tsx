@@ -325,11 +325,7 @@ export default function Tour({ open, onFinish, onStepChange }: TourProps) {
           </div>
 
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={onFinish}
-              className="rounded-lg px-2 py-1.5 text-xs text-gus-muted outline-none transition-colors hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60"
-            >
+            <button type="button" onClick={onFinish} className="gus-btn gus-btn-ghost w-auto px-2">
               {t("tour.skip")}
             </button>
 
@@ -338,7 +334,7 @@ export default function Tour({ open, onFinish, onStepChange }: TourProps) {
               onClick={() => goTo(stepIndex - 1)}
               disabled={stepIndex === 0}
               aria-label={t("tour.previous")}
-              className="flex h-8 w-8 items-center justify-center rounded-lg border border-gus-border text-gus-muted outline-none transition-colors hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60 disabled:opacity-40"
+              className="gus-btn gus-btn-icon"
             >
               <ArrowLeft className="h-4 w-4" aria-hidden="true" />
             </button>
@@ -347,7 +343,7 @@ export default function Tour({ open, onFinish, onStepChange }: TourProps) {
               ref={nextButtonRef}
               type="button"
               onClick={() => (isLast ? onFinish() : goTo(stepIndex + 1))}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-gus-accent px-3.5 py-1.5 text-xs font-semibold text-gus-bg outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:ring-offset-2 focus-visible:ring-offset-gus-panel"
+              className="gus-btn gus-btn-primary"
             >
               {isLast ? t("tour.finish") : t("tour.next")}
               {isLast ? (

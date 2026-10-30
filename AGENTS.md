@@ -344,6 +344,7 @@ La siguiente función nueva vuelve a empezar en `develop`.
 - **Custom hooks** para lógica reutilizable (ej: `useResolvedImage`)
 - **Lazy loading** vía `React.lazy` + `Suspense` para componentes pesados (PdfViewer, MermaidDiagram)
 - **Framer Motion** con `LazyMotion` + `domMax` para animaciones tree-shakeables
+- **Botones** — clases `gus-btn` + `gus-btn-primary|secondary|icon|ghost`, altura única de 28 px. Excepciones: la barra lateral (su altura viene de la etiqueta), los filtros (`aria-pressed`) y los interruptores (`role="switch"`). `pnpm bench:botones` (con `vite --port 5199`) falla si algún botón mide menos de 28 px.
 - **CSS custom properties** para tematización (7 temas vía variables `--color-gus-*`)
 - **Tailwind CSS 4** con directiva `@theme` para design tokens
 - **i18n vía React context** — `I18nProvider` envuelve la app, hook `useT()` para traducciones

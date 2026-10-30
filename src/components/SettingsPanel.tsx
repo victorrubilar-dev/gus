@@ -322,7 +322,7 @@ function ShortcutsEditor({
                                 ?.defaultCombo ?? "",
                             )
                           }
-                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-gus-border bg-gus-card text-gus-muted outline-none transition-colors hover:border-gus-accent/50 hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/70"
+                          className="gus-btn gus-btn-icon"
                         >
                           <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
                         </button>
@@ -340,10 +340,7 @@ function ShortcutsEditor({
           type="button"
           onClick={resetAll}
           title={t("settings.shortcutsResetAllTitle")}
-          className={clsx(
-            INPUT_CLASS,
-            "inline-flex items-center gap-1.5 text-xs text-gus-muted hover:text-gus-text",
-          )}
+          className="gus-btn gus-btn-ghost w-auto px-2"
         >
           <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
           {t("settings.shortcutsResetAll")}
@@ -583,7 +580,7 @@ export default function SettingsPanel({
             aria-label={t("settings.zoomOut")}
             disabled={current <= 50}
             onClick={() => update(definition.key, clamp(current - 10))}
-            className="rounded-md p-1.5 text-gus-muted outline-none transition-colors hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/70 disabled:cursor-not-allowed disabled:opacity-40"
+            className="gus-btn gus-btn-ghost"
           >
             <Minus className="h-4 w-4" aria-hidden="true" />
           </button>
@@ -591,7 +588,7 @@ export default function SettingsPanel({
             type="button"
             title={t("settings.zoomReset")}
             onClick={() => update(definition.key, 100)}
-            className="min-w-[3.5rem] rounded-md px-2 py-1 text-sm font-medium tabular-nums text-gus-text outline-none transition-colors hover:text-gus-accent focus-visible:ring-2 focus-visible:ring-gus-accent/70"
+            className="gus-btn gus-btn-ghost w-auto min-w-[3.5rem] px-2 font-medium tabular-nums text-gus-text hover:text-gus-accent"
           >
             {current}%
           </button>
@@ -600,7 +597,7 @@ export default function SettingsPanel({
             aria-label={t("settings.zoomIn")}
             disabled={current >= 200}
             onClick={() => update(definition.key, clamp(current + 10))}
-            className="rounded-md p-1.5 text-gus-muted outline-none transition-colors hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/70 disabled:cursor-not-allowed disabled:opacity-40"
+            className="gus-btn gus-btn-ghost"
           >
             <Plus className="h-4 w-4" aria-hidden="true" />
           </button>

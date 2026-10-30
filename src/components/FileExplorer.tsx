@@ -152,7 +152,7 @@ const TRAIL_BUTTON_CLASS =
 
 /** `shrink-0` es clave: si algo no cabe, la barra prefiere ocultar tramos antes que encogerlos. */
 const TRAIL_SEGMENT_CLASS =
-  "min-w-0 max-w-full shrink-0 truncate rounded px-1 py-0.5 text-left transition-colors focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none";
+  "gus-btn gus-btn-ghost w-auto min-w-0 max-w-full shrink-0 justify-start truncate px-1.5 text-left focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none";
 
 const RENAME_INPUT_CLASS =
   "min-w-0 flex-1 rounded-lg border border-gus-accent/50 bg-gus-card px-2 py-1.5 font-mono text-xs text-gus-text outline-none focus:ring-2 focus:ring-gus-accent/60";
