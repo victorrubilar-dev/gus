@@ -123,6 +123,39 @@ await page.waitForFunction(
 );
 ok(true, "marcar un checkbox en la lista de tareas lo reescribe en su nota");
 
+// Pizarras: crear una, dibujar un rectángulo, poner un post-it con texto y deshacer.
+
+await page.getByRole("button", { name: "Pizarras", exact: true }).first().click();
+await page.getByRole("button", { name: "Nueva pizarra" }).click();
+const lienzo = page.locator("svg[aria-label='Pizarra sin título']");
+await lienzo.waitFor({ timeout: 8000 });
+const caja = await lienzo.boundingBox();
+await page.getByRole("button", { name: "Rectángulo" }).click();
+await page.mouse.move(caja.x + 200, caja.y + 150);
+await page.mouse.down();
+await page.mouse.move(caja.x + 380, caja.y + 260, { steps: 6 });
+await page.mouse.up();
+await page.getByRole("button", { name: "Post-it" }).click();
+await page.mouse.click(caja.x + 600, caja.y + 300);
+await page.getByLabel("Editar texto").fill("Idea del smoke");
+await page.keyboard.press("Escape");
+await page.waitForFunction(
+  (fn) => {
+    const lista = [...window.__smoke.pizarras.values()].map((json) => JSON.parse(json).elements ?? []);
+    return lista.some((els) => els.length === 2 && els.some((e) => e.type === "rect") && els.some((e) => e.type === "note" && e.text === "Idea del smoke"));
+  },
+  null,
+  { timeout: 8000 },
+);
+ok(true, "dibujar un rectángulo y un post-it con texto se guarda en la pizarra (save_board)");
+await page.getByRole("button", { name: "Deshacer" }).click();
+await page.waitForFunction(
+  () => [...window.__smoke.pizarras.values()].some((json) => (JSON.parse(json).elements ?? []).length === 1),
+  null,
+  { timeout: 8000 },
+);
+ok(true, "deshacer quita el último elemento de la pizarra");
+
 // Hábitos: crear uno y marcar hoy.
 await page.getByRole("button", { name: "Hábitos", exact: true }).first().click();
 await page.getByRole("button", { name: "Nuevo hábito" }).click();

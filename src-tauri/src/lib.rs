@@ -13,6 +13,7 @@ mod listados;
 mod menu;
 mod medios;
 mod papelera;
+mod pizarras;
 mod tareas;
 mod vigilancia;
 
@@ -439,6 +440,9 @@ pub fn run() {
             biblioteca::save_library,
             habitos::load_habits,
             habitos::save_habits,
+            pizarras::list_boards,
+            pizarras::load_board,
+            pizarras::save_board,
             listados::list_vault_tags,
             enlaces::build_link_graph,
             busqueda::build_search_index,

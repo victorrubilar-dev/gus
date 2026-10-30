@@ -31,6 +31,7 @@ const llamadas: { cmd: string; args: Record<string, unknown> }[] = [];
 const tareas: unknown[] = location.search.includes("semilla")
   ? []
   : [{ id: "base", title: "Tarea base", tags: [], completes: false }];
+const pizarras = new Map<string, string>();
 const habitos: { habits: unknown[]; log: Record<string, string[]> } = { habits: [], log: {} };
 const biblioteca: { shelves: string[]; assign: Record<string, string> } = { shelves: [], assign: {} };
 
@@ -105,6 +106,13 @@ const respuestas: Record<string, (args: Record<string, unknown>) => unknown> = {
   list_vault_pdfs: () => [
     { name: "manual.pdf", path: "/vault/manual.pdf", relative: "manual.pdf", modified_ms: ahora },
   ],
+  list_boards: () =>
+    [...pizarras.entries()].map(([id, json]) => ({ id, name: JSON.parse(json).name, modifiedMs: ahora })),
+  load_board: (args) => pizarras.get(String(args.id)) ?? "{}",
+  save_board: (args) => {
+    pizarras.set(String(args.id), String(args.json));
+    return null;
+  },
   load_habits: () => habitos,
   save_habits: (args) => {
     Object.assign(habitos, args.store as object);
@@ -136,7 +144,7 @@ const respuestas: Record<string, (args: Record<string, unknown>) => unknown> = {
   save_app_config: () => null,
 };
 
-(window as unknown as { __smoke: unknown }).__smoke = { archivos, llamadas, tareas };
+(window as unknown as { __smoke: unknown }).__smoke = { archivos, llamadas, tareas, pizarras };
 (window as unknown as { __TAURI_EVENT_PLUGIN_INTERNALS__: unknown }).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
   unregisterListener: () => {},
 };
