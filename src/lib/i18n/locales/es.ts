@@ -46,6 +46,8 @@ export default {
   "app.leaveVault": "Salir del vault",
   "app.trash": "Papelera",
   "app.settings": "Configuración",
+  "app.collapseSidebar": "Contraer barra",
+  "app.expandSidebar": "Expandir barra",
   "app.loadingNote": "Cargando nota…",
   "tabs.label": "Notas abiertas",
   "tabs.close": "Cerrar {name}",

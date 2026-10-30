@@ -48,6 +48,8 @@ const en: Record<keyof typeof es, string> = {
   "app.leaveVault": "Leave the vault",
   "app.trash": "Trash",
   "app.settings": "Settings",
+  "app.collapseSidebar": "Collapse sidebar",
+  "app.expandSidebar": "Expand sidebar",
   "app.loadingNote": "Loading note…",
   "tabs.label": "Open notes",
   "tabs.close": "Close {name}",

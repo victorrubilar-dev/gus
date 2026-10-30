@@ -19,6 +19,8 @@ import {
   ListTodo,
   LogOut,
   Network,
+  PanelLeftClose,
+  PanelLeftOpen,
   Settings as SettingsIcon,
   StickyNote,
   Trash2,
@@ -1161,6 +1163,17 @@ function App({
     }
   }
 
+  /** Contrae a solo iconos y, al expandir, vuelve al ancho que tenía con etiquetas. */
+  const lastLabeledWidth = useRef(SIDEBAR_DEFAULT_WIDTH);
+  function toggleSidebar() {
+    if (sidebarLabeled) {
+      lastLabeledWidth.current = sidebarWidthRef.current;
+      changeSidebarWidth(SIDEBAR_MIN_WIDTH);
+    } else {
+      changeSidebarWidth(lastLabeledWidth.current);
+    }
+  }
+
   function changeSidebarWidth(width: number, persist = true) {
     const next = clampSidebarWidth(width);
     sidebarWidthRef.current = next;
@@ -1804,6 +1817,25 @@ function App({
                       aria-hidden="true"
                     />
                     {sidebarLabeled && <span className="relative truncate text-sm">{t("app.settings")}</span>}
+                  </button>
+
+                  <button
+                    type="button"
+                    title={t(sidebarLabeled ? "app.collapseSidebar" : "app.expandSidebar")}
+                    aria-label={t(sidebarLabeled ? "app.collapseSidebar" : "app.expandSidebar")}
+                    onClick={toggleSidebar}
+                    className={clsx(
+                      "flex items-center rounded-xl text-gus-muted outline-none transition-colors hover:bg-gus-card hover:text-gus-text",
+                      "focus-visible:ring-2 focus-visible:ring-gus-accent/60",
+                      sidebarLabeled ? "h-10 w-full gap-3 px-3" : "h-11 w-11 justify-center",
+                    )}
+                  >
+                    {sidebarLabeled ? (
+                      <PanelLeftClose className="h-5 w-5" aria-hidden="true" />
+                    ) : (
+                      <PanelLeftOpen className="h-5 w-5" aria-hidden="true" />
+                    )}
+                    {sidebarLabeled && <span className="truncate text-sm">{t("app.collapseSidebar")}</span>}
                   </button>
                 </div>
               </div>
