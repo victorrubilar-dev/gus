@@ -107,7 +107,12 @@ const respuestas: Record<string, (args: Record<string, unknown>) => unknown> = {
 };
 
 (window as unknown as { __smoke: unknown }).__smoke = { archivos, llamadas, tareas };
+(window as unknown as { __TAURI_EVENT_PLUGIN_INTERNALS__: unknown }).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
+  unregisterListener: () => {},
+};
 (window as unknown as { __TAURI_INTERNALS__: unknown }).__TAURI_INTERNALS__ = {
+  // `listen` registra un callback con esto; el arnés no emite eventos.
+  transformCallback: () => 0,
   invoke: async (cmd: string, args?: Record<string, unknown>) => {
     llamadas.push({ cmd, args: args ?? {} });
     const respuesta = respuestas[cmd];

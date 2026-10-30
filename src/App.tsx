@@ -26,6 +26,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import clsx from "clsx";
 import CalendarView from "./components/CalendarView";
@@ -616,6 +617,26 @@ function App({
     window.addEventListener("keydown", handleGlobalKey);
     return () => window.removeEventListener("keydown", handleGlobalKey);
   }, [settings, currentVault]);
+
+  // Menú nativo (macOS): sus etiquetas siguen el idioma de la app y cada
+  // entrada propia llega aquí como `menu-action`. Fuera de macOS no hace nada.
+  useEffect(() => {
+    invoke("set_app_menu", { lang: language }).catch(() => {});
+  }, [language]);
+
+  const onMenuAction = useEffectEvent((id: string) => {
+    if (!currentVault) return;
+    if (id === "new-task") openNewTask();
+    else if (id === "search") {
+      setActiveTab("notes");
+      setPaletteOpen(true);
+    } else if (id.startsWith("tab-")) setActiveTab(id.slice(4) as TabId);
+  });
+
+  useEffect(() => {
+    const unlisten = listen<string>("menu-action", (event) => onMenuAction(event.payload));
+    return () => void unlisten.then((off) => off());
+  }, []);
 
   function handleSelectNote(file: NoteFile) {
     if (file.kind === "image") {

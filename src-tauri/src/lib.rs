@@ -8,6 +8,7 @@ mod configuracion;
 mod enlaces;
 mod importar;
 mod listados;
+mod menu;
 mod medios;
 mod papelera;
 mod tareas;
@@ -412,12 +413,16 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_notification::init())
+        .on_menu_event(|app, event| {
+            let _ = app.emit(menu::MENU_EVENT, event.id().0.clone());
+        })
         .setup(|_app| {
             purge_expired_trash(&legacy_trash_dir());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             download_update,
+            menu::set_app_menu,
             papelera::migrate_legacy_trash,
             listados::read_vault_dir,
             listados::get_vault_files,
