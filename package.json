@@ -30,6 +30,7 @@
     "bench:medida": "node bench/prueba-medida.mjs",
     "bench:pestanas": "node bench/prueba-pestanas.mjs",
     "bench:capturas": "node bench/capturas.mjs",
+    "bench:regresion": "node bench/prueba-regresion.mjs",
     "bench:cursor": "node bench/prueba-cursor.mjs",
     "bench:tablas": "node bench/prueba-teclado-tablas.mjs",
     "traza": "node bench/colector.mjs"
