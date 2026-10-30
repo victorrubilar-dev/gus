@@ -4,11 +4,10 @@ import { invoke } from "@tauri-apps/api/core";
 import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
 import clsx from "clsx";
 import { Ellipsis, Eye, FileDown, Pencil } from "lucide-react";
-import { open } from "@tauri-apps/plugin-dialog";
-import { isInsidePath, parentPath, pathWithTitle, safeFileName } from "../lib/fileName";
-import { imageFilters, importFilesIntoVault, summarizeImageInsert, type ImageInsertResult, type ImportSummary } from "../lib/importFiles";
-import { filterVaultImages, imageAlt, imageDest, imageMarkdown, isImagePath, parseImageLine, type VaultImage } from "../lib/imageLinks";
-import { DRAG_ENTRY_MIME, type DragEntry } from "./FileExplorer";
+import { pathWithTitle, safeFileName } from "../lib/fileName";
+import type { ImageInsertResult } from "../lib/importFiles";
+import { DRAG_ENTRY_MIME } from "./FileExplorer";
+import { imageMarkdown, isImagePath, parseImageLine } from "../lib/imageLinks";
 import { listEnterEdit } from "../lib/listContinue";
 import { orderedBlockAt, renumberAfterPaste, renumberOrderedLists, type OrderedBlockRef, type PasteRange } from "../lib/listNumbering";
 import { moveLines } from "../lib/moveLines";
@@ -34,6 +33,7 @@ import { useTableKeyboard } from "./useTableKeyboard";
 import { useTableResize } from "./useTableResize";
 import { MIN_COL_WIDTH, clampColumnWidths, insideRect, sameWidths } from "../lib/editorMeasure";
 import { useEditorHistory } from "./useEditorHistory";
+import { readExplorerEntry, useEditorImages } from "./useEditorImages";
 import type { BlockDrift, EditorMenu, ContextMenuState, ImageResizeDrag, SaveState, SpellPopup, ViewMode } from "./markdownEditorTypes";
 import { countWords, deletionRange, lineRangeAt } from "../lib/editorText";
 import { measureRowPitch, measureTableCols } from "../lib/editorMeasure";
@@ -109,7 +109,6 @@ const TASK_CHECKBOX_PX = 36;
 const EMPTY_DRIFT: Map<number, BlockDrift> = new Map();
 
 /** Lista vacía de imágenes, para no crear una nueva en cada render. */
-const EMPTY_IMAGES: VaultImage[] = [];
 
 const FORMAT_MARKERS: Record<Exclude<FormatKind, "link">, [string, string]> = {
   bold: ["**", "**"],
@@ -384,36 +383,21 @@ export default function MarkdownEditor({
   const hintLineRef = useRef(-1);
   const [wikiNotes, setWikiNotes] = useState<WikiNote[]>([]);
   const [wikiNotesLoading, setWikiNotesLoading] = useState(false);
-  /** Imágenes del vault para el selector que abre «Imagen del vault». */
-  const [vaultImages, setVaultImages] = useState<VaultImage[]>([]);
-  const [vaultImagesLoading, setVaultImagesLoading] = useState(false);
   /** Arrastrando una imagen del explorador por encima del campo de texto. */
   const [imageDropOver, setImageDropOver] = useState(false);
-  // Aviso de las imágenes recién insertadas desde el menú «/» o soltadas
-  // sobre la nota: el de un arrastre del sistema lo enseña App, que es quien
-  // lo recibe, para que no salgan dos a la vez.
-  const [imageNotice, setImageNotice] = useState<ImportSummary | null>(null);
-  const imageNoticeTimerRef = useRef<number | null>(null);
-
-  function showImageNotice(result: ImageInsertResult) {
-    // Cancelar el diálogo no es un error: no se avisa de nada.
-    if (result.inserted === 0 && result.failed === 0) return;
-    setImageNotice(summarizeImageInsert(result));
-    if (imageNoticeTimerRef.current !== null) window.clearTimeout(imageNoticeTimerRef.current);
-    imageNoticeTimerRef.current = window.setTimeout(() => setImageNotice(null), 8000);
-  }
-  /**
-   * Imágenes que enseña el selector: dependen de su consulta y de la lista del
-   * vault, no del índice recorrido, para que el array no cambie al pulsar ↑↓
-   * (si no, el efecto de las miniaturas se volvería a disparar en cada tecla).
-   */
-  const imagesQuery = menu?.kind === "images" ? menu.query : null;
-  const imageMatches = useMemo(
-    () => (imagesQuery === null ? EMPTY_IMAGES : filterVaultImages(vaultImages, imagesQuery)),
-    [imagesQuery, vaultImages],
-  );
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const {
+    imageMatches,
+    vaultImagesLoading,
+    imageNotice,
+    showImageNotice,
+    loadVaultImages,
+    insertImagesDropped,
+    insertImagesAt,
+    insertImagesFromComputer,
+    insertVaultImage,
+  } = useEditorImages({ textareaRef, content, path, vaultPath, menu, replaceRange, caretAtPoint });
   const overlayRef = useRef<HTMLDivElement>(null);
   const { historyRef, pendingRestoreRef, forceHistoryRef, skipHistoryRef, historySnapshot } =
     useEditorHistory(textareaRef, contentRef);
@@ -446,7 +430,6 @@ export default function MarkdownEditor({
       handleCaretMove,
     });
   const wikiRequestRef = useRef(0);
-  const imagesRequestRef = useRef(0);
 
   const ownPathRef = useRef(path);
   const sequenceRef = useRef(0);
@@ -527,9 +510,6 @@ export default function MarkdownEditor({
   useEffect(() => {
     return () => {
       if (hintTimerRef.current !== null) window.clearTimeout(hintTimerRef.current);
-      if (imageNoticeTimerRef.current !== null) {
-        window.clearTimeout(imageNoticeTimerRef.current);
-      }
     };
   }, []);
 
@@ -898,33 +878,6 @@ export default function MarkdownEditor({
       .catch(() => {
         if (request !== wikiRequestRef.current) return;
         setWikiNotesLoading(false);
-      });
-  }
-
-  /**
-   * Imágenes de todo el vault para el selector que abre «Imagen del vault»: se
-   * piden al abrirlo, que recorrer el vault entero no es algo que hacer en
-   * cada render.
-   */
-  function loadVaultImages() {
-    if (!vaultPath) {
-      setVaultImages([]);
-      setVaultImagesLoading(false);
-      return;
-    }
-
-    const request = ++imagesRequestRef.current;
-    setVaultImagesLoading(true);
-
-    invoke<VaultImage[]>("list_vault_images", { path: vaultPath })
-      .then((images) => {
-        if (request !== imagesRequestRef.current) return;
-        setVaultImages(images);
-        setVaultImagesLoading(false);
-      })
-      .catch(() => {
-        if (request !== imagesRequestRef.current) return;
-        setVaultImagesLoading(false);
       });
   }
 
@@ -1679,139 +1632,9 @@ export default function MarkdownEditor({
     return offsetAtPointer(area, clientX, clientY, driftAtPointer(clientY));
   }
 
-  /**
-   * Enlaza imágenes en la nota: las que ya están en el vault se referen tal
-   * cual y las del equipo se copian antes junto a la nota (si no, el enlace
-   * apuntaría a una ruta que vive fuera del vault y se rompería al moverlo).
-   *
-   * La selección debe haberse colapsado ya en `from` cuando lo que se trae es
-   * un arrastre; con el menú «/» abierto, en cambio, `from` es la barra y el
-   * cursor sigue al final de la consulta, que es el texto que hay que sustituir.
-   */
-  async function insertImageFiles(
-    sources: string[],
-    from: number,
-  ): Promise<ImageInsertResult> {
-    if (sources.length === 0) return { inserted: 0, failed: 0 };
-
-    const dentro: string[] = [];
-    const fuera: string[] = [];
-    for (const source of sources) {
-      (vaultPath && isInsidePath(source, vaultPath) ? dentro : fuera).push(source);
-    }
-
-    const destinos = [...dentro];
-
-    if (fuera.length > 0) {
-      const carpeta = parentPath(path);
-      if (carpeta) {
-        try {
-          const items = await importFilesIntoVault(fuera, carpeta);
-          for (const item of items) if (item.path) destinos.push(item.path);
-        } catch {
-          // Sin vault o sin permisos: no se enlaza nada de lo que venía de fuera.
-        }
-      }
-    }
-
-    if (destinos.length === 0) return { inserted: 0, failed: sources.length };
-
-    const enlaces = destinos.map((destino) =>
-      imageMarkdown(imageAlt(destino), imageDest(path, destino)),
-    );
-    // Cada imagen en su línea: sueltas tres y las tres quedan repartidas.
-    const texto = enlaces.join("\n");
-    replaceRange(from, texto, texto.length);
-
-    return { inserted: destinos.length, failed: sources.length - destinos.length };
-  }
-
-  /**
-   * Inserta imágenes en el punto `at` (ya en px de documento) o, sin punto, en
-   * el cursor. La selección se colapsa antes: si no, lo que se suelta encima
-   * de un texto marcado se comería ese texto.
-   */
-  async function insertImagesDropped(
-    sources: string[],
-    at: number | null,
-  ): Promise<ImageInsertResult> {
-    const area = textareaRef.current;
-    if (!area) {
-      // Vista previa: no hay campo de texto, así que la imagen entra al final.
-      return insertImageFiles(sources, stripFrontmatter(content).length);
-    }
-
-    const from = at ?? area.selectionStart;
-    area.setSelectionRange(from, from);
-    return insertImageFiles(sources, from);
-  }
-
-  /**
-   * Lo que llama App cuando sueltas archivos encima del editor: `point` llega
-   * en píxeles físicos, como los da Tauri.
-   */
-  async function insertImagesAt(
-    sources: string[],
-    point?: { x: number; y: number },
-  ): Promise<ImageInsertResult> {
-    const dpr = window.devicePixelRatio || 1;
-    const at = point ? caretAtPoint(point.x / dpr, point.y / dpr) : null;
-    return insertImagesDropped(sources, at);
-  }
-
-  /**
-   * Imagen del equipo: se elige en el diálogo del sistema, se copia junto a la
-   * nota y se enlaza empezando en `from` (la barra del «/» o el cursor).
-   */
-  async function insertImagesFromComputer(from: number): Promise<ImageInsertResult> {
-    if (!vaultPath) return { inserted: 0, failed: 0 };
-
-    let picked: string | string[] | null = null;
-    try {
-      picked = await open({ multiple: true, filters: imageFilters() });
-    } catch {
-      return { inserted: 0, failed: 0 };
-    }
-    // Cancelar el diálogo no es un error: simplemente no se inserta nada.
-    if (!picked) return { inserted: 0, failed: 0 };
-
-    const sources = Array.isArray(picked) ? picked : [picked];
-    const result = await insertImageFiles(sources, from);
-    showImageNotice(result);
-    return result;
-  }
-
   /** Imagen elegida en el selector del vault: se enlaza relativa a la nota. */
-  function insertVaultImage(image: VaultImage) {
-    const area = textareaRef.current;
-    const start =
-      menu?.kind === "images" ? menu.start : (area?.selectionStart ?? stripFrontmatter(content).length);
-    const texto = imageMarkdown(imageAlt(image.name), imageDest(path, image.path));
-    replaceRange(start, texto, texto.length);
-    showImageNotice({ inserted: 1, failed: 0 });
-  }
 
   /** Entrada del explorador que se arrastra, si es que lo es. */
-  function readExplorerEntry(dataTransfer: DataTransfer): DragEntry | null {
-    try {
-      const raw = dataTransfer.getData(DRAG_ENTRY_MIME);
-      if (!raw) return null;
-      const parsed: unknown = JSON.parse(raw);
-      if (
-        parsed &&
-        typeof parsed === "object" &&
-        "kind" in parsed &&
-        "path" in parsed &&
-        (parsed.kind === "file" || parsed.kind === "folder") &&
-        typeof parsed.path === "string"
-      ) {
-        return { kind: parsed.kind, path: parsed.path };
-      }
-    } catch {
-      // Ni JSON del explorador ni nada que interpretar.
-    }
-    return null;
-  }
 
   /** Sugerencias de hunspell con caché de un término (se repiten al navegar). */
   function suggestionsFor(word: string): string[] {
