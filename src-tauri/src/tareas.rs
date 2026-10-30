@@ -86,6 +86,7 @@ pub(crate) fn save_tasks(vault_path: String, tasks: Vec<StoredTask>) -> Result<(
     let raw = serde_json::to_string_pretty(&store)
         .map_err(|err| format!("No se pudo serializar las tareas: {err}"))?;
 
+    vigilancia::note_own_write(&path);
     std::fs::write(&path, raw)
         .map_err(|err| format!("No se pudo escribir «{}»: {err}", path.display()))
 }

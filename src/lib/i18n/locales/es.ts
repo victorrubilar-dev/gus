@@ -72,6 +72,10 @@ export default {
   "app.saveBeforeAction":
     "No se pudieron guardar los cambios de la nota antes de modificarla.",
   "app.badNoteName": "Nombre de nota no válido: «{name}»",
+  "app.externalReloaded": "«{title}» cambió fuera de Gus y se recargó.",
+  "app.externalConflict": "«{title}» cambió fuera de Gus y tienes cambios sin guardar.",
+  "app.externalReload": "Recargar del disco",
+  "app.externalKeep": "Mantener la mía",
   "app.vaultNotFound": "No existe la carpeta «{path}»",
   "app.vaultNeedsName": "Ponle un nombre al vault.",
 

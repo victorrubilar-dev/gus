@@ -74,6 +74,10 @@ const en: Record<keyof typeof es, string> = {
   "app.saveBeforeAction":
     "The changes in the note could not be saved before modifying it.",
   "app.badNoteName": "Invalid note name: “{name}”",
+  "app.externalReloaded": "“{title}” changed outside Gus and was reloaded.",
+  "app.externalConflict": "“{title}” changed outside Gus and you have unsaved changes.",
+  "app.externalReload": "Reload from disk",
+  "app.externalKeep": "Keep mine",
   "app.vaultNotFound": "The folder “{path}” does not exist",
   "app.vaultNeedsName": "Give the vault a name.",
 

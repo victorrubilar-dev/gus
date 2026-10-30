@@ -12,6 +12,7 @@ mod menu;
 mod medios;
 mod papelera;
 mod tareas;
+mod vigilancia;
 
 #[cfg(test)]
 use configuracion::*;
@@ -413,6 +414,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_notification::init())
+        .manage(vigilancia::VaultWatcher::default())
         .on_menu_event(|app, event| {
             let _ = app.emit(menu::MENU_EVENT, event.id().0.clone());
         })
@@ -465,7 +467,9 @@ pub fn run() {
             tareas::save_tasks,
             tareas::read_legacy_tasks,
             tareas::archive_legacy_tasks,
-            tareas::publish_new_task
+            tareas::publish_new_task,
+            vigilancia::watch_vault,
+            vigilancia::unwatch_vault
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

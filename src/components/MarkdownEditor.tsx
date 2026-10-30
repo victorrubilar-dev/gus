@@ -48,6 +48,10 @@ export interface EditorDraft {
 
 export interface MarkdownEditorHandle {
   flush: () => Promise<boolean>;
+  /** ¿Hay texto sin guardar? */
+  isDirty: () => boolean;
+  /** Olvida lo no guardado: así desmontar el editor no pisa el disco con ello. */
+  discardChanges: () => void;
   requestExport: () => void;
   /**
    * Inserta imágenes en la nota, en el punto `point` (un arrastre del sistema
@@ -532,6 +536,10 @@ export default function MarkdownEditor({
     ref,
     () => ({
       flush,
+      isDirty: () => dirtyRef.current,
+      discardChanges: () => {
+        dirtyRef.current = false;
+      },
       /** Abre el diálogo de exportación (lo llama App desde su evento). */
       requestExport: () => {
         setHeaderMenu(false);

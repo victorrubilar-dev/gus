@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { externalAction } from "./lib/externalChange";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import clsx from "clsx";
 import CalendarView from "./components/CalendarView";
@@ -279,6 +280,12 @@ function App({
   const [pdf, setPdf] = useState<OpenPdf | null>(null);
   const [pdfStatus, setPdfStatus] = useState<NoteStatus>("idle");
   const [vaultRefresh, setVaultRefresh] = useState(0);
+  /** Aviso de que la nota abierta cambió fuera de la app (REQ-13). */
+  const [externalNotice, setExternalNotice] = useState<{
+    path: string;
+    kind: "reloaded" | "conflict";
+  } | null>(null);
+  const externalNoticeTimerRef = useRef<number | null>(null);
   const [linkError, setLinkError] = useState<string | null>(null);
   const linkErrorTimerRef = useRef<number | null>(null);
   /**
@@ -547,6 +554,53 @@ function App({
       cancelled = true;
     };
   }, [bootStatus, currentVault, settings.notificationsEnabled]);
+
+  /**
+   * Cambios hechos fuera de la app (REQ-13): el backend vigila el vault y avisa
+   * con las rutas tocadas, ya sin el ruido ni las escrituras propias.
+   */
+  const handleVaultChangedEvent = useEffectEvent(async (paths: string[]) => {
+    setVaultRefresh((key) => key + 1);
+
+    const open = notePathRef.current;
+    if (!open || !note || !paths.includes(open)) return;
+
+    let disk: string;
+    try {
+      disk = await invoke<string>("read_vault_file", { path: open });
+    } catch {
+      return; // borrada o ilegible: el explorador ya lo refleja
+    }
+    if (notePathRef.current !== open) return;
+
+    const action = externalAction(disk, note.content, editorRef.current?.isDirty() ?? false);
+    if (action === "ignore") return;
+
+    if (externalNoticeTimerRef.current !== null) window.clearTimeout(externalNoticeTimerRef.current);
+    if (action === "reload") {
+      handleSelectNote({ id: open, name: baseName(open), kind: "note" });
+      setExternalNotice({ path: open, kind: "reloaded" });
+      externalNoticeTimerRef.current = window.setTimeout(() => setExternalNotice(null), 6000);
+    } else {
+      setExternalNotice({ path: open, kind: "conflict" });
+    }
+  });
+
+  useEffect(() => {
+    if (bootStatus !== "ready" || currentVault === null) return;
+
+    const unlisten = listen<string[]>("vault-changed", (event) => {
+      void handleVaultChangedEvent(event.payload);
+    });
+    invoke("watch_vault", { path: currentVault }).catch(() => {
+      // Sin vigilancia la app funciona igual; solo no se enteraría de cambios externos.
+    });
+
+    return () => {
+      void unlisten.then((off) => off());
+      void invoke("unwatch_vault").catch(() => {});
+    };
+  }, [bootStatus, currentVault]);
 
   /** Comprobación manual, desde Ajustes → General. */
   async function handleCheckUpdate() {
@@ -1621,6 +1675,44 @@ function App({
                       busy={dailyBusy}
                       onNavigate={(date) => void openDailyNote(date)}
                     />
+                  )}
+
+                  {externalNotice?.path === note.path && (
+                    <div
+                      role="status"
+                      className="flex shrink-0 flex-wrap items-center gap-3 border-b border-amber-400/40 bg-gus-panel px-4 py-2 text-body text-amber-300"
+                    >
+                      <span className="min-w-0 flex-1">
+                        {t(
+                          externalNotice.kind === "conflict"
+                            ? "app.externalConflict"
+                            : "app.externalReloaded",
+                          { title: note.title },
+                        )}
+                      </span>
+                      {externalNotice.kind === "conflict" && (
+                        <>
+                          <button
+                            type="button"
+                            className="rounded-md border border-amber-400/40 px-2 py-1 hover:bg-white/5"
+                            onClick={() => {
+                              editorRef.current?.discardChanges();
+                              handleSelectNote({ id: note.path, name: baseName(note.path), kind: "note" });
+                              setExternalNotice(null);
+                            }}
+                          >
+                            {t("app.externalReload")}
+                          </button>
+                          <button
+                            type="button"
+                            className="rounded-md border border-amber-400/40 px-2 py-1 hover:bg-white/5"
+                            onClick={() => setExternalNotice(null)}
+                          >
+                            {t("app.externalKeep")}
+                          </button>
+                        </>
+                      )}
+                    </div>
                   )}
 
                   <MarkdownEditor

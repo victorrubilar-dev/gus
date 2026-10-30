@@ -37,6 +37,7 @@ pub(crate) fn write_vault_file(path: String, content: String) -> Result<(), Stri
         }
     }
 
+    vigilancia::note_own_write(std::path::Path::new(&path));
     std::fs::write(&path, content).map_err(|err| format!("No se pudo escribir «{path}»: {err}"))
 }
 
