@@ -52,9 +52,9 @@ import BoardsView from "./components/BoardsView";
 import NoteTabs, { type NoteTab } from "./components/NoteTabs";
 import TaskList from "./components/TaskList";
 import TrashView from "./components/TrashView";
-import VaultPicker, { type VaultAppConfig, type VaultInfo } from "./components/VaultPicker";
+import VaultPicker from "./components/VaultPicker";
 import WelcomePanel from "./components/WelcomePanel";
-import { baseName, isInsidePath, joinPath, safeFileName } from "./lib/fileName";
+import { baseName, isInsidePath, joinPath } from "./lib/fileName";
 import { dailyNoteDateFor, dailyRelativePath, renderDailyTemplate } from "./lib/dailyNotes";
 import { relativeFolderLabel } from "./lib/importFiles";
 import { findWikiNote, wikiTargetToPath, type WikiNote } from "./lib/wikiLink";
@@ -72,7 +72,7 @@ import {
   tasksToNotify,
 } from "./lib/notifications";
 import { incomingCountMap, type LinkGraph } from "./lib/linkGraph";
-import { accentHex, DEFAULT_SETTINGS, normalizeSettings, type AppSettings } from "./lib/settings";
+import { accentHex, DEFAULT_SETTINGS, type AppSettings } from "./lib/settings";
 import { applyTheme, themeDefinition, type ThemeScheme } from "./lib/themes";
 import { APP_VERSION } from "./lib/version";
 import { useAppUpdates } from "./components/useAppUpdates";
@@ -88,6 +88,8 @@ import {
 } from "./lib/i18n";
 import { toLocalCoord } from "./lib/uiZoom";
 import { useFileDrop } from "./components/useFileDrop";
+import { useVaults } from "./components/useVaults";
+import { DEFAULT_BASE_DIR } from "./lib/vaultConfig";
 import { usePanelWidth } from "./components/usePanelWidth";
 import Tour, { type TourTab } from "./components/Tour";
 import UpdateNotice from "./components/UpdateNotice";
@@ -128,7 +130,7 @@ const TABS: { id: TabId; labelKey: MessageKey; Icon: LucideIcon }[] = [
   { id: "boards", labelKey: "app.tab.boards", Icon: PenTool },
 ];
 
-const DEFAULT_BASE_DIR = "~/Documents/gus-vaults";
+
 
 const SIDEBAR_MIN_WIDTH = 64;
 const SIDEBAR_MAX_WIDTH = 320;
@@ -174,22 +176,6 @@ function clampExplorerWidth(width: number): number {
   // De sitio para el editor (y el menú, en su ancho máximo) siempre queda.
   const hardMax = Math.max(EXPLORER_MIN_WIDTH, toLocalCoord(window.innerWidth) - 700);
   return Math.max(EXPLORER_MIN_WIDTH, Math.round(Math.min(width, hardMax)));
-}
-
-interface VaultConfig {
-  baseDir: string;
-  vaults: VaultInfo[];
-  lastVault: string | null;
-  settings: AppSettings;
-}
-
-function normalizeConfig(raw: VaultAppConfig | null | undefined): VaultConfig {
-  return {
-    baseDir: raw?.baseDir?.trim() || DEFAULT_BASE_DIR,
-    vaults: raw?.vaults ?? [],
-    lastVault: raw?.lastVault ?? null,
-    settings: normalizeSettings(raw?.settings),
-  };
 }
 
 function titleFromFileName(name: string): string {
@@ -296,11 +282,23 @@ function App({
   });
   const explorerWidth = explorer.width;
 
-  const [bootStatus, setBootStatus] = useState<"loading" | "ready">("loading");
-  const [vaultConfig, setVaultConfig] = useState<VaultConfig | null>(null);
-  const [currentVault, setCurrentVault] = useState<string | null>(null);
-  const [vaultBusy, setVaultBusy] = useState(false);
-  const [vaultError, setVaultError] = useState<string | null>(null);
+
+  const {
+    bootStatus,
+    vaultConfig,
+    currentVault,
+    vaultBusy,
+    vaultError,
+    saveVaultConfig,
+    openVault: openVaultBase,
+    leaveVault,
+    handleCreateVault,
+    handleAddExistingVault,
+    handleRenameVault,
+    handleSetVaultCover,
+    handleRemoveVaults,
+    handleSelectBaseDir,
+  } = useVaults({ onVaultSwitch: closeOpenNote });
 
   /** Recorrido guiado: se abre solo al primer vault y también desde Ajustes. */
   const [tourOpen, setTourOpen] = useState(false);
@@ -324,43 +322,6 @@ function App({
   const imageRequestRef = useRef(0);
   /** Solo la última petición de PDF puede escribir en el estado. */
   const pdfRequestRef = useRef(0);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      try {
-        const raw = await invoke<VaultAppConfig>("load_app_config");
-        if (cancelled) return;
-        const next = normalizeConfig(raw);
-
-        let openPath: string | null = null;
-        if (next.lastVault && next.settings.openLastVault) {
-          const exists = await invoke<boolean>("vault_dir_exists", { path: next.lastVault });
-          if (cancelled) return;
-          openPath = exists ? next.lastVault : null;
-        }
-
-        if (cancelled) return;
-        setVaultConfig(next);
-        setCurrentVault(openPath);
-        // Sin esperar: si falla, la papelera global sigue en disco y no se pierde nada.
-        void invoke("migrate_legacy_trash", {
-          vaults: next.vaults.map((vault) => vault.path),
-        }).catch(() => {});
-        setBootStatus("ready");
-      } catch (error: unknown) {
-        if (cancelled) return;
-        setVaultConfig(normalizeConfig(null));
-        setVaultError(String(error));
-        setBootStatus("ready");
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     setPersonalWords(settings.spellWords);
@@ -980,13 +941,6 @@ function App({
     }
   }
 
-  function saveVaultConfig(next: VaultConfig) {
-    setVaultConfig(next);
-    invoke("save_app_config", { config: next }).catch((error: unknown) => {
-      setVaultError(String(error));
-    });
-  }
-
   function closeOpenNote() {
     setTabs([]);
     imageRequestRef.current += 1;
@@ -1002,16 +956,8 @@ function App({
   }
 
   function openVault(path: string) {
-    setCurrentVault(path);
-    closeOpenNote();
-    setVaultError(null);
+    openVaultBase(path);
     setActiveTab(settings.alwaysNotesTab ? "notes" : "home");
-    if (vaultConfig) saveVaultConfig({ ...vaultConfig, lastVault: path });
-  }
-
-  function leaveVault() {
-    setCurrentVault(null);
-    closeOpenNote();
   }
 
   /** Contrae a solo iconos y, al expandir, vuelve al ancho que tenía con etiquetas. */
@@ -1023,143 +969,6 @@ function App({
     } else {
       sidebar.change(lastLabeledWidth.current);
     }
-  }
-
-  async function handleCreateVault(name: string, base: string): Promise<boolean> {
-    setVaultBusy(true);
-    setVaultError(null);
-    try {
-      const finalBase = base.trim() || DEFAULT_BASE_DIR;
-      const safeName = safeFileName(name);
-      const path = await invoke<string>("create_vault", { base: finalBase, name: safeName });
-
-      const source = vaultConfig ?? normalizeConfig(null);
-      setCurrentVault(path);
-      closeOpenNote();
-      saveVaultConfig({
-        ...source,
-        baseDir: finalBase,
-        vaults: [...source.vaults, { name: safeName, path }],
-        lastVault: path,
-      });
-      return true;
-    } catch (error: unknown) {
-      setVaultError(String(error));
-      return false;
-    } finally {
-      setVaultBusy(false);
-    }
-  }
-
-  async function handleAddExistingVault(rawPath: string): Promise<boolean> {
-    setVaultBusy(true);
-    setVaultError(null);
-    try {
-      const path = rawPath.trim();
-      const exists = await invoke<boolean>("vault_dir_exists", { path });
-      if (!exists) {
-        setVaultError(t("app.vaultNotFound", { path }));
-        return false;
-      }
-
-      const source = vaultConfig ?? normalizeConfig(null);
-      setCurrentVault(path);
-      closeOpenNote();
-
-      if (source.vaults.some((vault) => vault.path === path)) {
-        saveVaultConfig({ ...source, lastVault: path });
-        return true;
-      }
-
-      const cleanPath = path.replace(/[\\/]+$/, "");
-      saveVaultConfig({
-        ...source,
-        vaults: [...source.vaults, { name: baseName(cleanPath) || path, path }],
-        lastVault: path,
-      });
-      return true;
-    } catch (error: unknown) {
-      setVaultError(String(error));
-      return false;
-    } finally {
-      setVaultBusy(false);
-    }
-  }
-
-  async function handleRenameVault(path: string, name: string): Promise<boolean> {
-    if (!vaultConfig) return false;
-
-    const cleanName = name.trim();
-    if (!cleanName) {
-      setVaultError(t("app.vaultNeedsName"));
-      return false;
-    }
-
-    setVaultBusy(true);
-    setVaultError(null);
-
-    const next: VaultConfig = {
-      ...vaultConfig,
-      vaults: vaultConfig.vaults.map((vault) =>
-        vault.path === path ? { ...vault, name: cleanName } : vault,
-      ),
-    };
-
-    try {
-      await invoke("save_app_config", { config: next });
-      setVaultConfig(next);
-      return true;
-    } catch (error: unknown) {
-      setVaultError(String(error));
-      return false;
-    } finally {
-      setVaultBusy(false);
-    }
-  }
-
-  async function handleSetVaultCover(path: string, cover: string | null): Promise<boolean> {
-    if (!vaultConfig) return false;
-
-    setVaultBusy(true);
-    setVaultError(null);
-
-    const next: VaultConfig = {
-      ...vaultConfig,
-      vaults: vaultConfig.vaults.map((vault) =>
-        vault.path === path ? { ...vault, cover: cover ?? undefined } : vault,
-      ),
-    };
-
-    try {
-      await invoke("save_app_config", { config: next });
-      setVaultConfig(next);
-      return true;
-    } catch (error: unknown) {
-      setVaultError(String(error));
-      return false;
-    } finally {
-      setVaultBusy(false);
-    }
-  }
-
-  function handleRemoveVaults(paths: string[]) {
-    if (!vaultConfig || paths.length === 0) return;
-
-    const removed = new Set(paths);
-    const vaults = vaultConfig.vaults.filter((vault) => !removed.has(vault.path));
-    const lastVault =
-      vaultConfig.lastVault && removed.has(vaultConfig.lastVault)
-        ? null
-        : vaultConfig.lastVault;
-    saveVaultConfig({ ...vaultConfig, vaults, lastVault });
-
-    if (currentVault && removed.has(currentVault)) leaveVault();
-  }
-
-  function handleSelectBaseDir(dir: string) {
-    const clean = dir.trim();
-    if (!vaultConfig || !clean || clean === vaultConfig.baseDir) return;
-    saveVaultConfig({ ...vaultConfig, baseDir: clean });
   }
 
   /** El idioma no va en el archivo del vault: se guarda aparte, en el equipo. */
