@@ -14,6 +14,17 @@ pub struct BoardInfo {
     pub id: String,
     pub name: String,
     pub modified_ms: Option<u64>,
+    /// Fijada arriba en la lista.
+    pub pinned: bool,
+    /// Color de etiqueta (`#rrggbb`), si se le puso uno.
+    pub color: Option<String>,
+}
+
+/// `#rgb` o `#rrggbb`: lo único que se deja pasar como color de etiqueta.
+fn is_hex_color(text: &str) -> bool {
+    matches!(text.len(), 4 | 7)
+        && text.starts_with('#')
+        && text[1..].chars().all(|c| c.is_ascii_hexdigit())
 }
 
 /// El id acaba siendo un nombre de archivo: solo letras, cifras, `-` y `_`,
@@ -48,13 +59,20 @@ pub(crate) fn list_boards(vault_path: String) -> Result<Vec<BoardInfo>, String> 
             if path.extension()?.to_str()? != "json" || !valid_id(&id) {
                 return None;
             }
-            let name = std::fs::read_to_string(&path)
+            let value = std::fs::read_to_string(&path)
                 .ok()
-                .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+                .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok());
+            let name = value
+                .as_ref()
                 .and_then(|value| value.get("name")?.as_str().map(String::from))
                 .unwrap_or_else(|| id.clone());
+            let pinned = value.as_ref().and_then(|value| value.get("pinned")?.as_bool()).unwrap_or(false);
+            let color = value
+                .as_ref()
+                .and_then(|value| value.get("color")?.as_str().map(String::from))
+                .filter(|color| is_hex_color(color));
             let modified_ms = std::fs::metadata(&path).ok().and_then(|meta| metadata_modified_ms(&meta));
-            Some(BoardInfo { id, name, modified_ms })
+            Some(BoardInfo { id, name, modified_ms, pinned, color })
         })
         .collect();
 
@@ -98,6 +116,10 @@ mod tests {
             assert!(!valid_id(malo), "{malo}");
         }
         assert!(load_board("/tmp".into(), "../etc".into()).is_err());
+        assert!(is_hex_color("#a855f7") && is_hex_color("#abc"));
+        for mal in ["", "#", "a855f7", "#a855f", "red", "#zzzzzz", "#a855f7; x"] {
+            assert!(!is_hex_color(mal), "{mal}");
+        }
     }
 
     #[test]
@@ -122,6 +144,25 @@ mod tests {
         nombres.sort();
         assert_eq!(nombres, vec!["Ideas", "b2"]);
         assert!(load_board(vault, "b1".into()).expect("leer").contains("Ideas"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn la_lista_trae_fijada_y_color_solo_si_son_validos() {
+        let dir = std::env::temp_dir().join(format!("gus-pizarras-meta-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("vault");
+        let vault = dir.to_string_lossy().into_owned();
+
+        save_board(vault.clone(), "fijada".into(), r##"{"name":"Fijada","pinned":true,"color":"#3b82f6","elements":[]}"##.into()).expect("fijada");
+        save_board(vault.clone(), "rara".into(), r##"{"name":"Rara","pinned":"sí","color":"red; x","elements":[]}"##.into()).expect("rara");
+        let lista = list_boards(vault).expect("lista");
+
+        let fijada = lista.iter().find(|board| board.id == "fijada").expect("fijada");
+        assert!(fijada.pinned && fijada.color.as_deref() == Some("#3b82f6"));
+        let rara = lista.iter().find(|board| board.id == "rara").expect("rara");
+        assert!(!rara.pinned && rara.color.is_none(), "lo que no es un booleano ni un color no pasa");
 
         let _ = std::fs::remove_dir_all(&dir);
     }

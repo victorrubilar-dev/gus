@@ -1,5 +1,6 @@
 /** Operaciones sobre pizarras del vault: cargar, duplicar, renombrar y exportar (una o varias). */
 import { invoke } from "@tauri-apps/api/core";
+import { writeImage } from "@tauri-apps/plugin-clipboard-manager";
 import { parseBoard, serializeBoard, type Board, type BoardElement } from "./board";
 import { bytesToBase64, EXPORT_BACKGROUND, EXPORT_PALETTE, svgToPng, utf8ToBase64 } from "./boardExport";
 import { renderBoardSvg, type BoardSvg } from "./boardSvg";
@@ -45,8 +46,9 @@ export async function encodeExport(drawn: BoardSvg, format: ExportFormat): Promi
 
 /** Copia una pizarra con otro id y un nombre libre; devuelve el id de la copia. */
 export async function duplicateBoard(vaultPath: string, source: BoardRef, takenNames: readonly string[], copyLabel: string): Promise<string> {
-  const board = await loadBoard(vaultPath, source.id, source.name);
+  const { pinned: _pinned, ...board } = await loadBoard(vaultPath, source.id, source.name);
   const id = createTaskId();
+  // La copia conserva el color pero no la fijada: esa es de la original.
   await invoke("save_board", { vaultPath, id, json: serializeBoard({ ...board, name: copyName(source.name, takenNames, copyLabel) }) });
   return id;
 }
@@ -54,6 +56,29 @@ export async function duplicateBoard(vaultPath: string, source: BoardRef, takenN
 export async function renameBoard(vaultPath: string, id: string, name: string): Promise<void> {
   const board = await loadBoard(vaultPath, id, name);
   await invoke("save_board", { vaultPath, id, json: serializeBoard({ ...board, name }) });
+}
+
+/** Cambia la etiqueta de una pizarra (fijarla o ponerle color; `color: null` la quita) sin tocar su contenido. */
+export async function setBoardLabel(vaultPath: string, id: string, fallbackName: string, change: { pinned?: boolean; color?: string | null }): Promise<void> {
+  const board = await loadBoard(vaultPath, id, fallbackName);
+  const next: Board = { ...board };
+  if (change.pinned !== undefined) {
+    if (change.pinned) next.pinned = true;
+    else delete next.pinned;
+  }
+  if (change.color !== undefined) {
+    if (change.color) next.color = change.color;
+    else delete next.color;
+  }
+  await invoke("save_board", { vaultPath, id, json: serializeBoard(next) });
+}
+
+/** Copia la pizarra entera como imagen PNG al portapapeles; `false` si está vacía. */
+export async function copyBoardImage(elements: readonly BoardElement[], images: Record<string, string>): Promise<boolean> {
+  const drawn = drawForExport(elements, images);
+  if (!drawn) return false;
+  await writeImage(await svgToPng(drawn));
+  return true;
 }
 
 export interface BatchResult {

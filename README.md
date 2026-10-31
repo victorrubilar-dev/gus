@@ -40,7 +40,7 @@ Una aplicación de escritorio **100 % local** para tomar notas y gestionar tarea
 
 - **Hábitos** — define qué días haces cada hábito; sigue el día con anillos de cierre diario o con un tracker clásico, con rachas y porcentaje de cumplimiento.
 
-- **Pizarras** — lienzos libres con lápiz, goma, formas, flechas, texto, post-it e imágenes de tu vault, con deshacer/rehacer y zoom. Cada pizarra se ve en miniatura en la lista, tiene su menú «⋯» (abrir, renombrar, duplicar, exportar, papelera) y se pueden seleccionar varias para duplicarlas, exportarlas o borrarlas. Se exportan enteras a **SVG** (vectorial, nítido con zoom) o **PNG**.
+- **Pizarras** — lienzos libres con lápiz, goma, formas, flechas, texto, post-it e imágenes de tu vault, con deshacer/rehacer y zoom. Cada pizarra se ve en miniatura en la lista, tiene su menú «⋯» (abrir, renombrar, duplicar, fijar arriba, color de etiqueta, exportar, copiar como imagen, papelera), se pueden buscar y ordenar, y se pueden seleccionar varias para duplicarlas, exportarlas o borrarlas. Se exportan enteras a **SVG** (vectorial, nítido con zoom) o **PNG**.
 
 - **Cambios externos** — si editas una nota con otro programa, Gus la recarga sola; si tenías cambios sin guardar, te deja elegir.
 

@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
-import { CheckSquare, Copy, Download, PenTool, Plus, Trash2 } from "lucide-react";
+import { CheckSquare, Copy, Download, PenTool, Plus, Search, Trash2 } from "lucide-react";
 import BoardCard, { type BoardEntry } from "./BoardCard";
 import BoardEditor from "./BoardEditor";
 import EmptyState from "./EmptyState";
 import ViewHeader from "./ViewHeader";
 import { useT } from "../lib/i18n";
+import type { MessageKey } from "../lib/i18n/core";
 import { joinPath, safeFileName } from "../lib/fileName";
 import { serializeBoard } from "../lib/board";
 import {
@@ -17,9 +18,24 @@ import {
   loadBoard,
   loadBoardImages,
   renameBoard,
+  copyBoardImage,
+  setBoardLabel,
   type ExportFormat,
 } from "../lib/boardActions";
+import { BOARD_SORTS, isBoardSort, listBoards, type BoardSort } from "../lib/boardList";
 import { createTaskId } from "../lib/taskStore";
+
+const SORT_KEY = "gus.boards-sort";
+
+function readSort(): BoardSort {
+  try {
+    const stored = window.localStorage.getItem(SORT_KEY);
+    if (isBoardSort(stored)) return stored;
+  } catch {
+    // Sin almacenamiento se usa el orden por defecto.
+  }
+  return "recent";
+}
 
 export interface BoardsViewProps {
   vaultPath: string;
@@ -43,6 +59,8 @@ export default function BoardsView({ vaultPath }: BoardsViewProps) {
   const [confirmMany, setConfirmMany] = useState(false);
   const [exportMenu, setExportMenu] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<BoardSort>(readSort);
 
   useEffect(() => {
     if (openId !== null) return;
@@ -100,6 +118,7 @@ export default function BoardsView({ vaultPath }: BoardsViewProps) {
     });
   }
 
+  const visible = listBoards(boards, query, sort);
   const chosen = boards.filter((board) => selected.has(board.id));
 
   async function create() {
@@ -152,6 +171,32 @@ export default function BoardsView({ vaultPath }: BoardsViewProps) {
       say(t(list.length === 1 ? "boards.duplicated" : "boards.duplicatedMany"));
     } catch (reason) {
       setError(String(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function label(board: BoardEntry, change: { pinned?: boolean; color?: string | null }) {
+    try {
+      await setBoardLabel(vaultPath, board.id, board.name, change);
+      setReload((key) => key + 1);
+    } catch (reason) {
+      setError(String(reason));
+    }
+  }
+
+  async function copyImage(board: BoardEntry) {
+    setBusy(true);
+    try {
+      const loaded = await loadBoard(vaultPath, board.id, board.name);
+      const copied = await copyBoardImage(loaded.elements, await loadBoardImages(vaultPath, loaded.elements));
+      if (copied) say(t("boards.imageCopied"));
+      else {
+        setNotice(null);
+        setError(t("boards.exportEmpty"));
+      }
+    } catch (reason) {
+      fail(reason);
     } finally {
       setBusy(false);
     }
@@ -212,7 +257,7 @@ export default function BoardsView({ vaultPath }: BoardsViewProps) {
   const barButton = "gus-btn gus-btn-secondary";
 
   return (
-    <section data-tour="boards" className="gus-scrollbar flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto p-6">
+    <section data-tour="boards" className="gus-scrollbar flex h-full min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto p-6">
       <ViewHeader
         title={t("boards.title")}
         description={t("boards.desc")}
@@ -240,7 +285,7 @@ export default function BoardsView({ vaultPath }: BoardsViewProps) {
       {selecting && (
         <div role="toolbar" aria-label={t("boards.select")} className="flex flex-wrap items-center gap-2 rounded-xl border border-gus-accent/40 bg-gus-accent/10 px-3 py-2">
           <span className="mr-1 text-body text-gus-text">{t("boards.selectedCount", { count: selected.size })}</span>
-          <button type="button" onClick={() => setSelected(new Set(boards.map((board) => board.id)))} className={barButton}>
+          <button type="button" onClick={() => setSelected(new Set(visible.map((board) => board.id)))} className={barButton}>
             {t("boards.selectAll")}
           </button>
           <button type="button" onClick={() => setSelected(new Set())} disabled={selected.size === 0} className={barButton}>
@@ -302,6 +347,45 @@ export default function BoardsView({ vaultPath }: BoardsViewProps) {
         </div>
       )}
 
+      {boards.length > 1 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="relative min-w-48 flex-1 max-w-sm">
+            <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-gus-muted" aria-hidden="true" />
+            <input
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={t("boards.searchPlaceholder")}
+              aria-label={t("boards.search")}
+              className="w-full rounded-lg border border-gus-border bg-gus-panel py-1.5 pr-3 pl-9 text-body text-gus-text outline-none transition-colors placeholder:text-gus-muted focus:border-gus-accent/60"
+            />
+          </label>
+          <label className="flex items-center gap-2 text-body text-gus-muted">
+            {t("boards.sort")}
+            <select
+              value={sort}
+              onChange={(event) => {
+                const next = event.target.value;
+                if (!isBoardSort(next)) return;
+                setSort(next);
+                try {
+                  window.localStorage.setItem(SORT_KEY, next);
+                } catch {
+                  // El orden solo dura esta sesión.
+                }
+              }}
+              className="rounded-lg border border-gus-border bg-gus-panel px-2 py-1.5 text-body text-gus-text outline-none focus:border-gus-accent/60"
+            >
+              {BOARD_SORTS.map((option) => (
+                <option key={option} value={option}>
+                  {t(`boards.sort.${option}` as MessageKey)}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      )}
+
       {status === "loading" && <p className="text-body text-gus-muted">{t("common.loading")}</p>}
       {error && <p role="alert" className="break-words rounded-lg border border-rose-400/30 bg-rose-400/5 px-3 py-2 text-body text-rose-300">{error}</p>}
       {notice && (
@@ -312,8 +396,12 @@ export default function BoardsView({ vaultPath }: BoardsViewProps) {
 
       {status === "ready" && boards.length === 0 && <EmptyState icon={PenTool} title={t("boards.empty")} />}
 
+      {status === "ready" && boards.length > 0 && visible.length === 0 && (
+        <p className="py-8 text-center text-body text-gus-muted">{t("boards.noMatches", { query: query.trim() })}</p>
+      )}
+
       <ul className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4">
-        {boards.map((board) => (
+        {visible.map((board) => (
           <BoardCard
             key={board.id}
             vaultPath={vaultPath}
@@ -331,6 +419,9 @@ export default function BoardsView({ vaultPath }: BoardsViewProps) {
             onCancelRename={() => setRenamingId(null)}
             onDuplicate={() => void duplicate([board])}
             onExport={(format) => void exportOne(board, format)}
+            onCopyImage={() => void copyImage(board)}
+            onTogglePin={() => void label(board, { pinned: !board.pinned })}
+            onSetColor={(color) => void label(board, { color })}
             onAskTrash={() => setConfirmId(board.id)}
             onConfirmTrash={() => void trash([board])}
             onCancelTrash={() => setConfirmId(null)}

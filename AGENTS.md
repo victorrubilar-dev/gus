@@ -133,7 +133,7 @@ gus/
 │   │   ├── BoardsView.tsx        # Lista de pizarras (crear, abrir, borrar a la papelera)
 │   │   ├── BoardEditor.tsx       # Lienzo de una pizarra: lápiz, goma, formas, flechas, texto, post-it e imágenes; exporta a SVG o PNG
 │   │   ├── BoardPreview.tsx      # Miniatura de una pizarra en la lista
-│   │   ├── BoardCard.tsx         # Tarjeta de pizarra: miniatura, selección y menú «⋯» (abrir, renombrar, duplicar, exportar, papelera)
+│   │   ├── BoardCard.tsx         # Tarjeta de pizarra: miniatura, selección, franja de color, pin y menú «⋯» (abrir, renombrar, duplicar, fijar, color, exportar, copiar imagen, papelera)
 │   │   ├── BoardImagePicker.tsx  # Selector de imágenes del vault para la pizarra
 │   │   ├── CalendarView.tsx      # Calendario con fechas de vencimiento
 │   │   ├── SettingsPanel.tsx     # UI de configuración (7 categorías)
@@ -172,6 +172,7 @@ gus/
 │   │   ├── taskStore.ts          # Persistencia de tareas (JSON)
 │   │   ├── taskPriority.ts       # Niveles de prioridad (Baja/Media/Alta/Urgente)
 │   │   ├── boardSvg.ts, boardExport.ts # Pizarra → SVG autónomo (miniaturas y exportar) y SVG → PNG
+│   │   ├── boardList.ts          # Búsqueda por nombre y orden de la lista de pizarras (las fijadas siempre arriba)
 │   │   ├── boardActions.ts, boardNames.ts # Cargar, duplicar, renombrar y exportar pizarras (una o por lotes) y nombre de las copias
 │   │   ├── taskActions.ts        # Cambios sobre la lista de tareas como funciones puras (marcar, prioridad, columna, etiquetas…)
 │   │   ├── dashboard.ts          # Lógica pura del resumen: saludo, reparto de tareas de hoy, recientes mezclados y vista previa de la nota
@@ -302,7 +303,7 @@ pnpm build
 pnpm tauri build
 
 # Tests
-pnpm test              # Todos los tests Vitest (342 tests en 37 ficheros)
+pnpm test              # Todos los tests Vitest (349 tests en 38 ficheros)
 pnpm test:watch        # Modo watch
 
 # Type checking

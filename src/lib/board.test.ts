@@ -159,3 +159,14 @@ describe("lectura", () => {
     expect(parseBoard("{no es json", "Sin título")).toEqual({ name: "Sin título", elements: [] });
   });
 });
+
+describe("etiquetas de la pizarra", () => {
+  it("fijada y color se leen y se guardan; lo raro se descarta", () => {
+    const board = parseBoard(JSON.stringify({ name: "A", pinned: true, color: "#3b82f6", elements: [] }), "x");
+    expect(board).toMatchObject({ pinned: true, color: "#3b82f6" });
+    expect(JSON.parse(serializeBoard(board))).toMatchObject({ pinned: true, color: "#3b82f6" });
+    const rara = parseBoard(JSON.stringify({ name: "B", pinned: "sí", color: "red", elements: [] }), "x");
+    expect("pinned" in rara).toBe(false);
+    expect("color" in rara).toBe(false);
+  });
+});

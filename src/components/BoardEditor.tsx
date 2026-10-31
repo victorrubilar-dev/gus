@@ -49,7 +49,7 @@ import {
   type Point,
   type View,
 } from "../lib/board";
-import { drawForExport, encodeExport } from "../lib/boardActions";
+import { copyBoardImage, drawForExport, encodeExport } from "../lib/boardActions";
 import { joinPath, safeFileName } from "../lib/fileName";
 import type { VaultImage } from "../lib/imageLinks";
 import { createTaskId } from "../lib/taskStore";
@@ -208,6 +208,8 @@ export default function BoardEditor({ vaultPath, boardId, onBack }: BoardEditorP
   const [dirty, setDirty] = useState(false);
   const [spaceHeld, setSpaceHeld] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  /** Fijada y color de la pizarra: no se editan aquí, pero no deben perderse al guardar. */
+  const [label, setLabel] = useState<{ pinned?: boolean; color?: string }>({});
   const exportRef = useRef<HTMLDivElement>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -231,6 +233,7 @@ export default function BoardEditor({ vaultPath, boardId, onBack }: BoardEditorP
         if (cancelled) return;
         const board = parseBoard(json, fallbackName);
         setName(board.name);
+        setLabel({ ...(board.pinned ? { pinned: true } : {}), ...(board.color ? { color: board.color } : {}) });
         setElements(board.elements);
         setLoaded("ready");
       })
@@ -249,12 +252,12 @@ export default function BoardEditor({ vaultPath, boardId, onBack }: BoardEditorP
   useEffect(() => {
     if (!dirty || loaded !== "ready") return;
     const timer = window.setTimeout(() => {
-      invoke("save_board", { vaultPath, id: boardId, json: serializeBoard({ name, elements }) })
+      invoke("save_board", { vaultPath, id: boardId, json: serializeBoard({ name, elements, ...label }) })
         .then(() => setDirty(false))
         .catch((reason: unknown) => setError(String(reason)));
     }, SAVE_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [dirty, loaded, name, elements, vaultPath, boardId]);
+  }, [dirty, loaded, name, elements, label, vaultPath, boardId]);
 
   // Imágenes: se piden al vault las que la pizarra usa y aún no están en memoria.
   useEffect(() => {
@@ -609,6 +612,19 @@ export default function BoardEditor({ vaultPath, boardId, onBack }: BoardEditorP
 
   /* ---------------------------- exportar ---------------------------- */
 
+  /** Copia toda la pizarra como imagen PNG al portapapeles. */
+  async function copyImage() {
+    setExportOpen(false);
+    setError(null);
+    setNotice(null);
+    try {
+      if (await copyBoardImage(elements, images)) setNotice(t("boards.imageCopied"));
+      else setError(t("boards.exportEmpty"));
+    } catch (reason) {
+      setError(t("boards.exportError", { error: String(reason) }));
+    }
+  }
+
   /** Guarda toda la pizarra (no solo lo que se ve) como imagen: SVG vectorial o PNG. */
   async function exportBoard(format: "svg" | "png") {
     setExportOpen(false);
@@ -749,6 +765,14 @@ export default function BoardEditor({ vaultPath, boardId, onBack }: BoardEditorP
                     {t(format === "svg" ? "boards.exportSvg" : "boards.exportPng")}
                   </button>
                 ))}
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => void copyImage()}
+                  className="flex w-full items-center border-t border-gus-border px-3 py-1.5 text-left text-body text-gus-muted transition-colors hover:bg-gus-panel hover:text-gus-text focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-gus-accent/60 focus-visible:outline-none"
+                >
+                  {t("boards.copyImage")}
+                </button>
               </div>
             )}
           </div>

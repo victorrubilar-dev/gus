@@ -24,7 +24,14 @@ export type BoardElement =
 export interface Board {
   name: string;
   elements: BoardElement[];
+  /** Fijada arriba en la lista de pizarras. */
+  pinned?: boolean;
+  /** Color de etiqueta de la tarjeta (`#rrggbb`). */
+  color?: string;
 }
+
+/** Colores de etiqueta que ofrece el menú de cada pizarra. */
+export const BOARD_LABEL_COLORS = ["#ef4444", "#f59e0b", "#22c55e", "#3b82f6", "#a855f7", "#ec4899"];
 
 export interface Rect {
   x: number;
@@ -277,7 +284,10 @@ export function parseBoard(json: string, fallbackName: string): Board {
   }
   const o = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
   const elements = Array.isArray(o.elements) ? o.elements.map(readElement).filter((el): el is BoardElement => el !== null) : [];
-  return { name: str(o.name) && o.name.trim() ? o.name : fallbackName, elements };
+  const board: Board = { name: str(o.name) && o.name.trim() ? o.name : fallbackName, elements };
+  if (o.pinned === true) board.pinned = true;
+  if (str(o.color) && /^#[0-9a-fA-F]{6}$/.test(o.color)) board.color = o.color;
+  return board;
 }
 
 export function serializeBoard(board: Board): string {

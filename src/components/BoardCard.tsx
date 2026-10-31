@@ -1,14 +1,19 @@
 import { useEffect, useRef, useState } from "react";
 import clsx from "clsx";
-import { Check, Copy, Download, FolderOpen, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { Check, Copy, Download, FolderOpen, ImageDown, MoreHorizontal, Pencil, Pin, PinOff, Trash2 } from "lucide-react";
 import BoardPreview from "./BoardPreview";
 import { useT } from "../lib/i18n";
 import type { ExportFormat } from "../lib/boardActions";
+import { BOARD_LABEL_COLORS } from "../lib/board";
+import type { MessageKey } from "../lib/i18n/core";
 
 export interface BoardEntry {
   id: string;
   name: string;
   modifiedMs: number | null;
+  pinned?: boolean;
+  /** Color de etiqueta (`#rrggbb`). */
+  color?: string | null;
 }
 
 interface BoardCardProps {
@@ -28,6 +33,9 @@ interface BoardCardProps {
   onCancelRename: () => void;
   onDuplicate: () => void;
   onExport: (format: ExportFormat) => void;
+  onCopyImage: () => void;
+  onTogglePin: () => void;
+  onSetColor: (color: string | null) => void;
   onAskTrash: () => void;
   onConfirmTrash: () => void;
   onCancelTrash: () => void;
@@ -88,6 +96,9 @@ export default function BoardCard(props: BoardCardProps) {
         selected ? "border-gus-accent ring-2 ring-gus-accent/40" : "border-gus-border hover:border-gus-accent/50",
       )}
     >
+      {board.color && (
+        <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 z-10 h-1 rounded-t-xl" style={{ background: board.color }} />
+      )}
       <button
         type="button"
         onClick={selecting ? props.onToggleSelect : props.onOpen}
@@ -99,7 +110,10 @@ export default function BoardCard(props: BoardCardProps) {
           {renaming ? (
             <span className="h-5" aria-hidden="true" />
           ) : (
-            <span className="truncate text-sm font-medium text-gus-text">{board.name}</span>
+            <span className="flex items-center gap-1.5">
+              {board.pinned && <Pin className="h-3 w-3 shrink-0 text-gus-accent" strokeWidth={2} aria-label={t("boards.pinned")} />}
+              <span className="truncate text-sm font-medium text-gus-text">{board.name}</span>
+            </span>
           )}
           {board.modifiedMs !== null && (
             <span className="text-meta text-gus-muted">
@@ -178,6 +192,31 @@ export default function BoardCard(props: BoardCardProps) {
                 <Copy className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                 {t("boards.duplicate")}
               </button>
+              <button type="button" role="menuitem" onClick={run(props.onTogglePin)} className={ITEM}>
+                {board.pinned ? <PinOff className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> : <Pin className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
+                {t(board.pinned ? "boards.unpin" : "boards.pin")}
+              </button>
+              <div role="group" aria-label={t("boards.colorLabel")} className="flex items-center gap-1.5 px-3 py-1.5">
+                <span className="mr-1 text-meta text-gus-muted">{t("boards.colorLabel")}</span>
+                {BOARD_LABEL_COLORS.map((color, index) => (
+                  <button
+                    key={color}
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={board.color === color}
+                    aria-label={t(`boards.color.${index}` as MessageKey)}
+                    title={t(`boards.color.${index}` as MessageKey)}
+                    onClick={run(() => props.onSetColor(board.color === color ? null : color))}
+                    className={clsx("h-4 w-4 rounded-full border border-gus-border outline-none focus-visible:ring-2 focus-visible:ring-gus-accent", board.color === color && "ring-2 ring-gus-accent")}
+                    style={{ background: color }}
+                  />
+                ))}
+                {board.color && (
+                  <button type="button" onClick={run(() => props.onSetColor(null))} className="ml-1 text-meta text-gus-muted underline-offset-2 hover:text-gus-text hover:underline">
+                    {t("boards.colorNone")}
+                  </button>
+                )}
+              </div>
               <div role="separator" className="my-1 h-px bg-gus-border" />
               <button type="button" role="menuitem" onClick={run(() => props.onExport("svg"))} className={ITEM}>
                 <Download className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
@@ -186,6 +225,10 @@ export default function BoardCard(props: BoardCardProps) {
               <button type="button" role="menuitem" onClick={run(() => props.onExport("png"))} className={ITEM}>
                 <Download className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                 {t("boards.exportPng")}
+              </button>
+              <button type="button" role="menuitem" onClick={run(props.onCopyImage)} className={ITEM}>
+                <ImageDown className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                {t("boards.copyImage")}
               </button>
               <div role="separator" className="my-1 h-px bg-gus-border" />
               <button type="button" role="menuitem" onClick={run(props.onAskTrash)} className={clsx(ITEM, "text-rose-300 hover:bg-rose-400/10 hover:text-rose-300")}>

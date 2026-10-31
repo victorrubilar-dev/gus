@@ -33,6 +33,8 @@ const tareas: unknown[] = location.search.includes("semilla")
   : [{ id: "base", title: "Tarea base", tags: [], completes: false }];
 const pizarras = new Map<string, string>();
 /** Lo que el test «guarda» al exportar una pizarra (ruta, datos en Base64 y formato). */
+/** Imágenes que la app «copia al portapapeles» (solo el tamaño en bytes). */
+const portapapeles: { bytes: number }[] = [];
 const exportados: { path: string; data: string; format: string; unique?: boolean }[] = [];
 if (location.search.includes("semilla")) {
   pizarras.set(
@@ -40,6 +42,7 @@ if (location.search.includes("semilla")) {
     JSON.stringify({
       version: 1,
       name: "Plan de la semana",
+      modifiedMs: 1_700_000_000_000,
       elements: [
         { id: "a", type: "rect", color: "#3b82f6", x: 20, y: 20, w: 160, h: 80, fill: true },
         { id: "b", type: "text", color: "var(--color-gus-text)", x: 40, y: 50, text: "Lunes <&> martes", size: 20 },
@@ -49,8 +52,8 @@ if (location.search.includes("semilla")) {
       ],
     }),
   );
-  pizarras.set("p2", JSON.stringify({ version: 1, name: "Vacía", elements: [] }));
-  pizarras.set("p3", JSON.stringify({ version: 1, name: "Ideas", elements: [{ id: "x", type: "ellipse", color: "#a855f7", x: 10, y: 10, w: 120, h: 70, fill: false }, { id: "y", type: "text", color: "#ef4444", x: 30, y: 38, text: "Ideas", size: 22 }] }));
+  pizarras.set("p2", JSON.stringify({ version: 1, name: "Vacía", modifiedMs: 1_699_000_000_000, elements: [] }));
+  pizarras.set("p3", JSON.stringify({ version: 1, name: "Ideas", modifiedMs: 1_699_500_000_000, elements: [{ id: "x", type: "ellipse", color: "#a855f7", x: 10, y: 10, w: 120, h: 70, fill: false }, { id: "y", type: "text", color: "#ef4444", x: 30, y: 38, text: "Ideas", size: 22 }] }));
 }
 /** Cada `save_app_config` que recibe el backend, para comprobar vaults y último abierto. */
 const configGuardada: unknown[] = [];
@@ -247,6 +250,10 @@ const respuestas: Record<string, (args: Record<string, unknown>) => unknown> = {
       })),
   "plugin:dialog|save": (args) => `/tmp/${String((args.options as { defaultPath?: string })?.defaultPath ?? "pizarra.svg")}`,
   "plugin:dialog|open": () => "/tmp/exportadas",
+  "plugin:clipboard-manager|write_image": (args) => {
+    portapapeles.push({ bytes: Array.isArray(args.image) ? args.image.length : Object.keys((args.image as object) ?? {}).length });
+    return null;
+  },
   write_image_file: (args) => {
     exportados.push({ path: String(args.path), data: String(args.data), format: String(args.format), unique: args.unique === true });
     return args.path;
@@ -265,7 +272,10 @@ const respuestas: Record<string, (args: Record<string, unknown>) => unknown> = {
     { name: "manual.pdf", path: "/vault/manual.pdf", relative: "manual.pdf", modified_ms: ahora },
   ],
   list_boards: () =>
-    [...pizarras.entries()].map(([id, json]) => ({ id, name: JSON.parse(json).name, modifiedMs: ahora })),
+    [...pizarras.entries()].map(([id, json]) => {
+      const pizarra = JSON.parse(json);
+      return { id, name: pizarra.name, modifiedMs: pizarra.modifiedMs ?? ahora, pinned: pizarra.pinned === true, color: pizarra.color ?? null };
+    }),
   load_board: (args) => pizarras.get(String(args.id)) ?? "{}",
   save_board: (args) => {
     pizarras.set(String(args.id), String(args.json));
@@ -306,7 +316,7 @@ const respuestas: Record<string, (args: Record<string, unknown>) => unknown> = {
   },
 };
 
-(window as unknown as { __smoke: unknown }).__smoke = { pizarras, exportados, emitir: (evento: string, payload: unknown) => callbacks.get(oyentes.get(evento) ?? -1)?.({ event: evento, id: 0, payload }), configGuardada, archivos, llamadas, tareas, pizarras, terminarDescarga: () => terminarDescarga() };
+(window as unknown as { __smoke: unknown }).__smoke = { pizarras, portapapeles, exportados, emitir: (evento: string, payload: unknown) => callbacks.get(oyentes.get(evento) ?? -1)?.({ event: evento, id: 0, payload }), configGuardada, archivos, llamadas, tareas, pizarras, terminarDescarga: () => terminarDescarga() };
 (window as unknown as { __TAURI_EVENT_PLUGIN_INTERNALS__: unknown }).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
   unregisterListener: () => {},
 };
