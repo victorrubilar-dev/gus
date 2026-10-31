@@ -4,7 +4,6 @@ import {
   useCallback,
   useEffect,
   useEffectEvent,
-  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -43,24 +42,10 @@ import { dailyNoteDateFor, dailyRelativePath, renderDailyTemplate } from "./lib/
 import { relativeFolderLabel } from "./lib/importFiles";
 import { findWikiNote, wikiTargetToPath, type WikiNote } from "./lib/wikiLink";
 import { relativeNotePath } from "./lib/searchIndex";
-import { loadTaskStore } from "./lib/taskStore";
-import {
-  isoDay,
-  notifiedKey,
-  readNotified,
-  readNotifiedDay,
-  shouldNotifyDailyNote,
-  sendSystemNotification,
-  storeNotified,
-  storeNotifiedDay,
-  tasksToNotify,
-} from "./lib/notifications";
-import { incomingCountMap, type LinkGraph } from "./lib/linkGraph";
 import { accentHex, DEFAULT_SETTINGS, type AppSettings } from "./lib/settings";
-import { applyTheme, themeDefinition, type ThemeScheme } from "./lib/themes";
+import { themeDefinition, type ThemeScheme } from "./lib/themes";
 import { APP_VERSION } from "./lib/version";
 import { useAppUpdates } from "./components/useAppUpdates";
-import { setPersonalWords } from "./lib/spellCheck";
 import { globalShortcutFor } from "./lib/shortcuts";
 import {
   I18nProvider,
@@ -72,6 +57,9 @@ import {
 import { toLocalCoord } from "./lib/uiZoom";
 import { useFileDrop } from "./components/useFileDrop";
 import { useVaults } from "./components/useVaults";
+import { useAppearance } from "./components/useAppearance";
+import { useLinkGraph } from "./components/useLinkGraph";
+import { useStartupNotifications } from "./components/useStartupNotifications";
 import { DEFAULT_BASE_DIR } from "./lib/vaultConfig";
 import { usePanelWidth } from "./components/usePanelWidth";
 import Sidebar, { useSidebarWidth, type TabId } from "./components/Sidebar";
@@ -211,13 +199,6 @@ function App({
   const [linkError, setLinkError] = useState<string | null>(null);
   const linkErrorTimerRef = useRef<number | null>(null);
   /**
-   * Grafo de enlaces del vault (parseado en Rust): alimenta el panel de
-   * backlinks y el contador de cada enlace [[wiki]] de la vista previa.
-   */
-  const [linkGraph, setLinkGraph] = useState<LinkGraph | null>(null);
-  const [linkGraphStatus, setLinkGraphStatus] = useState<NoteStatus>("idle");
-  const [linkGraphError, setLinkGraphError] = useState<string | null>(null);
-  /**
    * El índice de búsqueda existe ya en el vault: solo entonces merece la pena
    * mantenerlo al guardar. Si nadie ha buscado nunca, no se crea el archivo.
    */
@@ -270,31 +251,17 @@ function App({
     explorerRef,
     onFilesChanged: () => setVaultRefresh((key) => key + 1),
   });
+  useAppearance(settings, vaultConfig !== null);
+  useStartupNotifications(bootStatus === "ready", currentVault, settings);
+  const { linkGraph, linkGraphStatus, linkGraphError, linkRefs } = useLinkGraph(
+    currentVault,
+    vaultRefresh,
+    note?.path,
+  );
   /** Solo la última petición de imagen puede escribir en el estado. */
   const imageRequestRef = useRef(0);
   /** Solo la última petición de PDF puede escribir en el estado. */
   const pdfRequestRef = useRef(0);
-
-  useEffect(() => {
-    setPersonalWords(settings.spellWords);
-  }, [settings.spellWords]);
-
-  /** Escala global de la interfaz (Ajustes o atajos Ctrl + «+»/«−»/0). */
-  useEffect(() => {
-    const factor = settings.uiZoom / 100;
-    document.documentElement.style.setProperty("zoom", String(factor));
-    // Los vw/vh no se reescalan con el zoom raíz: la caja raíz los divide
-    // por este factor para seguir llenando la ventana a cualquier escala.
-    document.documentElement.style.setProperty("--gus-zoom", String(factor));
-    window.dispatchEvent(new Event("gus:zoom"));
-  }, [settings.uiZoom]);
-
-  /** Paleta activa: variables de color, esquema y acento de todo el documento. */
-  useEffect(() => {
-    // Sin configuración leída aún se respeta el tema de main.tsx (sesión anterior).
-    if (!vaultConfig) return;
-    applyTheme(settings.theme);
-  }, [settings.theme, vaultConfig]);
 
   /**
    * El recorrido guiado queda pendiente en la primera bienvenida (entonces
@@ -305,119 +272,6 @@ function App({
     if (!readTourPending()) return;
     setTourOpen(true);
   }, [bootStatus, currentVault]);
-
-  /**
-   * Grafo de enlaces del vault: se recalcula al cambiar de vault, al abrir
-   * otra nota y al crecer el contador de refresco (archivos nuevos o en la
-   * papelera). El retardo evita repetir el barrido mientras se guardan varios
-   * cambios seguidos.
-   */
-  useEffect(() => {
-    if (!currentVault) {
-      setLinkGraph(null);
-      setLinkGraphStatus("idle");
-      setLinkGraphError(null);
-      return;
-    }
-
-    let cancelled = false;
-    setLinkGraphStatus("loading");
-
-    const timer = window.setTimeout(() => {
-      invoke<LinkGraph>("build_link_graph", { path: currentVault })
-        .then((graph) => {
-          if (cancelled) return;
-          setLinkGraph(graph);
-          setLinkGraphStatus("ready");
-          setLinkGraphError(null);
-        })
-        .catch((error: unknown) => {
-          if (cancelled) return;
-          // El grafo anterior se conserva: el panel sigue siendo útil aunque
-          // falle la última lectura.
-          setLinkGraphStatus("error");
-          setLinkGraphError(String(error));
-        });
-    }, 300);
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [currentVault, vaultRefresh, note?.path]);
-
-  /** Contador por nota para cada enlace [[wiki]] de la vista previa. */
-  const linkRefs = useMemo(() => incomingCountMap(linkGraph), [linkGraph]);
-
-  /**
-   * Avisos del sistema al arrancar (REQ-12): tareas por vencer según la
-   * antelación elegida y la nota del día que todavía no se ha escrito. Van
-   * una sola vez por vault y por día; quien los apague en Ajustes no vuelve a
-   * ver ninguno.
-   */
-  useEffect(() => {
-    if (bootStatus !== "ready" || currentVault === null) return;
-    if (!settings.notificationsEnabled) return;
-
-    let cancelled = false;
-    const vault = currentVault;
-    const leadDays = settings.notificationLeadDays;
-    const dailyFolder = settings.dailyNotesFolder;
-    const nowMs = Date.now();
-
-    async function announce(): Promise<void> {
-      // 1. Tareas: las que entran en la ventana y no se avisaron hoy.
-      try {
-        if (cancelled) return;
-        const tasks = await loadTaskStore(vault);
-        if (cancelled) return;
-        const pending = tasksToNotify(tasks, leadDays, nowMs, readNotified());
-        if (pending.length > 0) {
-          const first = pending[0];
-          const body =
-            pending.length === 1
-              ? t("notify.tasksBody__one", { count: 1, title: first.title })
-              : t("notify.tasksBody", { count: pending.length });
-          await sendSystemNotification({ title: t("notify.tasksTitle"), body });
-          storeNotified(
-            pending.map((task) => notifiedKey(task.id, task.due ?? "", nowMs)),
-            nowMs,
-          );
-        }
-      } catch {
-        // Sin tareas legibles no se avisa de nada: esto nunca rompe el arranque.
-      }
-
-      // 2. Nota del día: solo si todavía no existe.
-      try {
-        if (cancelled) return;
-        const path = joinPath(vault, dailyRelativePath(dailyFolder, new Date(nowMs)));
-        let exists = true;
-        try {
-          await invoke<string>("read_vault_file", { path });
-        } catch {
-          exists = false;
-        }
-        if (cancelled) return;
-
-        if (shouldNotifyDailyNote(true, exists, readNotifiedDay(), nowMs)) {
-          await sendSystemNotification({
-            title: t("notify.dailyTitle"),
-            body: t("notify.dailyBody"),
-          });
-          storeNotifiedDay(isoDay(nowMs));
-        }
-      } catch {
-        // Igual que arriba: el recordatorio es un extra, no una obligación.
-      }
-    }
-
-    void announce();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [bootStatus, currentVault, settings.notificationsEnabled]);
 
   /**
    * Marca o desmarca un checkbox de una nota desde la lista de tareas (REQ-09).
