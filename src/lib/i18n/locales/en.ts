@@ -206,9 +206,6 @@ const en: Record<keyof typeof es, string> = {
 
   "settings.openLastVault": "Reopen the last vault",
   "settings.openLastVault.desc": "On startup, Gus goes back to the vault you were using.",
-  "settings.alwaysNotesTab": "Start on “Notes” when changing vault",
-  "settings.alwaysNotesTab.desc":
-    "Opening a vault shows the Overview; with this setting it goes straight to the notes tab.",
   "settings.theme": "Theme",
   "settings.theme.desc":
     "Colour palette for the whole interface, each with its own accent colour.",

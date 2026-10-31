@@ -131,7 +131,7 @@ function App({
   onLanguageChange: (lang: Language) => void;
 }) {
   const t = useT();
-  const [activeTab, setActiveTab] = useState<TabId>("notes");
+  const [activeTab, setActiveTab] = useState<TabId>("home");
   /** Con el panel derecho oculto solo se ve el explorador, a lo ancho. */
   const [rightHidden, setRightHidden] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -204,7 +204,7 @@ function App({
     vaultBusy,
     vaultError,
     saveVaultConfig,
-    openVault: openVaultBase,
+    openVault,
     leaveVault,
     handleCreateVault,
     handleAddExistingVault,
@@ -396,10 +396,10 @@ function App({
     }
   }
 
-  function openVault(path: string) {
-    openVaultBase(path);
-    setActiveTab(settings.alwaysNotesTab ? "notes" : "home");
-  }
+  /** La pantalla de inicio es el Resumen: al abrir un vault (al arrancar, elegirlo, crearlo o añadirlo) se empieza ahí. */
+  useEffect(() => {
+    if (currentVault !== null) setActiveTab("home");
+  }, [currentVault]);
 
   /** El idioma no va en el archivo del vault: se guarda aparte, en el equipo. */
   function handleLanguageChange(lang: Language) {

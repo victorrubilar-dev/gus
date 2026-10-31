@@ -17,6 +17,8 @@ await page.goto("http://localhost:5199/bench/app-smoke.html?semilla", { waitUnti
 const pestanas = () => page.getByRole("tab");
 const activa = () => page.locator('[role="tab"][aria-selected="true"]').innerText().catch(() => null);
 
+// La app arranca en el Resumen: se pasa a Notas.
+await page.locator('[data-tour="sidebar"]').getByRole("button", { name: "Notas", exact: true }).first().click();
 await page.getByText("bienvenida.md").first().click();
 await page.getByText("proyecto-gus.md").first().click();
 await page.getByText("lecturas.md").first().click();

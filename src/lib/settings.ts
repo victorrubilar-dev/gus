@@ -22,7 +22,6 @@ export type AccentChoice = AccentKey | "tema";
 
 export interface AppSettings {
   openLastVault: boolean;
-  alwaysNotesTab: boolean;
   animations: boolean;
   accent: AccentChoice;
   theme: ThemeKey;
@@ -78,7 +77,6 @@ export function isLeadDays(value: unknown): value is number {
 
 export const DEFAULT_SETTINGS: AppSettings = {
   openLastVault: true,
-  alwaysNotesTab: true,
   animations: true,
   accent: "tema",
   theme: DEFAULT_THEME,
@@ -111,7 +109,6 @@ export function normalizeSettings(raw: unknown): AppSettings {
 
   return {
     openLastVault: asBool(data.openLastVault, DEFAULT_SETTINGS.openLastVault),
-    alwaysNotesTab: asBool(data.alwaysNotesTab, DEFAULT_SETTINGS.alwaysNotesTab),
     animations: asBool(data.animations, DEFAULT_SETTINGS.animations),
     accent:
       accent === "tema" || (typeof accent === "string" && accent in ACCENTS)
@@ -234,7 +231,6 @@ export const SETTINGS_CATEGORIES: SettingsCategory[] = [
 
 export type ToggleKey =
   | "openLastVault"
-  | "alwaysNotesTab"
   | "animations"
   | "autoSave"
   | "hideCompletedTasks"
@@ -284,14 +280,6 @@ export const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     labelKey: "settings.openLastVault",
     descriptionKey: "settings.openLastVault.desc",
     keywords: "autoabrir continuar sesion arranque reopen continue session",
-  },
-  {
-    kind: "toggle",
-    category: "general",
-    key: "alwaysNotesTab",
-    labelKey: "settings.alwaysNotesTab",
-    descriptionKey: "settings.alwaysNotesTab.desc",
-    keywords: "pestaña notas reset cambiar vault inicio resumen tab reset change start",
   },
   {
     kind: "action",

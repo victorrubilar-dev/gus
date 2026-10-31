@@ -18,6 +18,8 @@ const comprobar = (ok, texto) => {
 for (const ancho of [1280, 1600]) {
   const page = await (await browser.newContext({ viewport: { width: ancho, height: 800 }, locale: "es-ES" })).newPage();
   await page.goto(URL, { waitUntil: "networkidle" });
+  // La app arranca en el Resumen: se pasa a Notas.
+  await page.locator('[data-tour="sidebar"]').getByRole("button", { name: "Notas", exact: true }).first().click();
   await page.getByText("bienvenida.md").first().click();
   const area = page.locator('textarea[data-drop-editor="nota"]');
   await area.waitFor({ timeout: 10000 });

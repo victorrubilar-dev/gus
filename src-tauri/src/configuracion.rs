@@ -14,7 +14,6 @@ pub struct VaultInfo {
 #[serde(default, rename_all = "camelCase")]
 pub struct AppSettings {
     pub open_last_vault: bool,
-    pub always_notes_tab: bool,
     pub animations: bool,
     pub accent: String,
     pub editor_font_size: u8,
@@ -41,7 +40,6 @@ impl Default for AppSettings {
     fn default() -> Self {
         Self {
             open_last_vault: true,
-            always_notes_tab: false,
             animations: true,
             accent: "terracota".into(),
             editor_font_size: 14,

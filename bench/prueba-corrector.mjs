@@ -15,6 +15,8 @@ const comprobar = (ok, texto) => {
 };
 
 await page.goto("http://localhost:5199/bench/app-smoke.html?semilla", { waitUntil: "networkidle" });
+// La app arranca en el Resumen: se pasa a Notas.
+await page.locator('[data-tour="sidebar"]').getByRole("button", { name: "Notas", exact: true }).first().click();
 await page.getByText("bienvenida.md").first().click();
 const area = page.locator("textarea").first();
 const popup = page.getByRole("listbox", { name: "Correcciones sugeridas" });

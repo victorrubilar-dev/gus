@@ -204,9 +204,6 @@ export default {
 
   "settings.openLastVault": "Reabrir el último vault",
   "settings.openLastVault.desc": "Al arrancar Gus vuelve al vault que usabas la última vez.",
-  "settings.alwaysNotesTab": "Empezar en «Notas» al cambiar de vault",
-  "settings.alwaysNotesTab.desc":
-    "Al abrir un vault se muestra el Resumen; con este ajuste se va directo a la pestaña de notas.",
   "settings.theme": "Tema",
   "settings.theme.desc":
     "Paleta de colores de toda la interfaz, con su color de acento propio.",

@@ -16,12 +16,13 @@ page.on("pageerror", (e) => console.log("  [excepción]", String(e).slice(0, 300
 
 await page.goto("http://localhost:5199/bench/app-smoke.html?semilla", { waitUntil: "networkidle" });
 const barra = page.locator('[data-tour="sidebar"]');
-await barra.getByRole("button", { name: "Resumen", exact: true }).first().click();
+// Sin tocar nada: la app arranca en el Resumen.
 await page.getByText("Para hoy", { exact: true }).waitFor({ timeout: 10000 });
 const espera = () => page.waitForTimeout(500);
 const tareas = () => page.evaluate(() => JSON.parse(JSON.stringify(window.__smoke.tareas)));
 
 console.log("--- cabecera ---");
+comprobar(await barra.getByRole("button", { name: "Resumen", exact: true }).first().getAttribute("aria-pressed") === "true", "al abrir la app la pestaña activa es el Resumen");
 comprobar(await page.getByRole("heading", { name: /Buenos días|Buenas tardes|Buenas noches/ }).isVisible(), "saluda según la hora");
 
 console.log("\n--- tareas de hoy ---");
