@@ -32,6 +32,8 @@ const tareas: unknown[] = location.search.includes("semilla")
   ? []
   : [{ id: "base", title: "Tarea base", tags: [], completes: false }];
 const pizarras = new Map<string, string>();
+/** Cada `save_app_config` que recibe el backend, para comprobar vaults y último abierto. */
+const configGuardada: unknown[] = [];
 const habitos: { habits: unknown[]; log: Record<string, string[]> } = { habits: [], log: {} };
 const biblioteca: { shelves: string[]; assign: Record<string, string> } = { shelves: [], assign: {} };
 
@@ -226,10 +228,14 @@ const respuestas: Record<string, (args: Record<string, unknown>) => unknown> = {
       }),
   }),
   read_legacy_tasks: () => "",
-  save_app_config: () => null,
+  create_vault: (args) => `${String(args.base)}/${String(args.name)}`,
+  save_app_config: (args) => {
+    configGuardada.push(args.config);
+    return null;
+  },
 };
 
-(window as unknown as { __smoke: unknown }).__smoke = { archivos, llamadas, tareas, pizarras, terminarDescarga: () => terminarDescarga() };
+(window as unknown as { __smoke: unknown }).__smoke = { configGuardada, archivos, llamadas, tareas, pizarras, terminarDescarga: () => terminarDescarga() };
 (window as unknown as { __TAURI_EVENT_PLUGIN_INTERNALS__: unknown }).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
   unregisterListener: () => {},
 };
