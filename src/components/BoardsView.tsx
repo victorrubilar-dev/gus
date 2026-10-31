@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { PenTool, Plus, Trash2 } from "lucide-react";
 import BoardEditor from "./BoardEditor";
+import BoardPreview from "./BoardPreview";
 import EmptyState from "./EmptyState";
 import ViewHeader from "./ViewHeader";
 import { useT } from "../lib/i18n";
@@ -92,19 +93,21 @@ export default function BoardsView({ vaultPath }: BoardsViewProps) {
 
       {status === "ready" && boards.length === 0 && <EmptyState icon={PenTool} title={t("boards.empty")} />}
 
-      <ul className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4">
+      <ul className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4">
         {boards.map((board) => (
           <li key={board.id} className="group relative rounded-xl border border-gus-border bg-gus-card transition-colors hover:border-gus-accent/50">
             <button
               type="button"
               onClick={() => setOpenId(board.id)}
-              className="flex w-full flex-col gap-1 rounded-xl p-4 text-left outline-none focus-visible:ring-2 focus-visible:ring-gus-accent/60"
+              className="flex w-full flex-col rounded-xl text-left outline-none focus-visible:ring-2 focus-visible:ring-gus-accent/60"
             >
-              <PenTool className="h-5 w-5 text-gus-accent" strokeWidth={1.75} aria-hidden="true" />
-              <span className="mt-2 truncate text-sm font-medium text-gus-text">{board.name}</span>
-              {board.modifiedMs !== null && (
-                <span className="text-meta text-gus-muted">{new Date(board.modifiedMs).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}</span>
-              )}
+              <BoardPreview vaultPath={vaultPath} id={board.id} version={board.modifiedMs} />
+              <span className="flex flex-col gap-0.5 p-3">
+                <span className="truncate text-sm font-medium text-gus-text">{board.name}</span>
+                {board.modifiedMs !== null && (
+                  <span className="text-meta text-gus-muted">{new Date(board.modifiedMs).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}</span>
+                )}
+              </span>
             </button>
             <button
               type="button"
@@ -114,8 +117,8 @@ export default function BoardsView({ vaultPath }: BoardsViewProps) {
               title={confirmId === board.id ? t("boards.deleteConfirm") : t("boards.delete")}
               className={
                 confirmId === board.id
-                  ? "absolute top-2 right-2 rounded-md bg-rose-400/15 px-2 py-1 text-meta text-rose-300"
-                  : "absolute top-2 right-2 rounded-md p-1.5 text-gus-muted opacity-0 transition hover:bg-rose-400/10 hover:text-rose-400 focus-visible:opacity-100 group-hover:opacity-100"
+                  ? "absolute top-2 right-2 rounded-md bg-rose-400/25 px-2 py-1 text-meta text-rose-200"
+                  : "absolute top-2 right-2 rounded-md bg-gus-card/80 p-1.5 text-gus-muted opacity-0 transition hover:bg-rose-400/10 hover:text-rose-400 focus-visible:opacity-100 group-hover:opacity-100"
               }
             >
               {confirmId === board.id ? t("boards.deleteConfirm") : <Trash2 className="h-4 w-4" aria-hidden="true" />}

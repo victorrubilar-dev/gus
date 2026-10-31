@@ -97,6 +97,37 @@ pub(crate) fn decode_base64(input: &str) -> Result<Vec<u8>, String> {
     Ok(out)
 }
 
+/// Ruta con la extensión pedida: algunos diálogos no la añaden aunque el filtro la fije.
+fn with_extension(path: &str, extension: &str) -> String {
+    if path.to_lowercase().ends_with(&format!(".{extension}")) {
+        path.to_string()
+    } else {
+        format!("{path}.{extension}")
+    }
+}
+
+/// Guarda una imagen exportada (pizarra) en la ruta que haya elegido el usuario.
+/// Solo `png` o `svg`: el formato decide la extensión, no el texto de la ruta.
+#[tauri::command]
+pub(crate) fn write_image_file(path: String, data: String, format: String) -> Result<(), String> {
+    if format != "png" && format != "svg" {
+        return Err(format!("Formato de imagen no admitido: «{format}»"));
+    }
+    let path = with_extension(&expand_home(&path), &format);
+    let bytes = decode_base64(&data)?;
+
+    if let Some(parent) = std::path::Path::new(&path).parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent).map_err(|err| {
+                format!("No se pudo crear el directorio «{}»: {err}", parent.display())
+            })?;
+        }
+    }
+
+    write_atomic(std::path::Path::new(&path), bytes)
+        .map_err(|err| format!("No se pudo escribir «{path}»: {err}"))
+}
+
 /// Escribe el PDF exportado en la ruta que haya elegido el usuario.
 #[tauri::command]
 pub(crate) fn write_pdf_file(path: String, data: String) -> Result<(), String> {
@@ -221,4 +252,31 @@ pub(crate) fn read_vault_pdf(path: String) -> Result<String, String> {
         "data:application/pdf;base64,{}",
         base64_encode(&bytes)
     ))
+}
+
+#[cfg(test)]
+mod export_tests {
+    use super::*;
+
+    #[test]
+    fn la_extension_se_completa_sin_duplicarse() {
+        assert_eq!(with_extension("/tmp/dibujo", "png"), "/tmp/dibujo.png");
+        assert_eq!(with_extension("/tmp/dibujo.PNG", "png"), "/tmp/dibujo.PNG");
+        assert_eq!(with_extension("/tmp/dibujo.svg", "png"), "/tmp/dibujo.svg.png");
+    }
+
+    #[test]
+    fn solo_se_guardan_png_y_svg() {
+        let dir = std::env::temp_dir().join(format!("gus-export-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let destino = dir.join("pizarra").to_string_lossy().into_owned();
+
+        assert!(write_image_file(destino.clone(), "AAAA".into(), "exe".into()).is_err());
+        assert!(write_image_file(destino.clone(), "no es base64!".into(), "png".into()).is_err());
+
+        // «PHN2Zz4=» es «<svg>» en Base64.
+        write_image_file(destino.clone(), "PHN2Zz4=".into(), "svg".into()).expect("guardar");
+        assert_eq!(std::fs::read_to_string(format!("{destino}.svg")).expect("leer"), "<svg>");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

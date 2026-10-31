@@ -32,6 +32,25 @@ const tareas: unknown[] = location.search.includes("semilla")
   ? []
   : [{ id: "base", title: "Tarea base", tags: [], completes: false }];
 const pizarras = new Map<string, string>();
+/** Lo que el test «guarda» al exportar una pizarra (ruta, datos en Base64 y formato). */
+const exportados: { path: string; data: string; format: string }[] = [];
+if (location.search.includes("semilla")) {
+  pizarras.set(
+    "p1",
+    JSON.stringify({
+      version: 1,
+      name: "Plan de la semana",
+      elements: [
+        { id: "a", type: "rect", color: "#3b82f6", x: 20, y: 20, w: 160, h: 80, fill: true },
+        { id: "b", type: "text", color: "var(--color-gus-text)", x: 40, y: 50, text: "Lunes <&> martes", size: 20 },
+        { id: "c", type: "arrow", color: "#ef4444", x1: 180, y1: 60, x2: 300, y2: 60 },
+        { id: "d", type: "note", color: "#fde68a", x: 300, y: 20, w: 140, h: 100, text: "Revisar el contraste de los temas antes de publicar" },
+        { id: "e", type: "pen", color: "#22c55e", width: 4, points: [[20, 160], [80, 190], [140, 150], [200, 190]] },
+      ],
+    }),
+  );
+  pizarras.set("p2", JSON.stringify({ version: 1, name: "Vacía", elements: [] }));
+}
 /** Cada `save_app_config` que recibe el backend, para comprobar vaults y último abierto. */
 const configGuardada: unknown[] = [];
 const habitos: { habits: unknown[]; log: Record<string, string[]> } = { habits: [], log: {} };
@@ -220,6 +239,11 @@ const respuestas: Record<string, (args: Record<string, unknown>) => unknown> = {
         relative: path.replace("/vault/", ""),
         text,
       })),
+  "plugin:dialog|save": (args) => `/tmp/${String((args.options as { defaultPath?: string })?.defaultPath ?? "pizarra.svg")}`,
+  write_image_file: (args) => {
+    exportados.push({ path: String(args.path), data: String(args.data), format: String(args.format) });
+    return null;
+  },
   list_recent_notes: (args) =>
     [...archivos.keys()]
       .filter((ruta) => ruta.endsWith(".md"))
@@ -275,7 +299,7 @@ const respuestas: Record<string, (args: Record<string, unknown>) => unknown> = {
   },
 };
 
-(window as unknown as { __smoke: unknown }).__smoke = { emitir: (evento: string, payload: unknown) => callbacks.get(oyentes.get(evento) ?? -1)?.({ event: evento, id: 0, payload }), configGuardada, archivos, llamadas, tareas, pizarras, terminarDescarga: () => terminarDescarga() };
+(window as unknown as { __smoke: unknown }).__smoke = { exportados, emitir: (evento: string, payload: unknown) => callbacks.get(oyentes.get(evento) ?? -1)?.({ event: evento, id: 0, payload }), configGuardada, archivos, llamadas, tareas, pizarras, terminarDescarga: () => terminarDescarga() };
 (window as unknown as { __TAURI_EVENT_PLUGIN_INTERNALS__: unknown }).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
   unregisterListener: () => {},
 };

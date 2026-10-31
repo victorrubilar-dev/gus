@@ -6,6 +6,7 @@ import {
   ArrowUpRight,
   Circle,
   Diamond,
+  Download,
   Eraser,
   Hand,
   Image as ImageIcon,
@@ -21,6 +22,7 @@ import {
   Undo2,
   type LucideIcon,
 } from "lucide-react";
+import { save } from "@tauri-apps/plugin-dialog";
 import BoardImagePicker from "./BoardImagePicker";
 import { useT } from "../lib/i18n";
 import type { MessageKey } from "../lib/i18n/core";
@@ -47,7 +49,9 @@ import {
   type Point,
   type View,
 } from "../lib/board";
-import { joinPath } from "../lib/fileName";
+import { renderBoardSvg } from "../lib/boardSvg";
+import { bytesToBase64, EXPORT_BACKGROUND, EXPORT_PALETTE, svgToPng, utf8ToBase64 } from "../lib/boardExport";
+import { joinPath, safeFileName } from "../lib/fileName";
 import type { VaultImage } from "../lib/imageLinks";
 import { createTaskId } from "../lib/taskStore";
 
@@ -204,6 +208,9 @@ export default function BoardEditor({ vaultPath, boardId, onBack }: BoardEditorP
   const [images, setImages] = useState<Record<string, string>>({});
   const [dirty, setDirty] = useState(false);
   const [spaceHeld, setSpaceHeld] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const exportRef = useRef<HTMLDivElement>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const svgRef = useRef<SVGSVGElement>(null);
   const gestureRef = useRef<Gesture | null>(null);
@@ -590,6 +597,47 @@ export default function BoardEditor({ vaultPath, boardId, onBack }: BoardEditorP
     };
   }, []);
 
+  // El menú de exportar se cierra al pulsar fuera de él.
+  useEffect(() => {
+    if (!exportOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.target instanceof Node && exportRef.current?.contains(event.target)) return;
+      setExportOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [exportOpen]);
+
+  /* ---------------------------- exportar ---------------------------- */
+
+  /** Guarda toda la pizarra (no solo lo que se ve) como imagen: SVG vectorial o PNG. */
+  async function exportBoard(format: "svg" | "png") {
+    setExportOpen(false);
+    setError(null);
+    setNotice(null);
+
+    const drawn = renderBoardSvg(elements, { palette: EXPORT_PALETTE, images, background: EXPORT_BACKGROUND });
+    if (!drawn) {
+      setError(t("boards.exportEmpty"));
+      return;
+    }
+
+    try {
+      const target = await save({
+        title: t("boards.exportTitle"),
+        defaultPath: `${safeFileName(name)}.${format}`,
+        filters: [{ name: format.toUpperCase(), extensions: [format] }],
+      });
+      if (!target) return;
+
+      const data = format === "svg" ? utf8ToBase64(drawn.svg) : bytesToBase64(await svgToPng(drawn));
+      await invoke("write_image_file", { path: target, data, format });
+      setNotice(t("boards.exported"));
+    } catch (reason) {
+      setError(t("boards.exportError", { error: String(reason) }));
+    }
+  }
+
   function pickTool(next: Tool) {
     setTool(next);
     if (next === "image") setPicking(true);
@@ -678,6 +726,34 @@ export default function BoardEditor({ vaultPath, boardId, onBack }: BoardEditorP
         </div>
 
         <div className="ml-auto flex items-center gap-1">
+          <div ref={exportRef} className="relative">
+            <button
+              type="button"
+              onClick={() => setExportOpen((open) => !open)}
+              aria-haspopup="menu"
+              aria-expanded={exportOpen}
+              title={t("boards.export")}
+              aria-label={t("boards.export")}
+              className={toolbarButton}
+            >
+              <Download className="h-4 w-4" aria-hidden="true" />
+            </button>
+            {exportOpen && (
+              <div role="menu" aria-label={t("boards.export")} className="absolute right-0 z-30 mt-1.5 w-60 overflow-hidden rounded-lg border border-gus-border bg-gus-card py-1 shadow-xl">
+                {(["svg", "png"] as const).map((format) => (
+                  <button
+                    key={format}
+                    type="button"
+                    role="menuitem"
+                    onClick={() => void exportBoard(format)}
+                    className="flex w-full items-center px-3 py-1.5 text-left text-body text-gus-muted transition-colors hover:bg-gus-panel hover:text-gus-text focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-gus-accent/60 focus-visible:outline-none"
+                  >
+                    {t(format === "svg" ? "boards.exportSvg" : "boards.exportPng")}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <button type="button" onClick={handleUndo} disabled={history.past.length === 0} title={t("boards.undo")} aria-label={t("boards.undo")} className={toolbarButton}>
             <Undo2 className="h-4 w-4" aria-hidden="true" />
           </button>
@@ -694,6 +770,11 @@ export default function BoardEditor({ vaultPath, boardId, onBack }: BoardEditorP
       </header>
 
       {error && <p className="break-words border-b border-rose-400/30 bg-rose-400/5 px-3 py-2 text-body text-rose-300">{error}</p>}
+      {notice && (
+        <p role="status" className="border-b border-gus-accent/30 bg-gus-accent/10 px-3 py-2 text-body text-gus-accent">
+          {notice}
+        </p>
+      )}
 
       <div
         className="gus-board relative min-h-0 flex-1 overflow-hidden bg-gus-bg select-none"

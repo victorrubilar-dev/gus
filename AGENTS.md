@@ -131,7 +131,8 @@ gus/
 │   │   ├── LibraryView.tsx       # Biblioteca de PDF en estanterías, con portada (lazy)
 │   │   ├── HabitsView.tsx        # Hábitos: anillos de cierre diario y tracker clásico; días fijos o meta semanal (cualquier día)
 │   │   ├── BoardsView.tsx        # Lista de pizarras (crear, abrir, borrar a la papelera)
-│   │   ├── BoardEditor.tsx       # Lienzo de una pizarra: lápiz, goma, formas, flechas, texto, post-it e imágenes
+│   │   ├── BoardEditor.tsx       # Lienzo de una pizarra: lápiz, goma, formas, flechas, texto, post-it e imágenes; exporta a SVG o PNG
+│   │   ├── BoardPreview.tsx      # Miniatura de una pizarra en la lista
 │   │   ├── BoardImagePicker.tsx  # Selector de imágenes del vault para la pizarra
 │   │   ├── CalendarView.tsx      # Calendario con fechas de vencimiento
 │   │   ├── SettingsPanel.tsx     # UI de configuración (7 categorías)
@@ -169,6 +170,7 @@ gus/
 │   │   ├── spellCheck.ts         # Corrector ortográfico Hunspell WASM
 │   │   ├── taskStore.ts          # Persistencia de tareas (JSON)
 │   │   ├── taskPriority.ts       # Niveles de prioridad (Baja/Media/Alta/Urgente)
+│   │   ├── boardSvg.ts, boardExport.ts # Pizarra → SVG autónomo (miniaturas y exportar) y SVG → PNG
 │   │   ├── taskActions.ts        # Cambios sobre la lista de tareas como funciones puras (marcar, prioridad, columna, etiquetas…)
 │   │   ├── dashboard.ts          # Lógica pura del resumen: saludo, reparto de tareas de hoy, recientes mezclados y vista previa de la nota
 │   │   ├── taskDue.ts            # Estado y aspecto del plazo (vencida, hoy…) y fecha corta, compartidos por lista, tablero y resumen
@@ -298,7 +300,7 @@ pnpm build
 pnpm tauri build
 
 # Tests
-pnpm test              # Todos los tests Vitest (329 tests en 34 ficheros)
+pnpm test              # Todos los tests Vitest (340 tests en 36 ficheros)
 pnpm test:watch        # Modo watch
 
 # Type checking
