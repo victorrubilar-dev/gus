@@ -7,19 +7,17 @@ import {
   type DragEvent as ReactDragEvent,
   type MouseEvent as ReactMouseEvent,
 } from "react";
+import ExplorerHeader, { ExplorerNotices } from "./ExplorerHeader";
 import ExplorerTrail from "./ExplorerTrail";
+import { useConfirmKeys } from "./useConfirmKeys";
 import { FileRow, FolderRow } from "./ExplorerRows";
 import ExplorerContextMenu, { type MenuState } from "./ExplorerContextMenu";
 import { AnimatePresence } from "framer-motion";
 import {
-  FolderPlus,
-  Import as ImportIcon,
-  Plus,
   RefreshCw,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import clsx from "clsx";
 import { toLocalCoord } from "../lib/uiZoom";
 import {
   baseName,
@@ -880,71 +878,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
   /** El menú está mostrando el confirm de borrado (la pregunta de la papelera). */
   const confirmOpen = menu !== null && confirmId === menu.id && menuTarget !== null;
 
-  // Al abrir el confirm el foco cae en «Mover a la papelera»: es la opción que
-  // siempre ha confirmado Supr y por la que parten las flechas.
-  useEffect(() => {
-    if (!confirmOpen) return;
-    confirmTrashRef.current?.focus();
-  }, [confirmOpen]);
-
-  /**
-   * El confirm se recorre con el teclado: las flechas alternan entre las dos
-   * opciones (y devuelven el foco al diálogo si se había ido) e Intro activa lo
-   * marcado. Si el foco está fuera, Intro solo lo vuelve a traer.
-   */
-  useEffect(() => {
-    if (!confirmOpen) return;
-
-    function onKey(event: KeyboardEvent) {
-      const flecha =
-        event.key === "ArrowUp" ||
-        event.key === "ArrowDown" ||
-        event.key === "ArrowLeft" ||
-        event.key === "ArrowRight";
-      if (!flecha && event.key !== "Enter") return;
-      if (event.repeat || event.defaultPrevented) return;
-      // Alt+←/→ es el historial de carpetas y Ctrl/Cmd+Intro otros diálogos.
-      if (event.altKey || event.ctrlKey || event.metaKey) return;
-
-      const target = event.target;
-      if (!(target instanceof HTMLElement)) return;
-      // Nada de flechas sobre campos de texto ni dentro de otro diálogo (paleta,
-      // tarea nueva…) aunque el confirm siga abierto detrás.
-      if (target.closest("input, textarea, select, [contenteditable], [role='dialog']")) return;
-
-      const trash = confirmTrashRef.current;
-      const cancel = confirmCancelRef.current;
-      if (!trash || !cancel) return;
-
-      const activo = document.activeElement;
-      const dentro = activo === trash || activo === cancel;
-
-      if (flecha) {
-        event.preventDefault();
-        if (!dentro) {
-          // El foco se había ido (p. ej. clic en el texto del diálogo): la
-          // primera flecha entra por la opción que toca según el sentido.
-          if (event.key === "ArrowUp" || event.key === "ArrowLeft") trash.focus();
-          else cancel.focus();
-          return;
-        }
-        // Dos opciones: cualquier flecha pasa a la otra.
-        if (activo === trash) cancel.focus();
-        else trash.focus();
-        return;
-      }
-
-      // Intro: con el foco en el confirm la recoge el propio botón (el clic
-      // nativo); estando fuera, la primera solo devuelve el foco al diálogo.
-      if (!dentro) {
-        event.preventDefault();
-        trash.focus();
-      }
-    }
-
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [confirmOpen]);
+  useConfirmKeys(confirmOpen, confirmTrashRef, confirmCancelRef);
 
   return (
     <aside
@@ -952,52 +886,14 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
       style={{ width }}
       className="flex h-full w-60 shrink-0 flex-col gap-3 border-r border-gus-border bg-gus-panel p-3"
     >
-      <header className="flex items-start justify-between gap-2 pl-1">
-        <div className="min-w-0">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-gus-muted">
-            Notas
-          </h2>
-          {status === "error" && (
-            <p className="text-meta leading-snug text-gus-muted">{t("explorer.readError")}</p>
-          )}
-        </div>
-        <div className="flex shrink-0 gap-1.5">
-          {!staticMode && (
-            <button
-              type="button"
-              onClick={() => void handleImportFiles()}
-              disabled={busy}
-              title={t("explorer.addFilesHint")}
-              aria-label={t("explorer.addFiles")}
-              className="shrink-0 rounded-lg border border-gus-border bg-gus-card p-1.5 text-gus-muted transition-colors hover:border-gus-accent/50 hover:text-gus-accent focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none disabled:opacity-50"
-            >
-              <ImportIcon className="h-4 w-4" aria-hidden="true" />
-            </button>
-          )}
-          {!staticMode && (
-            <button
-              type="button"
-              onClick={() => void handleNewFolder()}
-              disabled={busy}
-              title={t("explorer.newFolder")}
-              aria-label={t("explorer.newFolder")}
-              className="shrink-0 rounded-lg border border-gus-border bg-gus-card p-1.5 text-gus-muted transition-colors hover:border-gus-accent/50 hover:text-gus-accent focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none disabled:opacity-50"
-            >
-              <FolderPlus className="h-4 w-4" aria-hidden="true" />
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => void handleNewNote()}
-            disabled={busy}
-            title={t("explorer.newNote")}
-            aria-label={t("explorer.newNote")}
-            className="shrink-0 rounded-lg border border-gus-border bg-gus-card p-1.5 text-gus-muted transition-colors hover:border-gus-accent/50 hover:text-gus-accent focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none disabled:opacity-50"
-          >
-            <Plus className="h-4 w-4" aria-hidden="true" />
-          </button>
-        </div>
-      </header>
+      <ExplorerHeader
+        status={status}
+        staticMode={staticMode}
+        busy={busy}
+        onImport={() => void handleImportFiles()}
+        onNewFolder={() => void handleNewFolder()}
+        onNewNote={() => void handleNewNote()}
+      />
 
       {!staticMode && trail.length > 0 && (
         <ExplorerTrail
@@ -1022,50 +918,13 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
         />
       )}
 
-      {notice && (
-        <p
-          role="status"
-          aria-live="polite"
-          className={clsx(
-            "flex items-start justify-between gap-2 rounded-md border px-2 py-1.5 text-meta",
-            noticeOk
-              ? "border-gus-accent/40 bg-gus-accent/10 text-gus-accent"
-              : "border-amber-400/30 bg-amber-400/10 text-amber-300",
-          )}
-        >
-          <span className="min-w-0 break-words">{notice}</span>
-          <button
-            type="button"
-            onClick={() => setNotice(null)}
-            aria-label={t("common.close")}
-            className={clsx(
-              "shrink-0 rounded px-1 transition-opacity hover:opacity-70 focus-visible:ring-2 focus-visible:outline-none",
-              noticeOk
-                ? "text-gus-accent/70 focus-visible:ring-gus-accent/60"
-                : "text-amber-300/70 focus-visible:ring-amber-300/60",
-            )}
-          >
-            ×
-          </button>
-        </p>
-      )}
-
-      {actionError && (
-        <p
-          role="alert"
-          className="flex items-start justify-between gap-2 rounded-md border border-rose-400/30 bg-rose-400/5 px-2 py-1.5 text-meta text-rose-300"
-        >
-          <span className="min-w-0 break-words">{actionError}</span>
-          <button
-            type="button"
-            onClick={() => setActionError(null)}
-            aria-label={t("common.close")}
-            className="shrink-0 rounded px-1 text-rose-300/70 transition-colors hover:text-rose-200 focus-visible:ring-2 focus-visible:ring-rose-300/60 focus-visible:outline-none"
-          >
-            ×
-          </button>
-        </p>
-      )}
+      <ExplorerNotices
+        notice={notice}
+        noticeOk={noticeOk}
+        actionError={actionError}
+        onCloseNotice={() => setNotice(null)}
+        onCloseError={() => setActionError(null)}
+      />
 
       {menu !== null && (
         <div
