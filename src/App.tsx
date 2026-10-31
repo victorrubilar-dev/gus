@@ -56,6 +56,9 @@ import {
 } from "./lib/i18n";
 import { toLocalCoord } from "./lib/uiZoom";
 import { useFileDrop } from "./components/useFileDrop";
+import ImagePane, { type OpenImage } from "./components/ImagePane";
+import PdfPane, { type OpenPdf } from "./components/PdfPane";
+import ExternalNoticeBar from "./components/ExternalNoticeBar";
 import { useVaults } from "./components/useVaults";
 import { useAppearance } from "./components/useAppearance";
 import { useLinkGraph } from "./components/useLinkGraph";
@@ -76,19 +79,6 @@ interface OpenNote {
   content: string;
 }
 
-interface OpenImage {
-  path: string;
-  title: string;
-  src: string | null;
-  error?: string;
-}
-
-interface OpenPdf {
-  path: string;
-  title: string;
-  src: string | null;
-  error?: string;
-}
 
 
 /**
@@ -130,7 +120,6 @@ function titleFromFileName(name: string): string {
 }
 
 // Visor de PDF: carga pdf.js solo cuando se abre el primer documento.
-const PdfViewer = lazy(() => import("./components/PdfViewer"));
 const LibraryView = lazy(() => import("./components/LibraryView"));
 
 /**
@@ -862,74 +851,16 @@ function App({
             <NoteTabs tabs={tabs} activePath={note?.path ?? null} onSelect={(tab) => void handleSelectTab(tab)} onClose={(tab) => void handleCloseTab(tab)} />
           )}
           {image ? (
-            <div className="flex h-full min-h-0 flex-col">
-              <div className="flex items-center justify-between gap-3 border-b border-gus-border bg-gus-panel px-4 py-2">
-                <span className="truncate font-mono text-body text-gus-muted">{image.title}</span>
-                <span className="shrink-0 gus-chip uppercase tracking-wide">
-                  {t("app.badge.image")}
-                </span>
-              </div>
-
-              <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-black/20 p-4">
-                {imageStatus === "loading" && (
-                  <p className="text-sm text-white/60">{t("app.loadingImage")}</p>
-                )}
-
-                {imageStatus === "error" && (
-                  <div className="flex max-w-md flex-col items-center gap-2 px-6 text-center">
-                    <p className="text-sm text-gus-muted">{t("app.imageError")}</p>
-                    {image.error && (
-                      <p className="break-words text-body text-rose-300">{image.error}</p>
-                    )}
-                  </div>
-                )}
-
-                {imageStatus === "ready" && image.src && (
-                  <img
-                    src={image.src}
-                    alt={image.title}
-                    onError={() => {
-                      setImage({
-                        ...image,
-                        error: t("app.imageDecodeError", { name: image.title }),
-                      });
-                      setImageStatus("error");
-                    }}
-                    className="max-h-full max-w-full rounded-lg border border-white/10 object-contain shadow-2xl"
-                  />
-                )}
-              </div>
-            </div>
+            <ImagePane
+              image={image}
+              status={imageStatus}
+              onDecodeError={(error) => {
+                setImage({ ...image, error });
+                setImageStatus("error");
+              }}
+            />
           ) : pdf ? (
-            <div className="flex h-full min-h-0 flex-col">
-              <div className="flex items-center justify-between gap-3 border-b border-gus-border bg-gus-panel px-4 py-2">
-                <span className="truncate font-mono text-body text-gus-muted">{pdf.title}</span>
-                <span className="shrink-0 gus-chip uppercase tracking-wide">
-                  PDF
-                </span>
-              </div>
-
-              <div className="flex min-h-0 flex-1 flex-col items-center justify-center bg-black/20">
-                {pdfStatus === "loading" && (
-                  <p className="text-sm text-white/60">{t("app.loadingPdf")}</p>
-                )}
-
-                {pdfStatus === "error" && (
-                  <div className="flex max-w-md flex-col items-center gap-2 px-6 text-center">
-                    <p className="text-sm text-gus-muted">{t("app.pdfError")}</p>
-                    {pdf.error && (
-                      <p className="break-words text-body text-rose-300">{pdf.error}</p>
-                    )}
-                  </div>
-                )}
-
-                {pdfStatus === "ready" && pdf.src && (
-                  <Suspense fallback={<p className="text-sm text-white/60">{t("app.loadingViewer")}</p>}>
-                    <PdfViewer src={pdf.src} title={pdf.title} path={pdf.path} />
-                  </Suspense>
-                )}
-              </div>
-            </div>
+            <PdfPane pdf={pdf} status={pdfStatus} />
           ) : (
             <>
               {noteStatus === "loading" && (
@@ -958,41 +889,16 @@ function App({
                   )}
 
                   {externalNotice?.path === note.path && (
-                    <div
-                      role="status"
-                      className="flex shrink-0 flex-wrap items-center gap-3 border-b border-amber-400/40 bg-gus-panel px-4 py-2 text-body text-amber-300"
-                    >
-                      <span className="min-w-0 flex-1">
-                        {t(
-                          externalNotice.kind === "conflict"
-                            ? "app.externalConflict"
-                            : "app.externalReloaded",
-                          { title: note.title },
-                        )}
-                      </span>
-                      {externalNotice.kind === "conflict" && (
-                        <>
-                          <button
-                            type="button"
-                            className="rounded-md border border-amber-400/40 px-2 py-1 hover:bg-white/5"
-                            onClick={() => {
-                              editorRef.current?.discardChanges();
-                              handleSelectNote({ id: note.path, name: baseName(note.path), kind: "note" });
-                              setExternalNotice(null);
-                            }}
-                          >
-                            {t("app.externalReload")}
-                          </button>
-                          <button
-                            type="button"
-                            className="rounded-md border border-amber-400/40 px-2 py-1 hover:bg-white/5"
-                            onClick={() => setExternalNotice(null)}
-                          >
-                            {t("app.externalKeep")}
-                          </button>
-                        </>
-                      )}
-                    </div>
+                    <ExternalNoticeBar
+                      notice={externalNotice}
+                      title={note.title}
+                      onReload={() => {
+                        editorRef.current?.discardChanges();
+                        handleSelectNote({ id: note.path, name: baseName(note.path), kind: "note" });
+                        setExternalNotice(null);
+                      }}
+                      onKeep={() => setExternalNotice(null)}
+                    />
                   )}
 
                   <MarkdownEditor
