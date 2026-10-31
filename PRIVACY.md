@@ -1,6 +1,6 @@
 # Privacy Policy — Gus
 
-_Last updated: October 2026_
+_Last updated: October 2026 (automatic updates)_
 
 Gus is a **local-first** application: your notes and tasks never leave your computer.
 
@@ -13,14 +13,15 @@ Gus is a **local-first** application: your notes and tasks never leave your comp
 
 ## Network requests
 
-Gus performs two kinds of network request, both only to GitHub and both only to update checks:
+Gus performs network requests only to GitHub and only to keep itself up to date. None of them contains personal data, identifiers, note contents, or usage data; they consist only of standard HTTP request metadata (e.g. IP address), inherent to any web request, and nothing is stored by the application.
 
-1. **Version check.** A request to the public GitHub API to detect whether a newer version has been published, shown as an update notice. This request:
-   - contains no personal data, identifiers, note contents, or usage data,
-   - consists only of standard HTTP request metadata (e.g. IP address), inherent to any web request,
-   - is never stored by the application.
+1. **Version check.** At startup, and when you press "Check for updates" in Settings, Gus asks GitHub whether a newer version has been published. Depending on how Gus is installed:
+   - **AppImage (Linux), Windows and macOS:** it fetches the update manifest `https://github.com/victorrubilar-dev/gus/releases/latest/download/latest.json`.
+   - **Linux `.deb` / `.rpm` packages:** it queries the public GitHub API (`api.github.com`) for the latest release, because those packages cannot replace themselves.
 
-2. **Installer download.** Only when you press "Descargar" in the update notice, Gus downloads the installer of that release from the project's GitHub releases and saves it to your Downloads folder. It only downloads from `https://github.com/victorrubilar-dev/gus/releases/download/`, and it sends no data beyond the standard HTTP request. Nothing is downloaded without your action.
+2. **Automatic download.** On the installs that can update themselves (AppImage, Windows, macOS), when a newer version exists Gus **downloads it automatically in the background**, showing a progress bar, from `https://github.com/victorrubilar-dev/gus/releases/download/`. The download is verified against a cryptographic signature using a public key embedded in the app; a file that does not match is rejected. **Nothing is installed until you press "Restart and update"**: the downloaded update stays unused until then.
+
+3. **Manual download.** On Linux `.deb` / `.rpm` installs, Gus only offers a notice, and the installer is downloaded to your Downloads folder only when you press "Descargar", from the same GitHub releases address.
 
 Dictionaries for spell checking, templates, images, and all other resources are bundled with the application and loaded locally.
 

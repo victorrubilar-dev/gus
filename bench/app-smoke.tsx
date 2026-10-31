@@ -80,7 +80,32 @@ function entradasDe(dir: string): Entrada[] {
   return [...vistas.values()];
 }
 
+/** Callbacks que la app registra con `transformCallback` (los usan los canales del plugin). */
+const callbacks = new Map<number, (message: unknown) => void>();
+let siguienteCallback = 1;
+/** Con `?autoupdate` se simula una versión firmada nueva y una descarga que el test libera a mano. */
+const autoupdate = location.search.includes("autoupdate");
+let terminarDescarga: () => void = () => {};
+
 const respuestas: Record<string, (args: Record<string, unknown>) => unknown> = {
+  can_self_update: () => autoupdate,
+  "plugin:updater|check": () =>
+    autoupdate ? { rid: 1, currentVersion: "0.2.0", version: "9.9.9", date: null, body: "", rawJson: {} } : null,
+  "plugin:updater|download": async (args) => {
+    // Los mensajes del canal llevan un índice para conservar el orden.
+    const enviar = (index: number, message: unknown) =>
+      callbacks.get((args.onEvent as { id: number }).id)?.({ index, message });
+    enviar(0, { event: "Started", data: { contentLength: 1000 } });
+    enviar(1, { event: "Progress", data: { chunkLength: 400 } });
+    await new Promise<void>((resolver) => {
+      terminarDescarga = resolver;
+    });
+    enviar(2, { event: "Progress", data: { chunkLength: 600 } });
+    enviar(3, { event: "Finished" });
+    return 2;
+  },
+  "plugin:updater|install": () => null,
+  "plugin:process|restart": () => null,
   load_app_config: () => ({
     baseDir: "/vaults",
     vaults: [{ name: "Demo", path: "/vault" }],
@@ -149,13 +174,18 @@ const respuestas: Record<string, (args: Record<string, unknown>) => unknown> = {
   save_app_config: () => null,
 };
 
-(window as unknown as { __smoke: unknown }).__smoke = { archivos, llamadas, tareas, pizarras };
+(window as unknown as { __smoke: unknown }).__smoke = { archivos, llamadas, tareas, pizarras, terminarDescarga: () => terminarDescarga() };
 (window as unknown as { __TAURI_EVENT_PLUGIN_INTERNALS__: unknown }).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
   unregisterListener: () => {},
 };
 (window as unknown as { __TAURI_INTERNALS__: unknown }).__TAURI_INTERNALS__ = {
-  // `listen` registra un callback con esto; el arnés no emite eventos.
-  transformCallback: () => 0,
+  // `listen` y los canales registran callbacks con esto; solo las descargas simuladas emiten.
+  transformCallback: (callback: (message: unknown) => void) => {
+    const id = siguienteCallback++;
+    callbacks.set(id, callback);
+    return id;
+  },
+  unregisterCallback: (id: number) => callbacks.delete(id),
   invoke: async (cmd: string, args?: Record<string, unknown>) => {
     llamadas.push({ cmd, args: args ?? {} });
     const respuesta = respuestas[cmd];

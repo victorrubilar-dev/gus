@@ -109,6 +109,18 @@ fn installer_name(url: &str) -> Result<&str, String> {
     }
 }
 
+/// ¿Puede esta instalación reemplazarse a sí misma? En Linux solo si corre como
+/// AppImage: un .deb o un .rpm vive en `/usr` y el actualizador no puede
+/// sobrescribirlo, así que esos siguen con el aviso de descarga manual.
+#[tauri::command]
+fn can_self_update() -> bool {
+    if cfg!(target_os = "linux") {
+        std::env::var_os("APPIMAGE").is_some()
+    } else {
+        cfg!(any(target_os = "windows", target_os = "macos"))
+    }
+}
+
 /// Baja el instalador de una release a Descargas y lo abre para instalarlo.
 #[tauri::command]
 async fn download_update(app: AppHandle, url: String) -> Result<String, String> {
@@ -421,12 +433,21 @@ pub fn run() {
         .on_menu_event(|app, event| {
             let _ = app.emit(menu::MENU_EVENT, event.id().0.clone());
         })
-        .setup(|_app| {
+        .setup(|app| {
             purge_expired_trash(&legacy_trash_dir());
+            // Actualizador y reinicio: solo en escritorio, el móvil se actualiza por su tienda.
+            #[cfg(desktop)]
+            {
+                app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
+                app.handle().plugin(tauri_plugin_process::init())?;
+            }
+            #[cfg(not(desktop))]
+            let _ = app;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             download_update,
+            can_self_update,
             menu::set_app_menu,
             papelera::migrate_legacy_trash,
             listados::read_vault_dir,

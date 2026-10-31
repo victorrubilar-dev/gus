@@ -240,6 +240,33 @@ await page.locator("li button", { hasText: "manual" }).first().click();
 await page.locator("canvas").first().waitFor({ timeout: 15000 });
 ok(true, "abrir una tarjeta de la biblioteca muestra el PDF en el visor");
 
+// Actualización automática: aviso con progreso, botón de reiniciar y reinicio.
+const pagina = await contexto.newPage();
+await pagina.goto(`${URL}?autoupdate`, { waitUntil: "networkidle" });
+await pagina.getByText("Descargando Gus 9.9.9…").waitFor({ timeout: 15000 });
+await pagina.waitForFunction(
+  () => document.querySelector('[role="progressbar"]')?.getAttribute("aria-valuenow") === "40",
+  null,
+  { timeout: 8000 },
+);
+ok(true, "la actualización automática se descarga sola y muestra el progreso (40 %)");
+ok(
+  (await pagina.getByRole("button", { name: "Descargar y abrir el instalador" }).count()) === 0,
+  "en modo automático no se ofrece la descarga manual",
+);
+ok((await pagina.getByRole("button", { name: "Cerrar el aviso de actualización" }).count()) === 0, "durante la descarga el aviso no se puede cerrar");
+await pagina.evaluate(() => window.__smoke.terminarDescarga());
+await pagina.getByRole("button", { name: "Reiniciar y actualizar" }).click();
+await pagina.waitForFunction(
+  () =>
+    ["plugin:updater|install", "plugin:process|restart"].every((cmd) =>
+      window.__smoke.llamadas.some((c) => c.cmd === cmd),
+    ),
+  null,
+  { timeout: 8000 },
+);
+ok(true, "«Reiniciar y actualizar» instala la versión y reabre la app");
+
 await browser.close();
 console.log(fallos.length === 0 ? "\nTODO EN VERDE" : `\n${fallos.length} fallo(s)`);
 process.exit(fallos.length === 0 ? 0 : 1);
