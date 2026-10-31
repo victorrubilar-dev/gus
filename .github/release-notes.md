@@ -1,43 +1,21 @@
-## Gus v0.2.0 🎨
+## Gus v0.3.0 🚀
 
-Un **re-diseño completo**: nueva paleta, navegación más clara y un editor con pestañas. Tus notas y tareas no cambian: es el mismo vault, con otra cara.
+Gus crece: **biblioteca de PDF, hábitos y pizarras**, subtareas, tus checkboxes de notas convertidos en tareas… y a partir de esta versión **se actualiza solo**. Tus notas y tareas no cambian: es el mismo vault.
 
-### ✨ Qué cambia
+### ✨ Qué hay de nuevo
 
-- 🎨 **Paleta nueva**, sacada del logo: negros y blancos cálidos con el bermellón como acento. El acento queda para acciones, selección y foco; etiquetas e insignias pasan a neutro.
-- 📝 **Pestañas de notas abiertas**: cada nota queda en su pestaña, con cierre propio (también con clic central). Al cambiar de pestaña se guarda lo pendiente.
-- 📖 **Editor con medida de lectura** de 680 px centrada, y cabecera con el nombre, el estado de guardado y un menú ⋯.
-- 🧭 **Barra lateral con nombres** (Resumen, Notas, Tareas, Calendario, Grafo), de ancho ajustable y con un botón para contraerla a solo iconos.
-- 🏠 **Notas es la pantalla de inicio.** La búsqueda y la nota de hoy pasan a la fila del recorrido de Notas, y `Ctrl K` ofrece buscar en el vault.
-- 🔤 **Texto más legible**: tres tamaños en toda la app, contraste AA en los siete temas, y el texto sigue el tamaño de fuente del sistema.
-- ♿ **Accesibilidad de escritorio**: foco visible en todos los controles, y respeto a «reducir movimiento» y «reducir transparencia» del sistema.
-- 🧩 **Tareas, Calendario y Grafo** comparten cabecera, selector de vistas y estados vacíos.
-- 🍎 **Menú nativo en macOS** (Gus, Archivo, Edición, Ver), en español o inglés según el idioma de la app.
+- 🔄 **Actualizaciones automáticas.** Gus avisa dentro de la app cuando hay una versión nueva, la descarga en segundo plano con una barra de progreso (verificando su firma) y, al terminar, un botón **Reiniciar y actualizar** la instala y vuelve a abrir la app. Nunca se instala nada sin que lo pidas.
+- 📚 **Biblioteca de PDF.** Tus PDF como tarjetas con su portada, ordenados en **estanterías** que defines tú (Bibliografía, Clases, Programación…).
+- 🔥 **Hábitos.** Define qué días haces cada hábito y sigue el día con **anillos de cierre diario** o con un **tracker** clásico, con rachas y porcentaje de cumplimiento.
+- 🖍️ **Pizarras.** Lienzos libres con lápiz, **goma**, formas, flechas, texto, **post-it** e imágenes de tu vault; con deshacer/rehacer y zoom.
+- ✅ **Tus checkboxes, como tareas.** La vista *Notas* de Tareas reúne los `- [ ]` de todas tus notas, agrupados por nota de origen y filtrables. Marcar uno reescribe su línea en la nota.
+- 🌿 **Subtareas y dependencias.** Una tarea puede colgar de otra, con su progreso, y estar «bloqueada por» otras. Lo comprueba también el guardado: no admite ciclos.
+- 👀 **Cambios externos.** Si editas una nota con otro programa, Gus la recarga sola; si tenías cambios sin guardar, te deja elegir entre recargar o conservar los tuyos.
 
 ### ⚠️ A tener en cuenta
 
-- Quien ya tenía la barra lateral estrecha la sigue viendo en modo iconos; puedes ensancharla arrastrando su borde o con el botón de la parte de abajo.
-- El menú nativo de macOS no se ha podido probar en un Mac antes de publicar.
-
-### 🛠️ Cambios internos
-
-- El editor está repartido en módulos más pequeños (vista previa, etiquetas, imágenes, corrector y portapapeles). No cambia el comportamiento.
-- Nuevas pruebas: regresión visual en los temas oscuro y claro, foco con teclado, corrector, portapapeles y pestañas.
-
-### 📦 Instaladores
-
-| Sistema | Archivos |
-|---|---|
-| Linux | `.deb` (Debian/Ubuntu), `.rpm` (Fedora), `.AppImage` |
-| Windows | `.exe` / `.msi` |
-| macOS | `.dmg` |
-
-**Nota para Linux:** el botón de descarga del aviso de versión baja el `.AppImage`, que funciona en cualquier distribución. Si prefieres el `.rpm` o el `.deb`, descárgalo desde la página de la release.
-
-**Nota para Windows y macOS:** los instaladores no están firmados. Windows (SmartScreen) y macOS (Gatekeeper) pueden pedir confirmación antes de abrirlos.
-
-**Nota sobre los avisos:** están **apagados por defecto** y se encienden en Ajustes → Tareas. Piden permiso al sistema; nada sale de tu equipo.
-
----
-
-_Repositorio: https://github.com/victorrubilar-dev/gus · Licencia: GPL-3.0_
+- **Si vienes de la 0.2.0 o anterior, esta versión se instala a mano** (descargando el instalador): esas versiones aún no traen el actualizador. Desde esta en adelante, cada versión se instala sola en **AppImage, Windows y macOS**. Los paquetes **`.deb` y `.rpm`** no pueden reemplazarse a sí mismos: el aviso te ofrece descargar el instalador.
+- En macOS, la actualización automática es solo para **Apple Silicon**.
+- Es la primera versión con actualización automática y su instalación de extremo a extremo no se ha podido probar antes de publicar. Si algo falla, el aviso muestra el error y un botón para reintentar o ver los cambios.
+- Aparecen archivos nuevos y ocultos en tu vault: `.gus-library.json` (estanterías), `.gus-habits.json` (hábitos) y la carpeta `.gus-boards/` (pizarras). Siguen siendo locales y no necesitas tocarlos.
+- Las peticiones de red siguen siendo solo a GitHub y solo para actualizar; los detalles están en `PRIVACY.md`.
