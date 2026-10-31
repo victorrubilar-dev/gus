@@ -81,7 +81,14 @@ gus/
 │   ├── App.tsx                   # Raíz (~820 líneas): compone hooks y vistas; el estado vive en los `use*` de components/
 │   ├── App.css                   # Estilos globales, tema Tailwind, resaltado, exportación PDF
 │   ├── components/               # ~85 archivos: componentes React y hooks
-│   │   ├── MarkdownEditor.tsx    # Editor central (textarea + overlay renderizado, ~3.000 líneas)
+│   │   ├── MarkdownEditor.tsx    # Editor central (textarea + overlay renderizado, ~1.450 líneas): estado y núcleo de edición; el resto está en los `use*` de abajo
+│   │   ├── usePointerEvents.ts   # Ratón sobre el overlay: clics, selección, arrastres, redimensionado, copiar código
+│   │   ├── useEditorKeyboard.ts  # Teclado (Intro en listas, formato, atajos) y acciones de los menús «/», wiki e imágenes
+│   │   ├── useTableActions.ts    # Acciones de tabla: menú, atajos, borrar, reemplazar, convertir texto, autoajustar
+│   │   ├── useEditorContextMenu.ts # Clic derecho: qué hay bajo el puntero y dónde abrir el menú
+│   │   ├── useCaretTracking.ts   # Línea del cursor, celda de tabla y selección para el overlay
+│   │   ├── useNotePersistence.ts # Guardado: renombrar por título, escribir, autoguardado, volcado al desmontar
+│   │   ├── useFrozenTableWidths.ts # Congela la anchura de las columnas de cada tabla tras medirla
 │   │   ├── EditorHeader.tsx      # Cabecera del editor: título, vista previa, menú «⋯», etiquetas y estado de guardado
 │   │   ├── useBlockDrift.ts      # Alto que ganan tablas e imágenes sobre el overlay y su compensación (scroll, clic, cursor)
 │   │   ├── markdownPreview.tsx   # Vista previa del editor: render de Markdown, wiki-enlaces, KaTeX, Mermaid e imágenes
