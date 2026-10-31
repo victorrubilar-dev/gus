@@ -12,6 +12,8 @@ mkdirSync(carpeta, { recursive: true });
 const browser = await chromium.launch({ args: ["--no-sandbox"] });
 const contexto = await browser.newContext({ viewport: { width: 1280, height: 800 }, locale: "es-ES" });
 const page = await contexto.newPage();
+// Fecha fija: la semilla y el calendario dependen de «hoy» y la línea base no debe caducar cada día.
+await page.clock.setFixedTime(new Date(2026, 9, 30, 12, 0, 0));
 page.on("pageerror", (e) => console.log("  [excepción]", String(e).slice(0, 300)));
 
 await page.goto(`http://localhost:${puerto}/bench/app-smoke.html?semilla&tema=${tema}`, { waitUntil: "networkidle" });

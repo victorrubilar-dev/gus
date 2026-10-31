@@ -3,7 +3,7 @@
  * simulado, ver `app-smoke.tsx`) y falla si alguno mide menos de 28 px. Excluye
  * la barra lateral (su altura viene de la etiqueta, es una excepción), los
  * botones de estado (`aria-pressed`: filtros) y los interruptores
- * (`role="switch"`: controles de formulario, no de acción). Requiere
+ * (`role="switch"` y `role="checkbox"`: controles de formulario, no de acción). Requiere
  * `vite --port 5199` (ver `bench:botones`).
  */
 import { chromium } from "playwright-core";
@@ -26,7 +26,7 @@ const medirBajos = () =>
     return [...document.querySelectorAll("button")]
       .filter((el) => visible(el))
       .filter((el) => !el.closest('[data-tour="sidebar"]'))
-      .filter((el) => !el.hasAttribute("aria-pressed") && el.getAttribute("role") !== "switch")
+      .filter((el) => !el.hasAttribute("aria-pressed") && !["switch", "checkbox"].includes(el.getAttribute("role")))
       .map((el) => ({
         nombre: (el.getAttribute("aria-label") || el.textContent || el.title || "").trim().slice(0, 50),
         altura: Math.round(el.getBoundingClientRect().height * 10) / 10,

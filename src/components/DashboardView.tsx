@@ -388,7 +388,7 @@ export default function DashboardView({
                           type="button"
                           onClick={() => onNavigate("tasks")}
                           title={t("dashboard.seeInTasks")}
-                          className="min-w-0 flex-1 truncate text-left text-sm text-gus-text outline-none transition-colors hover:text-gus-accent focus-visible:ring-2 focus-visible:ring-gus-accent/70"
+                          className="-my-1 min-w-0 flex-1 truncate py-1 text-left text-sm text-gus-text outline-none transition-colors hover:text-gus-accent focus-visible:ring-2 focus-visible:ring-gus-accent/70"
                         >
                           {task.title}
                         </button>
