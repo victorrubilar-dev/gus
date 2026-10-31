@@ -11,23 +11,7 @@ import {
 } from "react";
 import { LucideProvider } from "lucide-react";
 import { AnimatePresence, domMax, LazyMotion, m, MotionConfig } from "framer-motion";
-import {
-  CalendarDays,
-  LayoutDashboard,
-  ListTodo,
-  LogOut,
-  Flame,
-  Library,
-  Network,
-  PenTool,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Settings as SettingsIcon,
-  StickyNote,
-  Trash2,
-  Upload,
-  type LucideIcon,
-} from "lucide-react";
+import { Upload } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { externalAction } from "./lib/externalChange";
@@ -84,19 +68,18 @@ import {
   storeLanguage,
   useT,
   type Language,
-  type MessageKey,
 } from "./lib/i18n";
 import { toLocalCoord } from "./lib/uiZoom";
 import { useFileDrop } from "./components/useFileDrop";
 import { useVaults } from "./components/useVaults";
 import { DEFAULT_BASE_DIR } from "./lib/vaultConfig";
 import { usePanelWidth } from "./components/usePanelWidth";
+import Sidebar, { useSidebarWidth, type TabId } from "./components/Sidebar";
 import Tour, { type TourTab } from "./components/Tour";
 import UpdateNotice from "./components/UpdateNotice";
 import gusIcon from "./assets/gus-icon-512.png";
 import "./App.css";
 
-type TabId = "home" | "notes" | "tasks" | "calendar" | "graph" | "library" | "habits" | "boards" | "search" | "settings" | "trash";
 type NoteStatus = "idle" | "loading" | "ready" | "error";
 
 interface OpenNote {
@@ -119,25 +102,6 @@ interface OpenPdf {
   error?: string;
 }
 
-const TABS: { id: TabId; labelKey: MessageKey; Icon: LucideIcon }[] = [
-  { id: "home", labelKey: "app.tab.home", Icon: LayoutDashboard },
-  { id: "notes", labelKey: "app.tab.notes", Icon: StickyNote },
-  { id: "tasks", labelKey: "app.tab.tasks", Icon: ListTodo },
-  { id: "calendar", labelKey: "app.tab.calendar", Icon: CalendarDays },
-  { id: "graph", labelKey: "app.tab.graph", Icon: Network },
-  { id: "library", labelKey: "app.tab.library", Icon: Library },
-  { id: "habits", labelKey: "app.tab.habits", Icon: Flame },
-  { id: "boards", labelKey: "app.tab.boards", Icon: PenTool },
-];
-
-
-
-const SIDEBAR_MIN_WIDTH = 64;
-const SIDEBAR_MAX_WIDTH = 320;
-const SIDEBAR_DEFAULT_WIDTH = 200;
-/** Desde este ancho la barra muestra el nombre de cada sección junto al icono. */
-const SIDEBAR_LABEL_MIN = 160;
-const SIDEBAR_WIDTH_KEY = "gus.sidebar-width";
 
 /**
  * Estado del recorrido guiado: «pending» cuando la primera bienvenida lo deja
@@ -159,11 +123,6 @@ function storeTourStatus(status: "pending" | "done"): void {
   } catch {
     // Sin memoria entre sesiones el tour podrá lanzarse desde Ajustes.
   }
-}
-
-function clampSidebarWidth(width: number): number {
-  if (!Number.isFinite(width)) return SIDEBAR_DEFAULT_WIDTH;
-  return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, Math.round(width)));
 }
 
 const EXPLORER_MIN_WIDTH = 200;
@@ -264,15 +223,8 @@ function App({
    */
   const searchIndexTimerRef = useRef<number | null>(null);
   const searchIndexReadyRef = useRef(false);
-  const sidebar = usePanelWidth({
-    storageKey: SIDEBAR_WIDTH_KEY,
-    min: SIDEBAR_MIN_WIDTH,
-    max: SIDEBAR_MAX_WIDTH,
-    fallback: SIDEBAR_DEFAULT_WIDTH,
-    clamp: clampSidebarWidth,
-  });
+  const sidebar = useSidebarWidth();
   const sidebarWidth = sidebar.width;
-  const sidebarLabeled = sidebarWidth >= SIDEBAR_LABEL_MIN;
   const explorer = usePanelWidth({
     storageKey: EXPLORER_WIDTH_KEY,
     min: EXPLORER_MIN_WIDTH,
@@ -960,17 +912,6 @@ function App({
     setActiveTab(settings.alwaysNotesTab ? "notes" : "home");
   }
 
-  /** Contrae a solo iconos y, al expandir, vuelve al ancho que tenía con etiquetas. */
-  const lastLabeledWidth = useRef(SIDEBAR_DEFAULT_WIDTH);
-  function toggleSidebar() {
-    if (sidebarLabeled) {
-      lastLabeledWidth.current = sidebar.widthRef.current;
-      sidebar.change(SIDEBAR_MIN_WIDTH);
-    } else {
-      sidebar.change(lastLabeledWidth.current);
-    }
-  }
-
   /** El idioma no va en el archivo del vault: se guarda aparte, en el equipo. */
   function handleLanguageChange(lang: Language) {
     onLanguageChange(lang);
@@ -1273,165 +1214,12 @@ function App({
           }
         >
           {showSidebar && (
-            <aside
-              data-tour="sidebar"
-              style={{ width: sidebarWidth }}
-              className="relative flex h-full shrink-0 flex-col items-center gap-2 border-r border-gus-border bg-gus-panel px-2 py-4"
-            >
-              <img
-                src={gusIcon}
-                alt="Gus"
-                title="Gus"
-                draggable={false}
-                className="h-9 w-9 select-none"
-              />
-
-              <div aria-hidden="true" className="my-1 h-px w-8 bg-gus-border" />
-
-              {TABS.map(({ id, labelKey, Icon }) => {
-                const label = t(labelKey);
-                const isActive = activeTab === id;
-
-                return (
-                  <button
-                    key={id}
-                    type="button"
-                    title={label}
-                    aria-label={label}
-                    aria-pressed={isActive}
-                    onClick={() => setActiveTab(id)}
-                    className={clsx(
-                      "relative flex items-center rounded-xl outline-none transition-colors",
-                      "focus-visible:ring-2 focus-visible:ring-gus-accent/60",
-                      sidebarLabeled ? "h-10 w-full gap-3 px-3" : "h-11 w-11 justify-center",
-                      isActive
-                        ? "text-gus-accent"
-                        : "text-gus-muted hover:bg-gus-card hover:text-gus-text",
-                    )}
-                  >
-                    {isActive && (
-                      <m.span
-                        layoutId="sidebar-active-tab"
-                        className="absolute inset-0 rounded-xl border border-gus-accent/40 bg-gus-accent/15"
-                        transition={{ type: "spring", stiffness: 400, damping: 32 }}
-                      />
-                    )}
-                    <Icon className="relative h-5 w-5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
-                    {sidebarLabeled && <span className="relative truncate text-sm">{label}</span>}
-                  </button>
-                );
-              })}
-
-              <div
-                data-tour="sidebar-bottom"
-                className="mt-auto flex w-full flex-col items-center gap-2"
-              >
-                <div aria-hidden="true" className="h-px w-8 bg-gus-border" />
-
-                <div className="flex w-full flex-col items-center gap-2">
-                  <button
-                    type="button"
-                    title={t("app.leaveVault")}
-                    aria-label={t("app.leaveVault")}
-                    onClick={leaveVault}
-                    className={`flex items-center rounded-xl text-gus-muted ${sidebarLabeled ? "h-10 w-full gap-3 px-3" : "h-11 w-11 justify-center"} outline-none transition-colors hover:bg-rose-400/10 hover:text-rose-300 focus-visible:ring-2 focus-visible:ring-gus-accent/60`}
-                  >
-                    <LogOut className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
-                    {sidebarLabeled && <span className="truncate text-sm">{t("app.leaveVault")}</span>}
-                  </button>
-
-                  <button
-                    type="button"
-                    title={t("app.trash")}
-                    aria-label={t("app.trash")}
-                    aria-pressed={activeTab === "trash"}
-                    onClick={() => setActiveTab("trash")}
-                    className={clsx(
-                      "relative flex items-center rounded-xl outline-none transition-colors",
-                      "focus-visible:ring-2 focus-visible:ring-gus-accent/60",
-                      sidebarLabeled ? "h-10 w-full gap-3 px-3" : "h-11 w-11 justify-center",
-                      activeTab === "trash"
-                        ? "text-gus-accent"
-                        : "text-gus-muted hover:bg-gus-card hover:text-gus-text",
-                    )}
-                  >
-                    {activeTab === "trash" && (
-                      <m.span
-                        layoutId="sidebar-active-tab"
-                        className="absolute inset-0 rounded-xl border border-gus-accent/40 bg-gus-accent/15"
-                        transition={{ type: "spring", stiffness: 400, damping: 32 }}
-                      />
-                    )}
-                    <Trash2 className="relative h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
-                    {sidebarLabeled && <span className="relative truncate text-sm">{t("app.trash")}</span>}
-                  </button>
-
-                  <button
-                    type="button"
-                    title={t("app.settings")}
-                    aria-label={t("app.settings")}
-                    aria-pressed={activeTab === "settings"}
-                    onClick={() => setActiveTab("settings")}
-                    className={clsx(
-                      "relative flex items-center rounded-xl outline-none transition-colors",
-                      "focus-visible:ring-2 focus-visible:ring-gus-accent/60",
-                      sidebarLabeled ? "h-10 w-full gap-3 px-3" : "h-11 w-11 justify-center",
-                      activeTab === "settings"
-                        ? "text-gus-accent"
-                        : "text-gus-muted hover:bg-gus-card hover:text-gus-text",
-                    )}
-                  >
-                    {activeTab === "settings" && (
-                      <m.span
-                        layoutId="sidebar-active-tab"
-                        className="absolute inset-0 rounded-xl border border-gus-accent/40 bg-gus-accent/15"
-                        transition={{ type: "spring", stiffness: 400, damping: 32 }}
-                      />
-                    )}
-                    <SettingsIcon
-                      className="relative h-5 w-5"
-                      strokeWidth={1.75}
-                      aria-hidden="true"
-                    />
-                    {sidebarLabeled && <span className="relative truncate text-sm">{t("app.settings")}</span>}
-                  </button>
-
-                  <button
-                    type="button"
-                    title={t(sidebarLabeled ? "app.collapseSidebar" : "app.expandSidebar")}
-                    aria-label={t(sidebarLabeled ? "app.collapseSidebar" : "app.expandSidebar")}
-                    onClick={toggleSidebar}
-                    className={clsx(
-                      "flex items-center rounded-xl text-gus-muted outline-none transition-colors hover:bg-gus-card hover:text-gus-text",
-                      "focus-visible:ring-2 focus-visible:ring-gus-accent/60",
-                      sidebarLabeled ? "h-10 w-full gap-3 px-3" : "h-11 w-11 justify-center",
-                    )}
-                  >
-                    {sidebarLabeled ? (
-                      <PanelLeftClose className="h-5 w-5" aria-hidden="true" />
-                    ) : (
-                      <PanelLeftOpen className="h-5 w-5" aria-hidden="true" />
-                    )}
-                    {sidebarLabeled && <span className="truncate text-sm">{t("app.collapseSidebar")}</span>}
-                  </button>
-                </div>
-              </div>
-
-              <div
-                role="separator"
-                aria-orientation="vertical"
-                aria-label={t("app.resizeSidebar")}
-                aria-valuenow={sidebarWidth}
-                aria-valuemin={SIDEBAR_MIN_WIDTH}
-                aria-valuemax={SIDEBAR_MAX_WIDTH}
-                tabIndex={0}
-                title={t("app.resizeHint")}
-                onPointerDown={sidebar.onResizeStart}
-                onDoubleClick={() => sidebar.change(SIDEBAR_DEFAULT_WIDTH)}
-                onKeyDown={sidebar.onResizeKeyDown}
-                className="absolute inset-y-0 right-0 w-1.5 cursor-col-resize touch-none rounded-r-sm transition-colors hover:bg-gus-accent/40 focus-visible:bg-gus-accent/60 focus-visible:outline-none"
-              />
-            </aside>
+            <Sidebar
+              sidebar={sidebar}
+              activeTab={activeTab}
+              onSelectTab={setActiveTab}
+              onLeaveVault={leaveVault}
+            />
           )}
 
           <main className="h-full min-w-0 flex-1 overflow-hidden">
