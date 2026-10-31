@@ -32,7 +32,6 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { externalAction } from "./lib/externalChange";
 import { toggleNoteTaskText, type NoteTask } from "./lib/noteTasks";
-import { getCurrentWebview } from "@tauri-apps/api/webview";
 import clsx from "clsx";
 import CalendarView from "./components/CalendarView";
 import BacklinksPanel from "./components/BacklinksPanel";
@@ -57,14 +56,7 @@ import VaultPicker, { type VaultAppConfig, type VaultInfo } from "./components/V
 import WelcomePanel from "./components/WelcomePanel";
 import { baseName, isInsidePath, joinPath, safeFileName } from "./lib/fileName";
 import { dailyNoteDateFor, dailyRelativePath, renderDailyTemplate } from "./lib/dailyNotes";
-import { isImagePath } from "./lib/imageLinks";
-import {
-  importFilesIntoVault,
-  relativeFolderLabel,
-  summarizeImageInsert,
-  summarizeImport,
-  type ImportSummary,
-} from "./lib/importFiles";
+import { relativeFolderLabel } from "./lib/importFiles";
 import { findWikiNote, wikiTargetToPath, type WikiNote } from "./lib/wikiLink";
 import { relativeNotePath } from "./lib/searchIndex";
 import { loadTaskStore } from "./lib/taskStore";
@@ -95,6 +87,7 @@ import {
   type MessageKey,
 } from "./lib/i18n";
 import { toLocalCoord } from "./lib/uiZoom";
+import { useFileDrop } from "./components/useFileDrop";
 import { usePanelWidth } from "./components/usePanelWidth";
 import Tour, { type TourTab } from "./components/Tour";
 import UpdateNotice from "./components/UpdateNotice";
@@ -285,25 +278,6 @@ function App({
    */
   const searchIndexTimerRef = useRef<number | null>(null);
   const searchIndexReadyRef = useRef(false);
-  /** Aviso del resultado de arrastrar archivos desde el explorador del sistema. */
-  const [importNotice, setImportNotice] = useState<ImportSummary | null>(null);
-  const importNoticeTimerRef = useRef<number | null>(null);
-  /** true mientras el usuario trae archivos del sistema sobre la ventana. */
-  const [droppingFiles, setDroppingFiles] = useState(false);
-  /** Carpeta bajo el cursor durante el arrastre: allí caerán los archivos. */
-  const [dropFolder, setDropFolder] = useState<string | null>(null);
-  /** true si el arrastre cae sobre el texto de la nota abierta. */
-  const [dropOnNote, setDropOnNote] = useState(false);
-  /**
-   * Lo que hace el arrastre nativo, guardado en un ref para que el listener —
-   * enganchado una sola vez— siempre vea las últimas funciones y estados.
-   */
-  const dragDropRef = useRef<{
-    folder: (position: { x: number; y: number }) => string | null;
-    editor: (position: { x: number; y: number }) => boolean;
-    drop: (paths: string[], position: { x: number; y: number }) => Promise<void>;
-  }>({ folder: () => null, editor: () => false, drop: async () => {} });
-
   const sidebar = usePanelWidth({
     storageKey: SIDEBAR_WIDTH_KEY,
     min: SIDEBAR_MIN_WIDTH,
@@ -339,6 +313,13 @@ function App({
   const editorRef = useRef<MarkdownEditorHandle>(null);
   /** Para que el panel de bienvenida cree notas igual que el «+» del explorador. */
   const explorerRef = useRef<FileExplorerHandle>(null);
+
+  const { importNotice, droppingFiles, dropFolder, dropOnNote } = useFileDrop({
+    currentVault,
+    editorRef,
+    explorerRef,
+    onFilesChanged: () => setVaultRefresh((key) => key + 1),
+  });
   /** Solo la última petición de imagen puede escribir en el estado. */
   const imageRequestRef = useRef(0);
   /** Solo la última petición de PDF puede escribir en el estado. */
@@ -918,119 +899,6 @@ function App({
     linkErrorTimerRef.current = window.setTimeout(() => setLinkError(null), 6000);
   }
 
-  function showImportNotice(summary: ImportSummary) {
-    setImportNotice(summary);
-    if (importNoticeTimerRef.current !== null) window.clearTimeout(importNoticeTimerRef.current);
-    importNoticeTimerRef.current = window.setTimeout(() => setImportNotice(null), 8000);
-  }
-
-  /**
-   * Carpeta que recibiría un arrastre: la fila bajo el cursor del explorador o,
-   * si no la hay, la carpeta que se está viendo (la raíz si no hay explorador).
-   *
-   * Tauri da la posición en píxeles físicos: se pasa a px de CSS y se comprueba
-   * con las dos cuentas posibles (con y sin el zoom de la interfaz). Si no
-   * coinciden no se arriesga: se usa la carpeta visible, que es la que anuncia
-   * el aviso antes de soltar.
-   */
-  function resolveDropFolder(position: { x: number; y: number }): string | null {
-    const vault = currentVault;
-    if (!vault) return null;
-
-    const dpr = window.devicePixelRatio || 1;
-    const x = position.x / dpr;
-    const y = position.y / dpr;
-
-    const bajo = (px: number, py: number): string | null => {
-      try {
-        const element = document.elementFromPoint(px, py);
-        const folder =
-          element instanceof Element ? element.closest<HTMLElement>("[data-drop-folder]") : null;
-        const path = folder?.dataset.dropFolder ?? null;
-        return path && isInsidePath(path, vault) ? path : null;
-      } catch {
-        return null;
-      }
-    };
-
-    const directo = bajo(x, y);
-    const conZoom = bajo(toLocalCoord(x), toLocalCoord(y));
-    const bajoCursor = directo !== null && directo === conZoom ? directo : null;
-
-    return bajoCursor ?? explorerRef.current?.currentDir() ?? vault;
-  }
-
-  /**
-   * ¿El arrastre cae sobre el campo de texto de la nota? Tauri da la posición
-   * en píxeles físicos: se comprueba con las dos cuentas posibles (con y sin
-   * el zoom de la interfaz), como se hace con las carpetas. Siempre que una
-   * de las dos dé en el editor, se enlaza ahí.
-   */
-  function overEditorAt(position: { x: number; y: number }): boolean {
-    const dpr = window.devicePixelRatio || 1;
-    const x = position.x / dpr;
-    const y = position.y / dpr;
-
-    const bajo = (px: number, py: number): boolean => {
-      try {
-        const element = document.elementFromPoint(px, py);
-        return element instanceof Element && element.closest("[data-drop-editor]") !== null;
-      } catch {
-        return false;
-      }
-    };
-
-    return bajo(x, y) || bajo(toLocalCoord(x), toLocalCoord(y));
-  }
-
-  /**
-   * Importa los archivos soltados y cuenta lo que ha dado de sí. Las imágenes
-   * que caen sobre el texto de la nota no van a una carpeta: se enlazan en la
-   * nota que está abierta (copiándolas junto a ella si vienen de fuera).
-   */
-  async function handleDroppedFiles(paths: string[], position: { x: number; y: number }) {
-    if (paths.length === 0) return;
-
-    const imagenes = paths.filter(isImagePath);
-    const resto = paths.filter((ruta) => !isImagePath(ruta));
-
-    if (imagenes.length > 0 && currentVault && overEditorAt(position)) {
-      const resultado =
-        (await editorRef.current?.insertImages(imagenes, position)) ?? {
-          inserted: 0,
-          failed: imagenes.length,
-        };
-      showImportNotice(summarizeImageInsert(resultado));
-      // Copiar una imagen al vault crea un archivo nuevo: el explorador lo
-      // tiene que enseñar (aunque solo se insertaran enlaces de vault).
-      if (resultado.inserted > 0) setVaultRefresh((key) => key + 1);
-      if (resto.length === 0) return;
-    }
-
-    const dest = resolveDropFolder(position);
-    if (!dest) {
-      showImportNotice({ ok: false, message: t("app.noVaultForFiles") });
-      return;
-    }
-
-    try {
-      const items = await importFilesIntoVault(resto, dest);
-      showImportNotice(summarizeImport(items, relativeFolderLabel(dest, currentVault ?? dest)));
-      setVaultRefresh((key) => key + 1);
-    } catch (error: unknown) {
-      showImportNotice({ ok: false, message: String(error) });
-    }
-  }
-
-  // El ref siempre apunta a la versión más reciente de las funciones de arriba.
-  useEffect(() => {
-    dragDropRef.current = {
-      folder: resolveDropFolder,
-      editor: overEditorAt,
-      drop: handleDroppedFiles,
-    };
-  });
-
   /**
    * El menú por defecto del webview (cortar/pegar, inspeccionar…) no es de Gus:
    * se cancela en toda la app y cada superficie abre el suyo —el editor, las
@@ -1042,55 +910,9 @@ function App({
     return () => document.removeEventListener("contextmenu", cancelDefaultMenu, { capture: true });
   }, []);
 
-  /**
-   * Arrastre desde el explorador de archivos del sistema: Tauri intercepta ese
-   * drop nativo (el webview no recibe el `drop` de HTML5), así que se escucha
-   * aquí. Al entrar o al moverse se actualiza la carpeta que anuncia el aviso.
-   */
-  useEffect(() => {
-    let disposed = false;
-    let unlisten: (() => void) | undefined;
-
-    try {
-      getCurrentWebview()
-        .onDragDropEvent((event) => {
-          const payload = event.payload;
-          if (payload.type === "drop") {
-            setDroppingFiles(false);
-            setDropFolder(null);
-            setDropOnNote(false);
-            void dragDropRef.current.drop(payload.paths, payload.position);
-          } else if (payload.type === "enter" || payload.type === "over") {
-            setDroppingFiles(true);
-            setDropFolder(dragDropRef.current.folder(payload.position));
-            setDropOnNote(dragDropRef.current.editor(payload.position));
-          } else {
-            setDroppingFiles(false);
-            setDropFolder(null);
-            setDropOnNote(false);
-          }
-        })
-        .then((stop) => {
-          if (disposed) stop();
-          else unlisten = stop;
-        })
-        .catch(() => {});
-    } catch {
-      // Fuera de Tauri (navegador al desarrollar) no hay arrastre nativo.
-    }
-
-    return () => {
-      disposed = true;
-      unlisten?.();
-    };
-  }, []);
-
   useEffect(() => {
     return () => {
       if (linkErrorTimerRef.current !== null) window.clearTimeout(linkErrorTimerRef.current);
-      if (importNoticeTimerRef.current !== null) {
-        window.clearTimeout(importNoticeTimerRef.current);
-      }
     };
   }, []);
 
