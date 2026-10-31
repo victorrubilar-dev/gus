@@ -494,8 +494,6 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
     if (staticMode) return;
 
     function onKey(event: KeyboardEvent) {
-      if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
-
       const target = event.target;
       if (
         target instanceof HTMLElement &&
