@@ -108,15 +108,22 @@ fn with_extension(path: &str, extension: &str) -> String {
 
 /// Guarda una imagen exportada (pizarra) en la ruta que haya elegido el usuario.
 /// Solo `png` o `svg`: el formato decide la extensión, no el texto de la ruta.
+/// Con `unique`, si ya existe un archivo con ese nombre se guarda como `nombre-2`,
+/// `nombre-3`… en vez de pisarlo (las exportaciones en lote). Devuelve la ruta final.
 #[tauri::command]
-pub(crate) fn write_image_file(path: String, data: String, format: String) -> Result<(), String> {
+pub(crate) fn write_image_file(
+    path: String,
+    data: String,
+    format: String,
+    unique: Option<bool>,
+) -> Result<String, String> {
     if format != "png" && format != "svg" {
         return Err(format!("Formato de imagen no admitido: «{format}»"));
     }
-    let path = with_extension(&expand_home(&path), &format);
+    let wanted = with_extension(&expand_home(&path), &format);
     let bytes = decode_base64(&data)?;
 
-    if let Some(parent) = std::path::Path::new(&path).parent() {
+    if let Some(parent) = std::path::Path::new(&wanted).parent() {
         if !parent.as_os_str().is_empty() {
             std::fs::create_dir_all(parent).map_err(|err| {
                 format!("No se pudo crear el directorio «{}»: {err}", parent.display())
@@ -124,8 +131,15 @@ pub(crate) fn write_image_file(path: String, data: String, format: String) -> Re
         }
     }
 
-    write_atomic(std::path::Path::new(&path), bytes)
-        .map_err(|err| format!("No se pudo escribir «{path}»: {err}"))
+    let target = if unique == Some(true) {
+        unique_path(std::path::Path::new(&wanted))?
+    } else {
+        std::path::PathBuf::from(&wanted)
+    };
+
+    write_atomic(&target, bytes)
+        .map_err(|err| format!("No se pudo escribir «{}»: {err}", target.display()))?;
+    Ok(target.to_string_lossy().into_owned())
 }
 
 /// Escribe el PDF exportado en la ruta que haya elegido el usuario.
@@ -271,12 +285,18 @@ mod export_tests {
         let _ = std::fs::remove_dir_all(&dir);
         let destino = dir.join("pizarra").to_string_lossy().into_owned();
 
-        assert!(write_image_file(destino.clone(), "AAAA".into(), "exe".into()).is_err());
-        assert!(write_image_file(destino.clone(), "no es base64!".into(), "png".into()).is_err());
+        assert!(write_image_file(destino.clone(), "AAAA".into(), "exe".into(), None).is_err());
+        assert!(write_image_file(destino.clone(), "no es base64!".into(), "png".into(), None).is_err());
 
         // «PHN2Zz4=» es «<svg>» en Base64.
-        write_image_file(destino.clone(), "PHN2Zz4=".into(), "svg".into()).expect("guardar");
+        write_image_file(destino.clone(), "PHN2Zz4=".into(), "svg".into(), None).expect("guardar");
         assert_eq!(std::fs::read_to_string(format!("{destino}.svg")).expect("leer"), "<svg>");
+
+        // Sin `unique` se sobrescribe; con `unique` se guarda al lado con otro nombre.
+        write_image_file(destino.clone(), "PHN2Zz4=".into(), "svg".into(), None).expect("sobrescribir");
+        let segunda = write_image_file(destino.clone(), "PHN2Zz4=".into(), "svg".into(), Some(true)).expect("al lado");
+        assert!(segunda.ends_with("pizarra-2.svg"), "{segunda}");
+        assert!(std::path::Path::new(&segunda).exists());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

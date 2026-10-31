@@ -59,6 +59,84 @@ await page.getByRole("menuitem", { name: /^SVG/ }).click();
 await page.getByText("La pizarra está vacía").waitFor({ timeout: 5000 });
 comprobar((await exportados()).length === 2, "una pizarra vacía no exporta nada y lo explica");
 
+
+console.log("\n--- menú de cada pizarra ---");
+await page.getByRole("button", { name: "Pizarras", exact: true }).last().click().catch(() => {});
+await page.getByText("Plan de la semana").first().waitFor({ timeout: 8000 });
+const nombres = () => page.evaluate(() => [...window.__smoke.pizarras.values()].map((json) => JSON.parse(json).name).sort());
+const menu = async (nombre) => {
+  await tarjeta(nombre).hover();
+  await page.getByRole("button", { name: `Opciones de «${nombre}»`, exact: true }).click();
+};
+
+await menu("Ideas");
+await page.getByRole("menuitem", { name: "Duplicar" }).click();
+await page.getByText("Pizarra duplicada.").waitFor({ timeout: 5000 });
+comprobar((await nombres()).includes("Ideas (copia)"), "duplicar crea «Ideas (copia)» con su contenido");
+await menu("Ideas");
+await page.getByRole("menuitem", { name: "Duplicar" }).click();
+await page.waitForFunction(() => [...window.__smoke.pizarras.values()].some((j) => JSON.parse(j).name === "Ideas (copia 2)"), null, { timeout: 5000 });
+comprobar(true, "duplicar otra vez numera la copia («copia 2»)");
+
+await menu("Ideas (copia)");
+await page.getByRole("menuitem", { name: "Renombrar" }).click();
+const campo = page.getByLabel(/Nuevo nombre de «Ideas \(copia\)»/);
+await campo.fill("Borrador");
+await campo.press("Enter");
+await page.waitForFunction(() => [...window.__smoke.pizarras.values()].some((j) => JSON.parse(j).name === "Borrador"), null, { timeout: 5000 });
+comprobar(true, "renombrar guarda el nombre nuevo");
+await menu("Borrador");
+await page.getByRole("menuitem", { name: "Renombrar" }).click();
+const campo2 = page.getByLabel(/Nuevo nombre de «Borrador»/);
+await campo2.fill("No debería quedar");
+await campo2.press("Escape");
+await page.waitForTimeout(400);
+comprobar(!(await nombres()).includes("No debería quedar"), "Esc cancela el renombrado");
+
+const antes = (await exportados()).length;
+await menu("Borrador");
+await page.getByRole("menuitem", { name: /^SVG/ }).click();
+await page.waitForFunction((n) => window.__smoke.exportados.length === n + 1, antes, { timeout: 8000 });
+comprobar((await exportados()).at(-1).path.endsWith("Borrador.svg"), "exportar desde el menú guarda con el nombre de la pizarra");
+
+await menu("Borrador");
+await page.getByRole("menuitem", { name: "Mover a la papelera" }).click();
+await page.getByText("¿Mover a la papelera?").waitFor({ timeout: 3000 });
+await page.getByRole("button", { name: "Cancelar" }).click();
+comprobar((await nombres()).includes("Borrador"), "cancelar la confirmación no borra nada");
+await menu("Borrador");
+await page.getByRole("menuitem", { name: "Mover a la papelera" }).click();
+await page.getByRole("button", { name: "Mover", exact: true }).click();
+await page.waitForFunction(() => ![...window.__smoke.pizarras.values()].some((j) => JSON.parse(j).name === "Borrador"), null, { timeout: 5000 });
+comprobar(true, "confirmar mueve la pizarra a la papelera");
+
+console.log("\n--- selección múltiple ---");
+await page.getByRole("button", { name: "Seleccionar", exact: true }).click();
+await tarjeta("Plan de la semana").getByRole("button").first().click();
+await tarjeta("Vacía").getByRole("button").first().click();
+await tarjeta("Ideas").first().getByRole("button").first().click();
+comprobar(await page.getByText("3 seleccionadas").isVisible(), "marcar tarjetas cuenta las seleccionadas (3)");
+const previo = (await exportados()).length;
+await page.getByRole("button", { name: "Exportar", exact: true }).click();
+await page.getByRole("menuitem", { name: /^PNG/ }).click();
+await page.getByText(/Pizarras exportadas: 2/).waitFor({ timeout: 15000 });
+const lote = (await exportados()).slice(previo);
+comprobar(lote.length === 2 && lote.every((e) => e.format === "png" && e.unique && e.path.startsWith("/tmp/exportadas/")), "exportar varias guarda un archivo por pizarra en la carpeta elegida, sin pisar");
+comprobar(await page.getByText(/1 vacías no se exportaron/).isVisible(), "avisa de las vacías que se saltó");
+
+await page.getByRole("button", { name: "Duplicar", exact: true }).click();
+await page.getByText("Pizarras duplicadas.").waitFor({ timeout: 8000 });
+comprobar((await nombres()).filter((n) => n.includes("(copia")).length >= 3, "duplicar varias crea una copia de cada una");
+
+await page.getByRole("button", { name: /^Mover 3 a la papelera/ }).click();
+await page.getByText("¿Mover 3 pizarras a la papelera?").waitFor({ timeout: 3000 });
+await page.getByRole("button", { name: "Mover", exact: true }).click();
+await page.waitForFunction(() => ![...window.__smoke.pizarras.values()].some((j) => JSON.parse(j).name === "Plan de la semana"), null, { timeout: 5000 });
+const quedan = await nombres();
+comprobar(!quedan.includes("Plan de la semana") && !quedan.includes("Vacía") && quedan.includes("Ideas (copia 2)"), "eliminar varias solo quita las seleccionadas");
+await page.keyboard.press("Escape");
+comprobar((await page.getByRole("toolbar", { name: "Seleccionar" }).count()) === 0, "Esc sale del modo selección");
+
 await browser.close();
 console.log(fallos.length === 0 ? "\nTODO EN VERDE" : `\n${fallos.length} comprobación(es) fallaron`);
 process.exit(fallos.length === 0 ? 0 : 1);

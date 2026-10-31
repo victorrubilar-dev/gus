@@ -33,7 +33,7 @@ const tareas: unknown[] = location.search.includes("semilla")
   : [{ id: "base", title: "Tarea base", tags: [], completes: false }];
 const pizarras = new Map<string, string>();
 /** Lo que el test «guarda» al exportar una pizarra (ruta, datos en Base64 y formato). */
-const exportados: { path: string; data: string; format: string }[] = [];
+const exportados: { path: string; data: string; format: string; unique?: boolean }[] = [];
 if (location.search.includes("semilla")) {
   pizarras.set(
     "p1",
@@ -50,6 +50,7 @@ if (location.search.includes("semilla")) {
     }),
   );
   pizarras.set("p2", JSON.stringify({ version: 1, name: "Vacía", elements: [] }));
+  pizarras.set("p3", JSON.stringify({ version: 1, name: "Ideas", elements: [{ id: "x", type: "ellipse", color: "#a855f7", x: 10, y: 10, w: 120, h: 70, fill: false }, { id: "y", type: "text", color: "#ef4444", x: 30, y: 38, text: "Ideas", size: 22 }] }));
 }
 /** Cada `save_app_config` que recibe el backend, para comprobar vaults y último abierto. */
 const configGuardada: unknown[] = [];
@@ -217,6 +218,11 @@ const respuestas: Record<string, (args: Record<string, unknown>) => unknown> = {
   },
   move_to_trash: (args) => {
     const ruta = String(args.path);
+    const pizarra = /\/\.gus-boards\/([^/]+)\.json$/.exec(ruta);
+    if (pizarra) {
+      pizarras.delete(pizarra[1]);
+      return null;
+    }
     for (const clave of [...archivos.keys()]) if (clave === ruta || clave.startsWith(`${ruta}/`)) archivos.delete(clave);
     for (const clave of [...carpetas]) if (clave === ruta || clave.startsWith(`${ruta}/`)) carpetas.delete(clave);
     return null;
@@ -240,9 +246,10 @@ const respuestas: Record<string, (args: Record<string, unknown>) => unknown> = {
         text,
       })),
   "plugin:dialog|save": (args) => `/tmp/${String((args.options as { defaultPath?: string })?.defaultPath ?? "pizarra.svg")}`,
+  "plugin:dialog|open": () => "/tmp/exportadas",
   write_image_file: (args) => {
-    exportados.push({ path: String(args.path), data: String(args.data), format: String(args.format) });
-    return null;
+    exportados.push({ path: String(args.path), data: String(args.data), format: String(args.format), unique: args.unique === true });
+    return args.path;
   },
   list_recent_notes: (args) =>
     [...archivos.keys()]
@@ -299,7 +306,7 @@ const respuestas: Record<string, (args: Record<string, unknown>) => unknown> = {
   },
 };
 
-(window as unknown as { __smoke: unknown }).__smoke = { exportados, emitir: (evento: string, payload: unknown) => callbacks.get(oyentes.get(evento) ?? -1)?.({ event: evento, id: 0, payload }), configGuardada, archivos, llamadas, tareas, pizarras, terminarDescarga: () => terminarDescarga() };
+(window as unknown as { __smoke: unknown }).__smoke = { pizarras, exportados, emitir: (evento: string, payload: unknown) => callbacks.get(oyentes.get(evento) ?? -1)?.({ event: evento, id: 0, payload }), configGuardada, archivos, llamadas, tareas, pizarras, terminarDescarga: () => terminarDescarga() };
 (window as unknown as { __TAURI_EVENT_PLUGIN_INTERNALS__: unknown }).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
   unregisterListener: () => {},
 };

@@ -49,8 +49,7 @@ import {
   type Point,
   type View,
 } from "../lib/board";
-import { renderBoardSvg } from "../lib/boardSvg";
-import { bytesToBase64, EXPORT_BACKGROUND, EXPORT_PALETTE, svgToPng, utf8ToBase64 } from "../lib/boardExport";
+import { drawForExport, encodeExport } from "../lib/boardActions";
 import { joinPath, safeFileName } from "../lib/fileName";
 import type { VaultImage } from "../lib/imageLinks";
 import { createTaskId } from "../lib/taskStore";
@@ -616,7 +615,7 @@ export default function BoardEditor({ vaultPath, boardId, onBack }: BoardEditorP
     setError(null);
     setNotice(null);
 
-    const drawn = renderBoardSvg(elements, { palette: EXPORT_PALETTE, images, background: EXPORT_BACKGROUND });
+    const drawn = drawForExport(elements, images);
     if (!drawn) {
       setError(t("boards.exportEmpty"));
       return;
@@ -630,8 +629,7 @@ export default function BoardEditor({ vaultPath, boardId, onBack }: BoardEditorP
       });
       if (!target) return;
 
-      const data = format === "svg" ? utf8ToBase64(drawn.svg) : bytesToBase64(await svgToPng(drawn));
-      await invoke("write_image_file", { path: target, data, format });
+      await invoke("write_image_file", { path: target, data: await encodeExport(drawn, format), format });
       setNotice(t("boards.exported"));
     } catch (reason) {
       setError(t("boards.exportError", { error: String(reason) }));
