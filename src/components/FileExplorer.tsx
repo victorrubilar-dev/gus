@@ -9,6 +9,7 @@ import {
   type DragEvent as ReactDragEvent,
   type MouseEvent as ReactMouseEvent,
 } from "react";
+import ExplorerContextMenu, { MENU_ITEM_CLASS, type MenuState } from "./ExplorerContextMenu";
 import { AnimatePresence, m } from "framer-motion";
 import {
   ArrowLeft,
@@ -107,14 +108,6 @@ interface VaultEntry {
 interface VaultDir {
   path: string;
   relative: string;
-}
-
-interface MenuState {
-  /** `""` cuando el menú es el de la lista (no apunta a ninguna entrada). */
-  id: string;
-  kind: "file" | "folder" | "panel";
-  x: number;
-  y: number;
 }
 
 export interface DragEntry {
@@ -957,8 +950,6 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
   }
 
   const busy = busyId !== null;
-  const menuItemClass =
-    "flex w-full items-center gap-2 px-3 py-1.5 text-left text-body transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-gus-accent/60 focus-visible:outline-none";
 
   const collapseLevel = collapse.key === trailKey ? collapse.level : 0;
   const { visible: trailParts, hidden: hiddenParts, maxLevel } = splitTrail(trail, collapseLevel);
@@ -1233,7 +1224,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
                       onDrop={(event) => dropOnFolder(event, part.folder)}
                       title={t("explorer.trailDropHint", { path: part.folder.path })}
                       className={clsx(
-                        menuItemClass,
+                        MENU_ITEM_CLASS,
                         "text-gus-muted hover:bg-gus-panel hover:text-gus-text",
                       )}
                     >
@@ -1536,256 +1527,53 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
       </ul>
 
       {menu && (menuTarget || menu.kind === "panel") && (
-        <div
-          role="menu"
-          aria-label={t(
-            menu.kind === "panel" ? "explorer.panelOptions" : "explorer.itemOptions",
-            { name: menuTarget?.name ?? "" },
-          )}
-          className="fixed z-30 w-52 overflow-hidden rounded-lg border border-gus-border bg-gus-card shadow-xl shadow-black/40"
-          style={{ left: menu.x, top: menu.y }}
-        >
-          {confirmId === menu.id && menuTarget ? (
-            <div className="p-3 text-body">
-              <p className="text-gus-text">
-                {t(menu.kind === "folder" ? "explorer.trashFolderAsk" : "explorer.trashItemAsk", {
-                  name: "",
-                })}
-                <span className="font-mono break-all">{menuTarget.name}</span>
-                {t("explorer.trashToBin")}
-              </p>
-              <p className="mt-1 text-meta text-gus-muted">
-                {menu.kind === "folder"
-                  ? t("explorer.trashFolderBody")
-                  : t("explorer.trashItemBody")}
-              </p>
-              <div className="mt-2.5 flex gap-2">
-                <button
-                  type="button"
-                  ref={confirmTrashRef}
-                  onClick={() => {
-                    if (menuFolder) void deleteFolder(menuFolder);
-                    else if (menuFile) void deleteFile(menuFile);
-                  }}
-                  disabled={busy}
-                  className="rounded-md border border-rose-400/40 bg-rose-400/10 px-2 py-1 text-meta text-rose-300 transition-colors hover:bg-rose-400/20 focus-visible:ring-2 focus-visible:ring-rose-300/60 focus-visible:outline-none disabled:opacity-50"
-                >
-                  {t("explorer.moveToTrash")}
-                </button>
-                <button
-                  type="button"
-                  ref={confirmCancelRef}
-                  onClick={() => setConfirmId(null)}
-                  className="rounded-md border border-gus-border px-2 py-1 text-meta text-gus-muted transition-colors hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
-                >
-                  {t("common.cancel")}
-                </button>
-              </div>
-            </div>
-          ) : movingId === menu.id && menuTarget ? (
-            <div>
-              <p className="border-b border-gus-border px-3 py-2 text-meta tracking-wider text-gus-muted uppercase">
-                {t(menu.kind === "folder" ? "explorer.moveFolderTo" : "explorer.moveFileTo")}
-              </p>
-              <ul className="gus-scrollbar max-h-44 overflow-y-auto py-1">
-                {destinations === null && (
-                  <li className="px-3 py-2 text-meta text-gus-muted">{t("common.loading")}</li>
-                )}
-                {destinations?.length === 0 && (
-                  <li className="px-3 py-2 text-meta text-gus-muted">
-                    {t("explorer.noDestinations")}
-                  </li>
-                )}
-                {destinations?.map((dest) => (
-                  <li key={dest.path}>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        if (menuFolder) void moveFolder(menuFolder, dest);
-                        else if (menuFile) void moveFile(menuFile, dest);
-                      }}
-                      disabled={busy}
-                      title={dest.path}
-                      className={clsx(
-                        menuItemClass,
-                        "text-gus-muted hover:bg-gus-panel hover:text-gus-text disabled:opacity-50",
-                      )}
-                    >
-                      <Folder
-                        className="h-3.5 w-3.5 shrink-0"
-                        strokeWidth={1.75}
-                        aria-hidden="true"
-                      />
-                      <span className="min-w-0 flex-1 truncate">{dest.name}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-              <button
-                type="button"
-                onClick={() => {
-                  setMovingId(null);
-                  setDestinations(null);
-                }}
-                className={clsx(
-                  menuItemClass,
-                  "w-full border-t border-gus-border text-gus-muted hover:text-gus-text",
-                )}
-              >
-                ← Volver
-              </button>
-            </div>
-          ) : menuFolder ? (
-            <div className="py-1">
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => startRename(menu.id)}
-                className={clsx(
-                  menuItemClass,
-                  "text-gus-muted hover:bg-gus-panel hover:text-gus-text",
-                )}
-              >
-                {t("common.rename")}
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => void startMove(menuFolder.path)}
-                className={clsx(
-                  menuItemClass,
-                  "text-gus-muted hover:bg-gus-panel hover:text-gus-text",
-                )}
-              >
-                {t("explorer.move")}
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => setConfirmId(menu.id)}
-                className={clsx(
-                  menuItemClass,
-                  "border-t border-gus-border text-rose-300 hover:bg-rose-400/10",
-                )}
-              >
-                {t("explorer.deleteEllipsis")}
-              </button>
-            </div>
-          ) : menuFile ? (
-            <div className="py-1">
-              {!isImageName(menuFile.name) && !isPdfName(menuFile.name) && (
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    const target = menuFile;
-                    setMenu(null);
-                    onExportPdf?.(target);
-                  }}
-                  className={clsx(
-                    menuItemClass,
-                    "text-gus-muted hover:bg-gus-panel hover:text-gus-text",
-                  )}
-                >
-                  {t("explorer.export")}
-                </button>
-              )}
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => startRename(menu.id)}
-                className={clsx(
-                  menuItemClass,
-                  "text-gus-muted hover:bg-gus-panel hover:text-gus-text",
-                )}
-              >
-                Renombrar
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => void startMove(menuFile.id)}
-                className={clsx(
-                  menuItemClass,
-                  "text-gus-muted hover:bg-gus-panel hover:text-gus-text",
-                )}
-              >
-                Mover a…
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => setConfirmId(menu.id)}
-                className={clsx(
-                  menuItemClass,
-                  "border-t border-gus-border text-rose-300 hover:bg-rose-400/10",
-                )}
-              >
-                Eliminar…
-              </button>
-            </div>
-          ) : menu.kind === "panel" ? (
-            <div className="py-1">
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setMenu(null);
-                  void handleNewNote();
-                }}
-                className={clsx(
-                  menuItemClass,
-                  "text-gus-muted hover:bg-gus-panel hover:text-gus-text",
-                )}
-              >
-                {t("explorer.newNote")}
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setMenu(null);
-                  void handleNewFolder();
-                }}
-                className={clsx(
-                  menuItemClass,
-                  "text-gus-muted hover:bg-gus-panel hover:text-gus-text",
-                )}
-              >
-                {t("explorer.newFolder")}
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setMenu(null);
-                  void handleImportFiles();
-                }}
-                className={clsx(
-                  menuItemClass,
-                  "text-gus-muted hover:bg-gus-panel hover:text-gus-text",
-                )}
-              >
-                {t("explorer.addFromPc")}
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setMenu(null);
-                  reload();
-                }}
-                className={clsx(
-                  menuItemClass,
-                  "border-t border-gus-border text-gus-muted hover:bg-gus-panel hover:text-gus-text",
-                )}
-              >
-                {t("explorer.refresh")}
-              </button>
-            </div>
-          ) : null}
-        </div>
+        <ExplorerContextMenu
+          menu={menu}
+          folder={menuFolder}
+          file={menuFile}
+          confirmId={confirmId}
+          movingId={movingId}
+          destinations={destinations}
+          busy={busy}
+          confirmTrashRef={confirmTrashRef}
+          confirmCancelRef={confirmCancelRef}
+          onAskDelete={setConfirmId}
+          onCancelDelete={() => setConfirmId(null)}
+          onConfirmDelete={() => {
+            if (menuFolder) void deleteFolder(menuFolder);
+            else if (menuFile) void deleteFile(menuFile);
+          }}
+          onStartRename={startRename}
+          onStartMove={(path) => void startMove(path)}
+          onMoveTo={(dest) => {
+            if (menuFolder) void moveFolder(menuFolder, dest);
+            else if (menuFile) void moveFile(menuFile, dest);
+          }}
+          onBackFromMove={() => {
+            setMovingId(null);
+            setDestinations(null);
+          }}
+          onExport={(file) => {
+            setMenu(null);
+            onExportPdf?.(file);
+          }}
+          onNewNote={() => {
+            setMenu(null);
+            void handleNewNote();
+          }}
+          onNewFolder={() => {
+            setMenu(null);
+            void handleNewFolder();
+          }}
+          onImport={() => {
+            setMenu(null);
+            void handleImportFiles();
+          }}
+          onRefresh={() => {
+            setMenu(null);
+            reload();
+          }}
+        />
       )}
     </aside>
   );
