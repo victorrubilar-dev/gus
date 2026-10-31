@@ -1,27 +1,33 @@
-import { Fragment, useEffect, useLayoutEffect, useEffectEvent, useRef, useState, type KeyboardEvent } from "react";
+import { Fragment, useRef, useState, type KeyboardEvent } from "react";
 import { AnimatePresence, m } from "framer-motion";
 import { Calendar, Flag, GitBranch, ListTodo, Lock, Plus, RefreshCw, SquareKanban, StickyNote, Trash2, X } from "lucide-react";
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import clsx from "clsx";
 import { normalizeTags, parseTagInput } from "../lib/markdownTasks";
-import { createTaskId, loadTaskStore, type Task } from "../lib/taskStore";
+import type { Task } from "../lib/taskStore";
+import {
+  addSubtask as addSubtaskTo,
+  cyclePriority as cyclePriorityOf,
+  matchesTag as tagMatches,
+  moveToColumn,
+  removeTask,
+  setTags,
+  tagCounts,
+  toggleDone,
+} from "../lib/taskActions";
+import { useTaskStore } from "./useTaskStore";
 import {
   PRIORITY_CLASS,
   priorityLabel,
-  isTaskPriority,
-  nextPriority,
 } from "../lib/taskPriority";
 import { DUE_CLASS, dueKind, shortDate } from "../lib/taskDue";
 import { useT } from "../lib/i18n";
 import type { MessageKey, TranslateParams } from "../lib/i18n/core";
-import { NEW_TASK_EVENT, type NewTask } from "../lib/newTask";
 import EmptyState from "./EmptyState";
 import SegmentedControl from "./SegmentedControl";
 import ViewHeader from "./ViewHeader";
 import CheckboxVisual from "./CheckboxVisual";
 import TaskRelations from "./TaskRelations";
-import { flattenTree, pendingBlockers, removeWithRelations, setParent, subtaskProgress, toggleBlocker } from "../lib/taskTree";
+import { flattenTree, pendingBlockers, setParent, subtaskProgress, toggleBlocker } from "../lib/taskTree";
 import NoteTasksView from "./NoteTasksView";
 import type { NoteTask } from "../lib/noteTasks";
 import KanbanBoard, { type KanbanColumnId } from "./KanbanBoard";
@@ -84,132 +90,19 @@ export default function TaskList({
   onOpenNote,
 }: TaskListProps) {
   const t = useT();
-  const fileMode = vaultPath != null && vaultPath !== "";
-
-  const [items, setItems] = useState<Task[]>(() =>
-    fileMode ? [] : tasks.map((task) => ({ ...task })),
-  );
-  const [status, setStatus] = useState<"loading" | "ready" | "error">(() =>
-    fileMode ? "loading" : "ready",
-  );
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [syncError, setSyncError] = useState<string | null>(null);
-
+  const { fileMode, items, status, loadError, syncError, commitTasks, reload } = useTaskStore({
+    vaultPath,
+    tasks,
+    onTasksChange,
+  });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTags, setEditTags] = useState<string[]>([]);
   const [editInput, setEditInput] = useState("");
   const editCancelledRef = useRef(false);
 
-  const [reloadKey, setReloadKey] = useState(0);
-
   const [relationsId, setRelationsId] = useState<string | null>(null);
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [view, setView] = useState<"list" | "board" | "notes">("board");
-
-  const writeQueueRef = useRef<Promise<unknown>>(Promise.resolve());
-  // Último callback del padre. Al llamarse también desde handlers (no solo
-  // desde efectos) hace falta el espejo de ref, sincronizado tras el commit.
-  const onTasksChangeRef = useRef(onTasksChange);
-  useLayoutEffect(() => {
-    onTasksChangeRef.current = onTasksChange;
-  });
-
-  useEffect(() => {
-    if (!fileMode || !vaultPath) return;
-
-    let cancelled = false;
-    setStatus("loading");
-
-    loadTaskStore(vaultPath)
-      .then((next) => {
-        if (cancelled) return;
-        setItems(next);
-        setLoadError(null);
-        setStatus("ready");
-        onTasksChangeRef.current?.(next);
-      })
-      .catch((error: unknown) => {
-        if (cancelled) return;
-        setItems([]);
-        setLoadError(String(error));
-        setStatus("error");
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [fileMode, vaultPath, reloadKey]);
-
-  function notify(next: Task[]) {
-    onTasksChangeRef.current?.(next);
-  }
-
-  function updateLocal(next: Task[]) {
-    setItems(next);
-    notify(next);
-  }
-
-  function commitTasks(next: Task[]) {
-    setItems(next);
-    setSyncError(null);
-    notify(next);
-
-    if (fileMode && vaultPath) {
-      const path = vaultPath;
-      writeQueueRef.current = writeQueueRef.current
-        .then(() => invoke("save_tasks", { vaultPath: path, tasks: next }))
-        .catch((error: unknown) => setSyncError(String(error)));
-    }
-  }
-
-  function addTaskFromWindow(task: NewTask) {
-    const cleanTitle = task.title.trim();
-    if (!cleanTitle) return;
-    if (fileMode && status !== "ready") return;
-
-    const tags = normalizeTags(task.tags);
-    const description = task.description?.trim() || undefined;
-    const due = task.due ?? undefined;
-    const priority = isTaskPriority(task.priority) ? task.priority : undefined;
-
-    const nextTask: Task = {
-      id: createTaskId(),
-      title: cleanTitle,
-      tags,
-      completes: false,
-      ...(description ? { description } : {}),
-      ...(due ? { due } : {}),
-      ...(priority ? { priority } : {}),
-    };
-
-    if (fileMode) {
-      commitTasks([nextTask, ...items]);
-    } else {
-      updateLocal([nextTask, ...items]);
-    }
-  }
-
-  const onNewTaskEvent = useEffectEvent(addTaskFromWindow);
-
-  useEffect(() => {
-    let disposed = false;
-    let unlisten: (() => void) | undefined;
-
-    listen<NewTask>(NEW_TASK_EVENT, (event) => {
-      onNewTaskEvent(event.payload);
-    })
-      .then((fn) => {
-        if (disposed) fn();
-        else unlisten = fn;
-      })
-      .catch(() => {
-      });
-
-    return () => {
-      disposed = true;
-      unlisten?.();
-    };
-  }, []);
 
   function startEditTags(task: Task) {
     if (editingId === task.id) return;
@@ -231,7 +124,7 @@ export default function TaskList({
     const tags = normalizeTags([...editTags, ...parseTagInput(editInput)]);
     if (tags.join("\u0000") === normalizeTags(row.tags).join("\u0000")) return;
 
-    commitTasks(items.map((task) => (task.id === id ? { ...task, tags } : task)));
+    commitTasks(setTags(items, id, tags));
   }
 
   function handleEditKeyDown(event: KeyboardEvent<HTMLInputElement>) {
@@ -268,49 +161,15 @@ export default function TaskList({
   }
 
   function toggle(id: string) {
-    const row = items.find((task) => task.id === id);
-    if (!row) return;
-
-    const completes = !row.completes;
-
-    commitTasks(
-      items.map((task) => {
-        if (task.id !== id) return task;
-        const next = { ...task, completes };
-        if (completes) delete next.doing;
-        return next;
-      }),
-    );
+    commitTasks(toggleDone(items, id));
   }
 
   function cyclePriority(id: string) {
-    const row = items.find((task) => task.id === id);
-    if (!row) return;
-
-    const priority = nextPriority(row.priority);
-    commitTasks(
-      items.map((task) => {
-        if (task.id !== id) return task;
-        const next = { ...task };
-        delete next.priority;
-        return priority ? { ...next, priority } : next;
-      }),
-    );
+    commitTasks(cyclePriorityOf(items, id));
   }
 
   function moveTask(id: string, column: KanbanColumnId) {
-    commitTasks(
-      items.map((task) => {
-        if (task.id !== id) return task;
-        const next: Task = {
-          ...task,
-          completes: column === "done",
-          doing: column === "doing",
-        };
-        if (!next.doing) delete next.doing; // «en progreso» solo si lo está
-        return next;
-      }),
-    );
+    commitTasks(moveToColumn(items, id, column));
   }
 
   function toggleTagFilter(tag: string) {
@@ -320,23 +179,16 @@ export default function TaskList({
   }
 
   function matchesTag(tags: string[]): boolean {
-    if (!tagFilter) return true;
-    const wanted = tagFilter.toLowerCase();
-    return tags.some((tag) => tag.toLowerCase() === wanted);
+    return tagMatches(tags, tagFilter);
   }
 
   function remove(id: string) {
-    const row = items.find((task) => task.id === id);
-    if (!row) return;
-
-    commitTasks(removeWithRelations(items, id));
+    commitTasks(removeTask(items, id));
     if (relationsId === id) setRelationsId(null);
   }
 
   function addSubtask(parentId: string, title: string) {
-    const child: Task = { id: createTaskId(), title, tags: [], completes: false, parentId };
-    // Al final: las subtareas conservan el orden en que se crean bajo su padre.
-    commitTasks([...items, child]);
+    commitTasks(addSubtaskTo(items, parentId, title));
   }
 
   const visible = flattenTree(
@@ -349,18 +201,7 @@ export default function TaskList({
   const boardItems = items.filter((task) => matchesTag(task.tags));
 
 
-  const tagCounts = new Map<string, { label: string; count: number }>();
-  for (const task of items) {
-    for (const tag of task.tags) {
-      const key = tag.toLowerCase();
-      const slot = tagCounts.get(key);
-      if (slot) slot.count += 1;
-      else tagCounts.set(key, { label: tag, count: 1 });
-    }
-  }
-  const tagEntries = [...tagCounts.values()].sort((a, b) =>
-    a.label.localeCompare(b.label),
-  );
+  const tagEntries = tagCounts(items);
 
   const chipClass = "rounded-full border px-2 py-0.5 text-meta capitalize";
 
@@ -743,7 +584,7 @@ export default function TaskList({
               </span>
               <button
                 type="button"
-                onClick={() => setReloadKey((key) => key + 1)}
+                onClick={reload}
                 className="flex items-center gap-1.5 rounded-md border border-gus-border bg-gus-card px-2 py-1 text-gus-muted transition-colors hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
               >
                 <RefreshCw className="h-3 w-3" aria-hidden="true" />
