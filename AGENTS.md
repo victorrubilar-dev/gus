@@ -78,16 +78,37 @@
 gus/
 ├── src/                          # Frontend (React + TypeScript)
 │   ├── main.tsx                  # Punto de entrada: aplica tema, monta <App/>
-│   ├── App.tsx                   # Componente raíz: gestión de vaults, tabs, routing, drag-drop
+│   ├── App.tsx                   # Raíz (~820 líneas): compone hooks y vistas; el estado vive en los `use*` de components/
 │   ├── App.css                   # Estilos globales, tema Tailwind, resaltado, exportación PDF
-│   ├── components/               # ~50 archivos: componentes React y hooks del editor
-│   │   ├── MarkdownEditor.tsx    # Editor central (textarea + overlay renderizado)
+│   ├── components/               # ~85 archivos: componentes React y hooks
+│   │   ├── MarkdownEditor.tsx    # Editor central (textarea + overlay renderizado, ~3.000 líneas)
+│   │   ├── EditorHeader.tsx      # Cabecera del editor: título, vista previa, menú «⋯», etiquetas y estado de guardado
+│   │   ├── useBlockDrift.ts      # Alto que ganan tablas e imágenes sobre el overlay y su compensación (scroll, clic, cursor)
 │   │   ├── markdownPreview.tsx   # Vista previa del editor: render de Markdown, wiki-enlaces, KaTeX, Mermaid e imágenes
 │   │   ├── markdownEditorTypes.ts # Tipos internos del editor (menús, arrastres, estado de guardado)
 │   │   ├── useEditorHistory.ts   # Refs y instantánea del historial de deshacer del editor
 │   │   ├── useTableKeyboard.ts   # Teclado de tablas del editor: Tab, flechas, salir del bloque y selección con Mayús
 │   │   ├── useTableResize.ts     # Barras y redimensionado de columnas de tabla con el puntero
-│   │   ├── FileExplorer.tsx      # Árbol de archivos del vault (crear/renombrar/mover/eliminar)
+│   │   ├── FileExplorer.tsx      # Árbol de archivos del vault (~1.000 líneas): estado y operaciones; la interfaz está en los Explorer*
+│   │   ├── ExplorerHeader.tsx    # Cabecera del explorador y avisos de importación/error
+│   │   ├── ExplorerTrail.tsx     # Barra de ruta: historial, tramos plegables por ancho y desplegable «…»
+│   │   ├── ExplorerRows.tsx      # Filas de carpeta y archivo, y el campo de renombrado
+│   │   ├── ExplorerContextMenu.tsx # Menú contextual: acciones, confirmación de papelera y destino de mover
+│   │   ├── useExplorerDrag.ts    # Arrastre interno de filas sobre carpetas (y `DRAG_ENTRY_MIME`)
+│   │   ├── useConfirmKeys.ts     # Teclado del confirm de papelera
+│   │   ├── Sidebar.tsx           # Barra lateral (pestañas, papelera, ajustes) y `useSidebarWidth`
+│   │   ├── usePanelWidth.ts      # Ancho de un panel redimensionable con ratón o teclado, persistido
+│   │   ├── useVaults.ts          # Vaults y configuración: carga, abrir, crear, añadir, renombrar, portada y quitar
+│   │   ├── useOpenEntries.ts     # Nota abierta con pestañas, imagen o PDF: abrir, cerrar, guardar, borrar
+│   │   ├── useSearchIndexSync.ts # Mantiene al día el índice de búsqueda al guardar
+│   │   ├── useExternalChanges.ts # Vigilancia del vault y aviso de cambio externo
+│   │   ├── useFileDrop.ts        # Arrastre de archivos del sistema (evento nativo de Tauri)
+│   │   ├── useGlobalShortcuts.ts # Atajos globales de la ventana y menú nativo (macOS)
+│   │   ├── useAppUpdates.ts      # Comprobación, descarga firmada e instalación de versiones
+│   │   ├── useLinkGraph.ts       # Grafo de enlaces del vault y contador de entrantes
+│   │   ├── useStartupNotifications.ts # Avisos del sistema al abrir un vault
+│   │   ├── useAppearance.ts      # Diccionario personal, zoom de la interfaz y tema
+│   │   ├── ImagePane.tsx, PdfPane.tsx, ExternalNoticeBar.tsx, AppOverlays.tsx # Piezas de la vista de notas y avisos flotantes
 │   │   ├── CommandPalette.tsx    # Búsqueda/ apertura rápida de notas (cmdk)
 │   │   ├── DashboardView.tsx     # Pestaña de inicio
 │   │   ├── TaskList.tsx          # Vista de lista de tareas (lista en árbol con subtareas, tablero y vista «Notas»)
@@ -261,7 +282,7 @@ pnpm build
 pnpm tauri build
 
 # Tests
-pnpm test              # Todos los tests Vitest (195 tests)
+pnpm test              # Todos los tests Vitest (300 tests en 31 ficheros)
 pnpm test:watch        # Modo watch
 
 # Type checking
@@ -409,7 +430,7 @@ La siguiente función nueva vuelve a empezar en `develop`.
 ### Patrones de Testing
 - **Vitest** con archivos `.test.ts` co-located
 - **Testing de funciones puras** — los tests se enfocan en módulos de utilidades (settings, shortcuts, tables, i18n, etc.)
-- **Sin tests de componentes** — los 15 archivos de test son para utilidades lib
+- **Sin tests de componentes** — los ficheros de test son para utilidades lib; la interfaz se cubre con los benches de Playwright
 
 ### Estilo de Código
 - **TypeScript estricto** (`strict: true`, `noUnusedLocals`, `noUnusedParameters`, `noFallthroughCasesInSwitch`)

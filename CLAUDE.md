@@ -16,18 +16,19 @@ App de escritorio **local-first** para notas Markdown y tareas personales. Tauri
 pnpm install
 pnpm tauri dev            # Vite en :1420 + ventana Tauri
 pnpm build                # tsc + vite build
-pnpm test                 # Vitest: 285 tests en 28 ficheros
+pnpm test                 # Vitest: 300 tests en 31 ficheros
 npx tsc --noEmit
-cd src-tauri && cargo test   # Rust: 78 tests
+cd src-tauri && cargo test   # Rust: 79 tests
 ```
 
-Benchmarks (Playwright, en `bench/`; casi todos necesitan `npx vite --port 5199` en marcha): `pnpm bench`, `bench:menu`, `bench:images`, `bench:explorer`, `bench:app`, `bench:botones`, `bench:medida`, `bench:pestanas`, `bench:foco`, `bench:corrector`, `bench:portapapeles`, `bench:tablas`, `bench:cursor` y `bench:regresion` (capturas contra `bench/linea-base/`, de esta máquina; `--actualizar` tras un cambio visual aceptado). `pnpm traza` aparte.
+Benchmarks (Playwright, en `bench/`; casi todos necesitan `npx vite --port 5199` en marcha): `pnpm bench`, `bench:menu`, `bench:images`, `bench:explorer`, `bench:app`, `bench:botones`, `bench:medida`, `bench:pestanas`, `bench:foco`, `bench:corrector`, `bench:portapapeles`, `bench:tablas`, `bench:cursor`, `bench:operaciones` (explorador: crear, renombrar, mover, arrastrar, borrar, ruta), `bench:vaults`, `bench:soltar` (drop nativo de Tauri simulado) y `bench:regresion` (capturas contra `bench/linea-base/`, de esta máquina; `--actualizar` tras un cambio visual aceptado). `pnpm traza` aparte.
 
 ## Arquitectura
 
 - **Backend** `src-tauri/src/`: `lib.rs` (~780 líneas: utilidades, `run()` y los comandos de actualización) más un módulo por área (`archivos`, `listados`, `papelera`, `busqueda`, `tareas`, `biblioteca`, `habitos`, `pizarras`, `vigilancia`…). Es una capa fina de sistema de archivos: CRUD del vault, importación, papelera, miniaturas, lectura de PDF, índice de búsqueda, almacenes JSON y un watcher de cambios externos. La lógica de negocio vive en TypeScript.
 - **Frontend** `src/`:
-  - `App.tsx`: raíz (vaults, pestañas, drag & drop).
+  - `App.tsx`: raíz (~820 líneas). Solo compone: el estado vive en hooks de `components/` (`useVaults`, `useOpenEntries`, `useFileDrop`, `useAppUpdates`, `useGlobalShortcuts`…) y la barra lateral en `Sidebar`.
+  - `components/FileExplorer.tsx` (~1.000 líneas): estado y operaciones; la interfaz vive en `Explorer*` (cabecera, ruta, filas, menú) y la ruta/historial en `lib/explorerTrail.ts` (puro, con tests).
   - `components/MarkdownEditor.tsx`: editor propio (un `<textarea>` transparente sobre un overlay renderizado). No usa CodeMirror ni Monaco.
     Partido en `EditorPreview`, `NoteTagBar` y los hooks `useEditorImages`, `useEditorSpell`, `useEditorClipboard`, `useEditorHistory`, `useTableKeyboard` y `useTableResize`. Lo que queda (ratón, teclado, acciones de tabla) comparte refs y estado: no cortar sin `bench`, `bench:tablas` y `bench:cursor` en verde.
   - `lib/`: utilidades puras, con test `.test.ts` junto al fichero.
