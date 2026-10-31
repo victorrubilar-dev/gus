@@ -252,10 +252,14 @@ const en: Record<keyof typeof es, string> = {
   "settings.cat.general": "General",
   "settings.cat.appearance": "Appearance",
   "settings.cat.notes": "Notes",
-  "settings.cat.tasks": "Tasks",
-  "settings.cat.calendar": "Calendar",
-  "settings.cat.language": "Language",
+  "settings.cat.tasks": "Tasks & alerts",
   "settings.cat.shortcuts": "Shortcuts",
+  "settings.about.releases": "Release notes",
+  "settings.about.issues": "Report a problem",
+  "settings.about.repo": "Source on GitHub",
+  "settings.about.desc": "Notes, tasks and habits on your computer: no account, no cloud and no telemetry. The only thing Gus does online is check GitHub for a newer version.",
+  "settings.about": "Gus {version}",
+  "settings.cat.about": "About",
 
   "settings.openLastVault": "Reopen the last vault",
   "settings.openLastVault.desc": "On startup, Gus goes back to the vault you were using.",
@@ -1135,7 +1139,7 @@ const en: Record<keyof typeof es, string> = {
   "tour.more.title": "And much more",
   "tour.more.body": "The Graph draws how your notes link together, the Library sorts your PDFs onto shelves and Boards are free canvases to draw and think.",
   "tour.done.body":
-    "That is the basics. If you ever get lost, hit “Take the Gus tour again” in Settings → General.",
+    "That is the basics. If you ever get lost, hit “Take the Gus tour again” in Settings → About.",
 
   /* ---------------- updates ---------------- */
   "update.available": "Gus {version} is out (you have {current}).",

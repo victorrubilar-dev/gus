@@ -34,6 +34,7 @@
     "bench:resumen": "node bench/prueba-resumen.mjs",
     "bench:inicio": "node bench/prueba-inicio.mjs",
     "bench:pizarras": "node bench/prueba-pizarras.mjs",
+    "bench:ajustes": "node bench/prueba-ajustes.mjs",
     "bench:medida": "node bench/prueba-medida.mjs",
     "bench:pestanas": "node bench/prueba-pestanas.mjs",
     "bench:capturas": "node bench/capturas.mjs",

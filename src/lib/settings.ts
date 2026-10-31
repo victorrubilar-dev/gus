@@ -173,14 +173,7 @@ export function accentHex(accent: AccentChoice, theme: ThemeKey): string {
   return ACCENTS[accent]?.hex ?? ACCENTS.terracota.hex;
 }
 
-export type SettingsCategoryId =
-  | "general"
-  | "appearance"
-  | "notes"
-  | "tasks"
-  | "calendar"
-  | "language"
-  | "shortcuts";
+export type SettingsCategoryId = "general" | "appearance" | "notes" | "tasks" | "shortcuts" | "about";
 
 export interface SettingsCategory {
   id: SettingsCategoryId;
@@ -193,7 +186,7 @@ export const SETTINGS_CATEGORIES: SettingsCategory[] = [
   {
     id: "general",
     labelKey: "settings.cat.general",
-    keywords: "inicio arranque vault abrir general start launch open",
+    keywords: "inicio arranque vault abrir idioma lengua traduccion español ingles general start launch open language translation spanish english",
   },
   {
     id: "appearance",
@@ -205,27 +198,24 @@ export const SETTINGS_CATEGORIES: SettingsCategory[] = [
     id: "notes",
     labelKey: "settings.cat.notes",
     keywords:
-      "editor texto letra tamaño autoguardado guardar corrector ortografia idioma notes editor text autosave spell",
+      "editor texto letra tamaño autoguardado guardar corrector ortografia diario nota diaria plantilla notes editor text autosave spell daily journal template",
   },
   {
     id: "tasks",
     labelKey: "settings.cat.tasks",
-    keywords: "lista completadas pendientes tasks list completed pending",
-  },
-  {
-    id: "calendar",
-    labelKey: "settings.cat.calendar",
-    keywords: "fecha vencimiento mes calendar date due month",
-  },
-  {
-    id: "language",
-    labelKey: "settings.cat.language",
-    keywords: "idioma lengua traduccion español ingles language translation spanish english",
+    keywords:
+      "lista completadas pendientes calendario fecha vencimiento avisos notificaciones recordatorios tasks list completed pending calendar due date notifications reminders alerts",
   },
   {
     id: "shortcuts",
     labelKey: "settings.cat.shortcuts",
     keywords: "atajos teclado combinaciones teclas shortcuts keyboard hotkeys keys",
+  },
+  {
+    id: "about",
+    labelKey: "settings.cat.about",
+    keywords:
+      "acerca version actualizar actualizaciones recorrido tour ayuda privacidad licencia github about version update help privacy license",
   },
 ];
 
@@ -270,9 +260,19 @@ export type SettingDefinition = DefinitionBase &
       }
     /** Botón con efecto propio (no guarda nada en los ajustes del vault). */
     | { kind: "action"; key: "tour" | "updateCheck" }
+    /** Versión, privacidad y enlaces: solo se muestra, no guarda nada. */
+    | { kind: "about"; key: "about" }
   );
 
 export const SETTINGS_DEFINITIONS: SettingDefinition[] = [
+  {
+    kind: "language",
+    category: "general",
+    key: "language",
+    labelKey: "settings.language",
+    descriptionKey: "settings.language.desc",
+    keywords: "idioma lengua traduccion español ingles language translation spanish english",
+  },
   {
     kind: "toggle",
     category: "general",
@@ -280,32 +280,6 @@ export const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     labelKey: "settings.openLastVault",
     descriptionKey: "settings.openLastVault.desc",
     keywords: "autoabrir continuar sesion arranque reopen continue session",
-  },
-  {
-    kind: "action",
-    category: "general",
-    key: "tour",
-    labelKey: "settings.tour",
-    descriptionKey: "settings.tour.desc",
-    keywords:
-      "tour recorrido guia ayuda introduccion presentacion novedades tour guide help walkthrough start",
-  },
-  {
-    kind: "action",
-    category: "general",
-    key: "updateCheck",
-    labelKey: "settings.update",
-    descriptionKey: "settings.update.desc",
-    keywords:
-      "actualizar actualizacion version github release novedades update upgrade release version news",
-  },
-  {
-    kind: "language",
-    category: "language",
-    key: "language",
-    labelKey: "settings.language",
-    descriptionKey: "settings.language.desc",
-    keywords: "idioma lengua traduccion español ingles language translation spanish english",
   },
   {
     kind: "theme",
@@ -317,20 +291,20 @@ export const SETTINGS_DEFINITIONS: SettingDefinition[] = [
       "tema estilo apariencia oscuro claro oled dracula nord solarized modo paleta colores theme style dark light palette",
   },
   {
-    kind: "toggle",
-    category: "appearance",
-    key: "animations",
-    labelKey: "settings.animations",
-    descriptionKey: "settings.animations.desc",
-    keywords: "movimiento transiciones efectos reducir motion transitions effects reduce",
-  },
-  {
     kind: "accent",
     category: "appearance",
     key: "accent",
     labelKey: "settings.accent",
     descriptionKey: "settings.accent.desc",
     keywords: "color tema paleta terracota menta marfil cielo acento colour accent",
+  },
+  {
+    kind: "toggle",
+    category: "appearance",
+    key: "animations",
+    labelKey: "settings.animations",
+    descriptionKey: "settings.animations.desc",
+    keywords: "movimiento transiciones efectos reducir motion transitions effects reduce",
   },
   {
     kind: "zoom",
@@ -350,6 +324,14 @@ export const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     keywords: "letra texto fuente tamaño px editor markdown font text size",
   },
   {
+    kind: "toggle",
+    category: "notes",
+    key: "autoSave",
+    labelKey: "settings.autoSave",
+    descriptionKey: "settings.autoSave.desc",
+    keywords: "guardar automatico debounce escribir autosave automatic writing",
+  },
+  {
     kind: "spell",
     category: "notes",
     key: "spellLangs",
@@ -358,14 +340,6 @@ export const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     options: SPELL_LANGUAGES,
     keywords:
       "corrector ortografia faltas mal escritas idioma resaltar subrayar spellcheck spell dictionary",
-  },
-  {
-    kind: "toggle",
-    category: "notes",
-    key: "autoSave",
-    labelKey: "settings.autoSave",
-    descriptionKey: "settings.autoSave.desc",
-    keywords: "guardar automatico debounce escribir autosave automatic writing",
   },
   {
     kind: "text",
@@ -400,7 +374,7 @@ export const SETTINGS_DEFINITIONS: SettingDefinition[] = [
   },
   {
     kind: "toggle",
-    category: "calendar",
+    category: "tasks",
     key: "calendarShowCompleted",
     labelKey: "settings.calendarShowCompleted",
     descriptionKey: "settings.calendarShowCompleted.desc",
@@ -432,5 +406,31 @@ export const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     labelKey: "settings.shortcuts",
     descriptionKey: "settings.shortcuts.desc",
     keywords: "atajos teclado combinaciones teclas shortcut keyboard hotkey",
+  },
+  {
+    kind: "about",
+    category: "about",
+    key: "about",
+    labelKey: "settings.about",
+    descriptionKey: "settings.about.desc",
+    keywords: "acerca version privacidad licencia codigo github about version privacy license source",
+  },
+  {
+    kind: "action",
+    category: "about",
+    key: "updateCheck",
+    labelKey: "settings.update",
+    descriptionKey: "settings.update.desc",
+    keywords:
+      "actualizar actualizacion version github release novedades update upgrade release version news",
+  },
+  {
+    kind: "action",
+    category: "about",
+    key: "tour",
+    labelKey: "settings.tour",
+    descriptionKey: "settings.tour.desc",
+    keywords:
+      "tour recorrido guia ayuda introduccion presentacion novedades tour guide help walkthrough start",
   },
 ];

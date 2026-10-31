@@ -250,10 +250,14 @@ export default {
   "settings.cat.general": "General",
   "settings.cat.appearance": "Apariencia",
   "settings.cat.notes": "Notas",
-  "settings.cat.tasks": "Tareas",
-  "settings.cat.calendar": "Calendario",
-  "settings.cat.language": "Idioma",
+  "settings.cat.tasks": "Tareas y avisos",
   "settings.cat.shortcuts": "Atajos",
+  "settings.about.releases": "Notas de las versiones",
+  "settings.about.issues": "Informar de un problema",
+  "settings.about.repo": "Código en GitHub",
+  "settings.about.desc": "Notas, tareas y hábitos en tu equipo: sin cuenta, sin nube y sin telemetría. Lo único que hace Gus en internet es comprobar si hay una versión nueva en GitHub.",
+  "settings.about": "Gus {version}",
+  "settings.cat.about": "Acerca de",
 
   "settings.openLastVault": "Reabrir el último vault",
   "settings.openLastVault.desc": "Al arrancar Gus vuelve al vault que usabas la última vez.",
@@ -1132,7 +1136,7 @@ export default {
   "tour.more.title": "Y mucho más",
   "tour.more.body": "El Grafo dibuja cómo se enlazan tus notas, la Biblioteca ordena tus PDF en estanterías y las Pizarras son lienzos libres para dibujar y pensar.",
   "tour.done.body":
-    "Esto es todo lo básico. Si te pierdes, pulsa «Volver a recorrer Gus» en Configuración → General.",
+    "Esto es todo lo básico. Si te pierdes, pulsa «Volver a recorrer Gus» en Configuración → Acerca de.",
 
   /* ---------------- actualizaciones ---------------- */
   "update.available": "Gus {version} ya está disponible (tienes {current}).",

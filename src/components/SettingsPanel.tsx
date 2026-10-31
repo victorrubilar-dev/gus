@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  CalendarDays,
   Check,
   Compass,
+  Info,
   Keyboard,
-  Languages,
   ListTodo,
   Minus,
   Palette,
@@ -33,7 +32,7 @@ import {
 } from "../lib/settings";
 import { THEME_LIST } from "../lib/themes";
 import { LANGUAGE_LIST, useT } from "../lib/i18n";
-import { APP_VERSION } from "../lib/version";
+import { APP_VERSION, GITHUB_REPO, RELEASES_URL } from "../lib/version";
 import { openExternal } from "../lib/externalLink";
 import type { UpdateUiState } from "../lib/updateCheck";
 import type { SpellLang } from "../lib/spellCheck";
@@ -56,9 +55,8 @@ const CATEGORY_ICONS: Record<SettingsCategoryId, LucideIcon> = {
   appearance: Palette,
   notes: StickyNote,
   tasks: ListTodo,
-  calendar: CalendarDays,
-  language: Languages,
   shortcuts: Keyboard,
+  about: Info,
 };
 
 const INPUT_CLASS =
@@ -662,6 +660,28 @@ export default function SettingsPanel({
       );
     }
 
+    if (definition.kind === "about") {
+      const links = [
+        { label: t("settings.about.repo"), url: `https://github.com/${GITHUB_REPO}` },
+        { label: t("settings.about.issues"), url: `https://github.com/${GITHUB_REPO}/issues` },
+        { label: t("settings.about.releases"), url: RELEASES_URL },
+      ];
+      return (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {links.map((link) => (
+            <button
+              key={link.url}
+              type="button"
+              onClick={() => void openExternal(link.url)}
+              className={clsx(INPUT_CLASS, "inline-flex items-center gap-1.5 text-body text-gus-muted hover:text-gus-text")}
+            >
+              {link.label}
+            </button>
+          ))}
+        </div>
+      );
+    }
+
     if (definition.kind === "action") {
       if (definition.key === "tour") {
         return (
@@ -952,7 +972,9 @@ export default function SettingsPanel({
                       >
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-medium text-gus-text">
-                            {t(definition.labelKey)}
+                            {definition.kind === "about"
+                              ? t(definition.labelKey, { version: APP_VERSION })
+                              : t(definition.labelKey)}
                           </p>
                           <p className="mt-0.5 text-body text-gus-muted">
                             {t(definition.descriptionKey)}

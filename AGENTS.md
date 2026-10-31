@@ -136,7 +136,7 @@ gus/
 │   │   ├── BoardCard.tsx         # Tarjeta de pizarra: miniatura, selección, franja de color, pin y menú «⋯» (abrir, renombrar, duplicar, fijar, color, exportar, copiar imagen, papelera)
 │   │   ├── BoardImagePicker.tsx  # Selector de imágenes del vault para la pizarra
 │   │   ├── CalendarView.tsx      # Calendario con fechas de vencimiento
-│   │   ├── SettingsPanel.tsx     # UI de configuración (7 categorías)
+│   │   ├── SettingsPanel.tsx     # UI de configuración (6 categorías: General, Apariencia, Notas, Tareas y avisos, Atajos y Acerca de)
 │   │   ├── VaultPicker.tsx       # Selección/creación de vault
 │   │   ├── WelcomePanel.tsx      # Pantalla de bienvenida
 │   │   ├── NewTaskDialog.tsx     # Diálogo de creación de tareas

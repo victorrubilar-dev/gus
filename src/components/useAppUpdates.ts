@@ -113,7 +113,7 @@ export function useAppUpdates(ready: boolean) {
     }
   }
 
-  /** Comprobación manual, desde Ajustes → General. */
+  /** Comprobación manual, desde Ajustes → Acerca de. */
   async function checkNow() {
     setUpdateState({ status: "checking" });
     applyResult(await checkAndPrepare());
