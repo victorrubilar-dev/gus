@@ -14,6 +14,7 @@
 - **Las tareas** se guardan en un JSON oculto (`.gus-tasks.json`) dentro de cada vault.
 - **La búsqueda a texto completo** guarda su índice en `.gus-index/` dentro de cada vault (pestaña Buscar).
 - **La papelera** de cada vault vive en `.gus-trash/` dentro del propio vault.
+- **La biblioteca de PDF** guarda sus estanterías en `.gus-library.json`, los **hábitos** y su registro en `.gus-habits.json`, y cada **pizarra** en `.gus-boards/<id>.json`, todo dentro del vault. Un watcher (`vigilancia.rs`) avisa de lo que cambie fuera de la app.
 - **Idioma principal:** Español (con i18n a inglés integrado).
 
 **Repositorio:** https://github.com/victorrubilar-dev/gus  
@@ -43,6 +44,7 @@
 | clsx + tailwind-merge | Merge de clases condicional |
 | modern-screenshot | Captura para exportar PDF |
 | @tauri-apps/api | Puente IPC con Tauri |
+| @tauri-apps/plugin-updater + plugin-process | Actualización automática: comprobar, descargar con progreso, instalar y reiniciar |
 
 ### Backend (Rust)
 | Tecnología | Uso |
@@ -54,12 +56,15 @@
 | tauri-plugin-clipboard-manager | Acceso al portapapeles |
 | tauri-plugin-opener | Abrir enlaces externos y el instalador descargado |
 | tauri-plugin-notification | Avisos del sistema (vencimientos y nota del día) |
-| reqwest (native-tls) | Descarga del instalador de una release, solo a petición del usuario |
+| tauri-plugin-updater | Actualizador firmado (manifiesto `latest.json` de las releases de GitHub, verificación minisign) |
+| tauri-plugin-process | Reiniciar la app tras instalar una actualización |
+| notify-debouncer-mini | Watcher del vault: avisa de cambios hechos fuera de la app |
+| reqwest (native-tls) | Descarga manual del instalador (solo `.deb`/`.rpm`, que no pueden actualizarse solos), a petición del usuario |
 
 ### Testing
 | Tecnología | Uso |
 |---|---|
-| Vitest 5 | Tests unitarios (195 tests) |
+| Vitest 5 | Tests unitarios (ver `pnpm test`; incluye los de `scripts/`) |
 | playwright-core | Benchmarks / integración |
 
 ### Package Manager
@@ -75,7 +80,7 @@ gus/
 │   ├── main.tsx                  # Punto de entrada: aplica tema, monta <App/>
 │   ├── App.tsx                   # Componente raíz: gestión de vaults, tabs, routing, drag-drop
 │   ├── App.css                   # Estilos globales, tema Tailwind, resaltado, exportación PDF
-│   ├── components/               # 28 componentes React
+│   ├── components/               # ~50 archivos: componentes React y hooks del editor
 │   │   ├── MarkdownEditor.tsx    # Editor central (textarea + overlay renderizado)
 │   │   ├── markdownPreview.tsx   # Vista previa del editor: render de Markdown, wiki-enlaces, KaTeX, Mermaid e imágenes
 │   │   ├── markdownEditorTypes.ts # Tipos internos del editor (menús, arrastres, estado de guardado)
@@ -85,8 +90,16 @@ gus/
 │   │   ├── FileExplorer.tsx      # Árbol de archivos del vault (crear/renombrar/mover/eliminar)
 │   │   ├── CommandPalette.tsx    # Búsqueda/ apertura rápida de notas (cmdk)
 │   │   ├── DashboardView.tsx     # Pestaña de inicio
-│   │   ├── TaskList.tsx          # Vista de lista de tareas
+│   │   ├── TaskList.tsx          # Vista de lista de tareas (lista en árbol con subtareas, tablero y vista «Notas»)
+│   │   ├── TaskRelations.tsx     # Panel de una tarea: subtareas, de quién cuelga y qué la bloquea
+│   │   ├── NoteTasksView.tsx     # Checkboxes de las notas como tareas, agrupados por nota de origen
+│   │   ├── CheckboxVisual.tsx    # Casilla visual compartida por las listas de tareas
 │   │   ├── KanbanBoard.tsx       # Tablero Kanban para tareas
+│   │   ├── LibraryView.tsx       # Biblioteca de PDF en estanterías, con portada (lazy)
+│   │   ├── HabitsView.tsx        # Hábitos: anillos de cierre diario y tracker clásico
+│   │   ├── BoardsView.tsx        # Lista de pizarras (crear, abrir, borrar a la papelera)
+│   │   ├── BoardEditor.tsx       # Lienzo de una pizarra: lápiz, goma, formas, flechas, texto, post-it e imágenes
+│   │   ├── BoardImagePicker.tsx  # Selector de imágenes del vault para la pizarra
 │   │   ├── CalendarView.tsx      # Calendario con fechas de vencimiento
 │   │   ├── SettingsPanel.tsx     # UI de configuración (7 categorías)
 │   │   ├── VaultPicker.tsx       # Selección/creación de vault
@@ -106,11 +119,11 @@ gus/
 │   │   ├── DailyNoteBar.tsx      # Barra de la nota diaria (qué día se ve)
 │   │   ├── useResolvedImage.ts   # Resuelve imágenes del vault a datos `data:`
 │   │   ├── Tour.tsx              # Tour de onboarding guiado
-│   │   ├── UpdateNotice.tsx     # Banner de nueva versión disponible
+│   │   ├── UpdateNotice.tsx      # Aviso de versión nueva: descarga automática con barra de progreso y «Reiniciar y actualizar» (o descarga manual en .deb/.rpm)
 │   │   ├── ThemeCard.tsx         # Tarjeta de vista previa de tema
 │   │   ├── DatePicker.tsx        # Componente de entrada de fecha
 │   │   └── CopyCodeButton.tsx    # Botón copiar para bloques de código
-│   ├── lib/                      # 30+ módulos de utilidades
+│   ├── lib/                      # ~45 módulos de utilidades, cada uno con su `.test.ts`
 │   │   ├── settings.ts           # Tipos de configuración, defaults, normalización
 │   │   ├── themes.ts             # 7 temas (gus-oscuro, gus-claro, oled, dracula, nord, solarized x2)
 │   │   ├── i18n/                 # Internacionalización (es/en)
@@ -146,7 +159,15 @@ gus/
 │   │   ├── uiZoom.ts             # Factor de zoom de UI
 │   │   ├── zoomShortcuts.ts      # Atajos de teclado de zoom
 │   │   ├── tableLayout.ts        # Cálculos de layout de tablas
-│   │   ├── updateCheck.ts        # Verificación de versión y elección del instalador en GitHub releases
+│   │   ├── updateCheck.ts        # Aviso manual: verificación de versión y elección del instalador en GitHub releases (.deb/.rpm)
+│   │   ├── selfUpdate.ts         # Actualización automática: comprobación vía plugin y progreso de la descarga
+│   │   ├── externalChange.ts     # Qué hacer con la nota abierta cuando cambia fuera de la app (ignorar, recargar o conflicto)
+│   │   ├── noteTasks.ts          # Checkboxes de las notas como tareas: leer, marcar su línea, filtrar por origen
+│   │   ├── taskTree.ts           # Subtareas y dependencias (árbol, progreso, ciclos); el backend repite las reglas al guardar
+│   │   ├── library.ts            # Estanterías de la biblioteca de PDF
+│   │   ├── pdfCover.ts           # Portada (página 1) de un PDF con pdf.js, en cola y con caché
+│   │   ├── habits.ts             # Hábitos: programación, rachas y cumplimiento
+│   │   ├── board.ts              # Pizarra: modelo, geometría, goma, historial y lectura segura del JSON
 │   │   ├── linkGraph.ts          # Grafo de enlaces del vault (lo devuelve el backend)
 │   │   ├── graphLayout.ts        # Colocación del grafo de enlaces
 │   │   ├── searchIndex.ts        # Tipos y utilidades de la búsqueda a texto completo
@@ -159,19 +180,23 @@ gus/
 ├── src-tauri/                    # Backend Rust
 │   ├── src/
 │   │   ├── main.rs               # Punto de entrada (6 líneas)
-│   │   ├── lib.rs                # ~740 líneas: utilidades compartidas, creación de vaults, actualizaciones, `run()`
+│   │   ├── lib.rs                # ~780 líneas: utilidades compartidas, creación de vaults, descarga manual, `can_self_update`, `run()`
 │   │   ├── tests.rs              # Tests de la raíz del crate (`cargo test`)
 │   │   ├── archivos.rs           # Escritura del vault: crear, leer, renombrar, mover y borrar notas, carpetas y ficheros
+│   │   ├── biblioteca.rs         # Estanterías de la biblioteca de PDF: `.gus-library.json`
 │   │   ├── busqueda.rs           # Búsqueda a texto completo: índice incremental en `.gus-index/`
 │   │   ├── configuracion.rs      # Vaults conocidos, ajustes y `load/save_app_config`
 │   │   ├── enlaces.rs            # Grafo de enlaces `[[wiki]]` y backlinks
+│   │   ├── habitos.rs            # Hábitos y su registro: `.gus-habits.json`, con validación
 │   │   ├── importar.rs           # Importación de ficheros externos al vault
 │   │   ├── listados.rs           # Listados del vault: entradas, carpetas, recientes, imágenes y etiquetas
 │   │   ├── medios.rs             # Imágenes, miniaturas y PDF (lectura como data URL)
 │   │   ├── papelera.rs           # Papelera por vault: manifiesto, TTL, restaurar y migración
-│   │   └── tareas.rs             # Tareas: almacén `.gus-tasks.json` y migración desde `tareas.md`
+│   │   ├── pizarras.rs           # Pizarras: `.gus-boards/<id>.json` (el contenido lo entiende la interfaz)
+│   │   ├── tareas.rs             # Tareas: almacén `.gus-tasks.json`, relaciones (subtareas y dependencias) y migración desde `tareas.md`
+│   │   └── vigilancia.rs         # Watcher del vault (`notify`): avisa de cambios externos y descarta las escrituras propias
 │   ├── Cargo.toml                # Dependencias Rust
-│   ├── tauri.conf.json           # Configuración Tauri
+│   ├── tauri.conf.json           # Configuración Tauri (incluye la clave pública y el endpoint del actualizador)
 │   └── icons/                    # Iconos de la app (todas las plataformas)
 ├── public/
 │   └── dict/                     # Diccionarios Hunspell (7 idiomas)
@@ -182,7 +207,12 @@ gus/
 │       ├── fr.aff / fr.dic       # Francés
 │       ├── it.aff / it.dic       # Italiano
 │       └── pt-BR.aff / pt-BR.dic # Portugués brasileño
-├── bench/                        # Benchmarks de rendimiento (Playwright)
+├── scripts/
+│   └── update-manifest.mjs       # Genera `latest.json` (manifiesto del actualizador) en el CI; con su test
+├── .github/
+│   ├── workflows/release.yml     # CI de releases: tests, build en 3 SO, firma y draft
+│   └── release-notes.md          # Cuerpo de la release (se reescribe en cada una)
+├── bench/                        # Benchmarks de rendimiento y regresión visual (Playwright)
 │   ├── prueba-editor.mjs
 │   ├── prueba-menu.mjs
 │   ├── prueba-imagenes.mjs
@@ -261,7 +291,7 @@ npx -y react-doctor@latest --json   # Reporte de calidad React
 
 **Regla principal:** se trabaja **siempre en `develop`**. Nunca se commitea en `main` fuera del paso de release descrito más abajo. Como consecuencia, `main` es siempre la suma de lo ya publicado más la release que se esté preparando, y `develop` puede ir por delante con trabajo en curso.
 
-> El verificador de actualizaciones (`src/lib/updateCheck.ts`) consulta la API de releases de GitHub, así que **todo lo que llegue a `main` y se publique es código que verán las personas que ya tienen Gus instalado**. Por eso `main` solo se toca con algo que ya ha pasado por `develop` y está verificado.
+> El actualizador (`src/lib/selfUpdate.ts`, y `src/lib/updateCheck.ts` para `.deb`/`.rpm`) lee las releases de GitHub, así que **todo lo que llegue a `main` y se publique es código que recibirán, instalado, las personas que ya tienen Gus**. Por eso `main` solo se toca con algo que ya ha pasado por `develop` y está verificado.
 
 ### Commits en `develop`
 
@@ -270,6 +300,17 @@ npx -y react-doctor@latest --json   # Reporte de calidad React
 - **Verificación antes de cerrar cada commit**: `npx tsc --noEmit`, `pnpm test` y `pnpm build` en verde.
 - Si el cambio toca Rust (`src-tauri/src/lib.rs`) y el entorno no tiene toolchain, **no se da por compilado**: se avisa al usuario para que ejecute `cargo test` dentro de `src-tauri`.
 - Subida a origin al terminar la unidad de trabajo: `git push origin develop`. Los pushes a `main` solo en release.
+
+### Actualizaciones automáticas: firma y claves
+
+Las versiones se instalan solas en AppImage, Windows y macOS (los `.deb`/`.rpm` siguen con descarga manual). Para que eso sea seguro, cada instalador del actualizador va **firmado** (minisign) y la app solo instala lo que verifica con la clave pública incrustada en `tauri.conf.json` (`plugins.updater.pubkey`).
+
+- **Clave privada:** `~/.tauri/gus.key` (sin contraseña) en la máquina del mantenedor. **No va al repositorio.** Debe estar además como secret `TAURI_SIGNING_PRIVATE_KEY` de GitHub Actions (y `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` si algún día se le pone contraseña). Sin el secret, el job `test` de `release.yml` falla de entrada con un mensaje claro.
+- **Si se pierde o se cambia la clave**, las instalaciones ya hechas no podrán verificar las actualizaciones nuevas y habrá que reinstalar a mano. Guarda una copia segura.
+- **Build local** (`pnpm tauri build`): `createUpdaterArtifacts` exige la clave en el entorno: `TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.tauri/gus.key)" TAURI_SIGNING_PRIVATE_KEY_PASSWORD="" pnpm tauri build`. Sin ella la build falla al firmar.
+- **Versiones de plugins:** el crate `tauri-plugin-updater` y el paquete npm `@tauri-apps/plugin-updater` deben coincidir en versión mayor.menor (`tauri build` lo comprueba y falla si no).
+- **Windows + SignPath:** SignPath modifica el `.exe` tras compilarlo, así que el CI vuelve a firmar ese instalador para el actualizador en el job `release`.
+- **Manifiesto:** `scripts/update-manifest.mjs` crea `latest.json` en el job `release` a partir de los `.sig`; falla si falta una plataforma obligatoria (Linux x86_64, Windows x86_64, macOS Apple Silicon) para no desactivar una en silencio.
 
 ### Release: de `develop` a `main`
 
@@ -299,13 +340,15 @@ Se hace **solo cuando hay algo que publicar** (una versión nueva: `v0.1.3`, `v0
    git tag v0.1.3
    git push origin main v0.1.3
    ```
-6. **La CI hace el resto**: el push del tag dispara `.github/workflows/release.yml`, que compila en Linux/Windows/macOS, sube los instaladores (`.deb`, `.rpm`, `.AppImage`, `.exe`, `.msi`, `.dmg`) y deja un **draft release** con las notas nuevas. Hay que publicarlo a mano en GitHub, marcándolo como *pre-release* para ser coherente con las anteriores.
+6. **La CI hace el resto**: el push del tag dispara `.github/workflows/release.yml`, que compila en Linux/Windows/macOS, sube los instaladores (`.deb`, `.rpm`, `.AppImage`, `.exe`, `.msi`, `.dmg`) y deja un **draft release** con las notas nuevas. Hay que publicarlo a mano en GitHub **como release normal, sin marcarlo como *pre-release***: el actualizador lee `releases/latest/download/latest.json` y GitHub ignora las pre-releases en esa dirección (y en `releases/latest` de la API), así que una pre-release no se ofrecería a nadie.
 7. **Volver a `develop` y ponerla al día** con lo publicado:
    ```bash
    git checkout develop
    git merge main                  # o `git rebase main`
    git push origin develop
    ```
+
+La primera versión con actualizador (la 0.3.0) no puede instalarse sola en quien tenga una anterior, porque esas no traen el plugin: esas personas la actualizan una vez con el aviso de siempre (descarga manual). A partir de ahí, cada versión se instala sola.
 
 La siguiente función nueva vuelve a empezar en `develop`.
 
@@ -388,7 +431,7 @@ La siguiente función nueva vuelve a empezar en `develop`.
 
 5. **El sistema de papelera es personalizado** — no es la papelera del SO, sino una carpeta `.gus-trash` dentro de cada vault con manifiesto JSON, TTL de 30 días y capacidad de restauración. Las versiones anteriores usaban una papelera global en `~/gus-vault/.gus-trash`; al arrancar, `migrate_legacy_trash` pasa a cada vault lo que era suyo.
 
-6. **La verificación de actualizaciones es no intrusiva** — verifica la API de releases de GitHub al iniciar, nunca bloquea la app y respeta las versiones descartadas. La descarga del instalador solo ocurre si el usuario pulsa «Descargar», y solo desde `github.com/victorrubilar-dev/gus/releases/download/`.
+6. **Las actualizaciones nunca bloquean ni se instalan sin permiso** — al iniciar, la app mira GitHub sin frenar el arranque. Donde puede actualizarse sola (`can_self_update`: AppImage, Windows, macOS), descarga la versión firmada en segundo plano con barra de progreso, pero **no la instala hasta que el usuario pulsa «Reiniciar y actualizar»**. En `.deb`/`.rpm` queda el aviso manual: la descarga solo ocurre si el usuario pulsa «Descargar» y respeta las versiones descartadas.
 
 ---
 
@@ -399,7 +442,7 @@ Gus es una app local: el usuario elige sus vaults y el backend confía en las ru
 **Protecciones que existen:**
 - **Notas:** leer, crear y escribir notas exige extensión `.md` (`ensure_md`). Renombrar, mover y borrar solo admite tipos que el explorador muestra: notas, imágenes y PDF (`ensure_entry`).
 - **Papelera:** `move_to_trash` solo acepta elementos que cuelguen del vault indicado (`ensure_in_vault`). La papelera de cada vault no puede tirarse dentro de sí misma.
-- **Actualizaciones:** `download_update` solo descarga desde `github.com/victorrubilar-dev/gus/releases/download/` y solo ficheros con extensión de instalador.
+- **Actualizaciones:** el actualizador solo instala lo que verifica con la clave pública incrustada (`plugins.updater.pubkey`); un archivo con otra firma se rechaza. Su endpoint está fijado en `tauri.conf.json`. La descarga manual (`download_update`) solo baja de `github.com/victorrubilar-dev/gus/releases/download/` y solo ficheros con extensión de instalador.
 - **Render:** el contenido de las notas se escapa; Prism escapa el código resaltado.
 
 **Lo que no se protege:**
@@ -413,5 +456,5 @@ Gus es una app local: el usuario elige sus vaults y el backend confía en las ru
 
 - **Extensiones VS Code recomendadas:** `tauri-apps.tauri-vscode`, `rust-analyzer.rust-analyzer`
 - **El archivo `task/` está en `.gitignore`** — es para notas personales de desarrollo
-- **Las únicas requests de red** son a GitHub: la API para verificar actualizaciones (no es obligatoria, se puede descartar) y, solo si el usuario lo pide, la descarga del instalador desde `releases/download/` (`download_update` en `lib.rs`)
+- **Las únicas requests de red** son a GitHub y solo sirven para actualizar: el manifiesto `latest.json` de las releases (plugin updater) o la API de releases (`.deb`/`.rpm`), la descarga automática y firmada de la versión nueva donde la app puede actualizarse sola, y, solo si el usuario lo pide, la descarga manual del instalador (`download_update` en `lib.rs`). Cualquier red nueva exige cambiar antes `PRIVACY.md` y este archivo.
 - **Las notas nunca salen del equipo del usuario** — no hay sincronización, no hay backup en la nube

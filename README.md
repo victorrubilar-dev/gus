@@ -32,11 +32,27 @@ Una aplicación de escritorio **100 % local** para tomar notas y gestionar tarea
 
 - **Autoguardado** — debounce 500 ms; se desactiva en Ajustes → Notas.
 
+- **Tareas** — tablero Kanban y lista, con prioridad, fecha de vencimiento y etiquetas. Admiten **subtareas** (con progreso) y **dependencias** («bloqueada por»). La vista *Notas* reúne los checkboxes `- [ ]` de todas tus notas, agrupados por nota de origen; marcarlos reescribe la línea en su nota.
+
+- **Calendario, grafo y búsqueda** — calendario de vencimientos, grafo de enlaces `[[wiki]]` con backlinks, búsqueda a texto completo indexada, notas diarias y avisos del sistema para tareas por vencer.
+
+- **Biblioteca de PDF** — tus PDF como tarjetas con su portada, ordenados en **estanterías** que defines tú (Bibliografía, Clases…).
+
+- **Hábitos** — define qué días haces cada hábito; sigue el día con anillos de cierre diario o con un tracker clásico, con rachas y porcentaje de cumplimiento.
+
+- **Pizarras** — lienzos libres con lápiz, goma, formas, flechas, texto, post-it e imágenes de tu vault, con deshacer/rehacer y zoom.
+
+- **Cambios externos** — si editas una nota con otro programa, Gus la recarga sola; si tenías cambios sin guardar, te deja elegir.
+
+- **Papelera por vault** — lo que borras se puede restaurar durante 30 días.
+
 ---
 
 ## Descarga
 
 Disponible en las [ releases ](https://github.com/victorrubilar-dev/gus/releases) de GitHub. La primera vez que se ejecuta, Tauri solicita permisos de acceso a la carpeta de notas.
+
+**Actualizaciones:** Gus avisa dentro de la app cuando hay una versión nueva. Con **AppImage, Windows y macOS** la descarga sola en segundo plano (verificando su firma) y, al terminar, un botón *Reiniciar y actualizar* la instala y reabre la app. Con los paquetes **`.deb` y `.rpm`**, que no pueden reemplazarse a sí mismos, el aviso ofrece descargar el instalador. Solo hay peticiones a GitHub y nunca se instala nada sin que lo pidas; detalles en [`PRIVACY.md`](PRIVACY.md).
 
 > ⚠️ **Nota para usuarios de Windows (SmartScreen):**
 >
@@ -54,7 +70,7 @@ Disponible en las [ releases ](https://github.com/victorrubilar-dev/gus/releases
 
 ```bash
 npx tsc --noEmit          # TypeScript check
-npx vitest run            # tests (195 passed)
+pnpm test                  # tests (Vitest)
 pnpm build              # build
 npx -y react-doctor@latest --json  # reporte de calidad (react-doctor)
 ```
