@@ -2,7 +2,6 @@ import { useCallback, useEffect, useEffectEvent, useImperativeHandle, useLayoutE
 import { AnimatePresence } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 import clsx from "clsx";
-import { Ellipsis, Eye, FileDown, Pencil } from "lucide-react";
 import { pathWithTitle, safeFileName } from "../lib/fileName";
 import type { ImageInsertResult } from "../lib/importFiles";
 import { DRAG_ENTRY_MIME } from "./FileExplorer";
@@ -20,7 +19,7 @@ import { toLocalCoord, uiZoomFactor } from "../lib/uiZoom";
 import { alignTableColumn, cellIndexAtPointer, clearTableCells, computeTableMerges, duplicateTableRow, insertTableColumn, insertTableRow, isTableMergePossible, isTableTaskCell, isTableUnmergePossible, lineIndexOf, lineStartOffset, actionRect, mergeTableCells, moveTableRow, planTableDeletion, removeTable, removeTableColumn, removeTableRow, resolveTableCaret, safeTableCaret, sortTableRows, sourceSegments, splitTableCells, tableBlockAt, tableCellRange, tableFromDelimited, tableIntersects, tableSkeleton, toggleTableTask, unmergeTableCells, visualLength, wordRangeAt, type TableCellCaret, type TableCellRect, type TableEdit, type TableLine } from "../lib/tableLayout";
 import { recordHistory, redoHistory, undoHistory, type HistorySnapshot } from "../lib/editorHistory";
 import { frontmatterLineOffset, replaceBody, stripFrontmatter } from "../lib/noteTags";
-import NoteTagBar from "./NoteTagBar";
+import EditorHeader from "./EditorHeader";
 import { caretAnchor, lineAtCaret } from "../lib/caretPosition";
 import { detectSlashQuery, detectWikiQuery, wikiInsertText, wikiMatches, type WikiNote } from "../lib/wikiLink";
 import { filterSlashItems, SlashMenu, SpellSuggestMenu, VaultImageMenu, WikiLinkMenu, type SlashItem } from "./EditorMenus";
@@ -2645,24 +2644,6 @@ export default function MarkdownEditor({
     insertSlashItem(items[Math.min(menu.index, items.length - 1)]);
   }
 
-  const statusLabel =
-    saveState === "dirty"
-      ? t("editor.saving")
-      : saveState === "saved"
-        ? t("editor.saved")
-        : saveState === "error"
-          ? t("editor.saveFailed")
-          : t("editor.noChanges");
-
-  const statusDot =
-    saveState === "dirty"
-      ? "bg-amber-400"
-      : saveState === "saved"
-        ? "bg-emerald-400"
-        : saveState === "error"
-          ? "bg-rose-400"
-          : "bg-gus-muted";
-
   const previewOffset = frontmatterLineOffset(content);
   const previewComponents = usePreviewComponents({
     path,
@@ -2907,94 +2888,30 @@ export default function MarkdownEditor({
 
   return (
     <div data-tour="editor" className={clsx("flex h-full min-h-0 flex-col bg-gus-bg", className)}>
-      <header className="shrink-0 border-b border-gus-border gus-editor-pad py-4">
-        <div className="flex items-start gap-3">
-          <input
-            value={title}
-            onChange={(event) => editTitle(event.target.value)}
-            placeholder={t("common.untitled")}
-            aria-label={t("editor.title")}
-            className="min-w-0 flex-1 bg-transparent text-xl font-semibold text-gus-text outline-none placeholder:text-gus-muted"
-          />
-
-          <button
-            type="button"
-            onClick={() => {
-              setMenu(null);
-              setViewMode(viewMode === "edit" ? "preview" : "edit");
-            }}
-            aria-label={t(viewMode === "edit" ? "editor.previewAria" : "editor.editAria")}
-            title={t(viewMode === "edit" ? "editor.preview" : "editor.edit")}
-            className="gus-btn gus-btn-secondary shrink-0"
-          >
-            {viewMode === "edit" ? (
-              <>
-                <Eye className="h-4 w-4" aria-hidden="true" />
-                {t("editor.preview")}
-              </>
-            ) : (
-              <>
-                <Pencil className="h-4 w-4" aria-hidden="true" />
-                {t("editor.edit")}
-              </>
-            )}
-          </button>
-
-          <div ref={headerMenuRef} className="relative shrink-0">
-            <button
-              type="button"
-              onClick={() => setHeaderMenu((open) => !open)}
-              aria-haspopup="menu"
-              aria-expanded={headerMenu}
-              aria-label={t("editor.moreOptionsAria")}
-              title={t("editor.moreOptions")}
-              className="gus-btn gus-btn-icon"
-            >
-              <Ellipsis className="h-4 w-4" aria-hidden="true" />
-            </button>
-
-            {headerMenu && (
-              <div
-                role="menu"
-                className="absolute right-0 z-30 mt-1.5 w-52 overflow-hidden rounded-lg border border-gus-border bg-gus-card py-1 shadow-xl"
-              >
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setHeaderMenu(false);
-                    setExportOpen(true);
-                  }}
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-body text-gus-muted transition-colors hover:bg-gus-panel hover:text-gus-text focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-gus-accent/60 focus-visible:outline-none"
-                >
-                  <FileDown className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                  {t("editor.exportPdf")}
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <NoteTagBar content={content} vaultPath={vaultPath} onChange={editContent} />
-
-        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-meta text-gus-muted">
-          <span className="flex items-center gap-1.5" role="status" aria-live="polite">
-            <span className={clsx("h-1.5 w-1.5 rounded-full", statusDot)} aria-hidden="true" />
-            {statusLabel}
-          </span>
-          <span aria-hidden="true">·</span>
-          <span>
-            {t("editor.words", { count: words })} · {t("editor.chars", { count: body.length })}
-          </span>
-          <span aria-hidden="true">·</span>
-          <span className="text-gus-muted/70">{t("editor.saveHint", { combo: saveCombo })}</span>
-        </div>
-        {saveError && (
-          <p className="mt-2 break-words rounded-md border border-rose-400/30 bg-rose-400/5 px-2 py-1.5 text-meta text-rose-300">
-            {saveError}
-          </p>
-        )}
-      </header>
+      <EditorHeader
+        title={title}
+        onTitleChange={editTitle}
+        viewMode={viewMode}
+        onToggleView={() => {
+          setMenu(null);
+          setViewMode(viewMode === "edit" ? "preview" : "edit");
+        }}
+        menuOpen={headerMenu}
+        onMenuOpenChange={setHeaderMenu}
+        menuRef={headerMenuRef}
+        onExport={() => {
+          setHeaderMenu(false);
+          setExportOpen(true);
+        }}
+        content={content}
+        vaultPath={vaultPath}
+        onContentChange={editContent}
+        saveState={saveState}
+        saveError={saveError}
+        words={words}
+        chars={body.length}
+        saveCombo={saveCombo}
+      />
 
       {viewMode === "edit" ? (
         <div className="relative min-h-0 w-full flex-1 bg-gus-bg">
