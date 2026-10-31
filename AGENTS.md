@@ -111,7 +111,10 @@ gus/
 │   │   ├── ImagePane.tsx, PdfPane.tsx, ExternalNoticeBar.tsx, AppOverlays.tsx # Piezas de la vista de notas y avisos flotantes
 │   │   ├── CommandPalette.tsx    # Búsqueda/ apertura rápida de notas (cmdk)
 │   │   ├── DashboardView.tsx     # Pestaña de inicio
-│   │   ├── TaskList.tsx          # Vista de lista de tareas (lista en árbol con subtareas, tablero y vista «Notas»)
+│   │   ├── TaskList.tsx          # Vista de tareas (~300 líneas): lista en árbol, tablero y vista «Notas»; compone TaskRow y TaskTags
+│   │   ├── TaskRow.tsx           # Fila de una tarea en la lista
+│   │   ├── TaskTags.tsx          # Chips de filtro por etiqueta y ventana de edición de etiquetas
+│   │   ├── useTaskStore.ts       # Carga de tareas, cola de guardado y tareas nuevas del diálogo
 │   │   ├── TaskRelations.tsx     # Panel de una tarea: subtareas, de quién cuelga y qué la bloquea
 │   │   ├── NoteTasksView.tsx     # Checkboxes de las notas como tareas, agrupados por nota de origen
 │   │   ├── CheckboxVisual.tsx    # Casilla visual compartida por las listas de tareas
@@ -156,6 +159,8 @@ gus/
 │   │   ├── spellCheck.ts         # Corrector ortográfico Hunspell WASM
 │   │   ├── taskStore.ts          # Persistencia de tareas (JSON)
 │   │   ├── taskPriority.ts       # Niveles de prioridad (Baja/Media/Alta/Urgente)
+│   │   ├── taskActions.ts        # Cambios sobre la lista de tareas como funciones puras (marcar, prioridad, columna, etiquetas…)
+│   │   ├── taskDue.ts            # Estado y aspecto del plazo (vencida, hoy…) y fecha corta, compartidos por lista, tablero y resumen
 │   │   ├── pdfExport.ts          # Lógica de generación PDF
 │   │   ├── pdfAnnotations.ts     # Manejo de anotaciones PDF
 │   │   ├── importFiles.ts        # Lógica de importación de archivos
@@ -282,7 +287,7 @@ pnpm build
 pnpm tauri build
 
 # Tests
-pnpm test              # Todos los tests Vitest (300 tests en 31 ficheros)
+pnpm test              # Todos los tests Vitest (316 tests en 33 ficheros)
 pnpm test:watch        # Modo watch
 
 # Type checking

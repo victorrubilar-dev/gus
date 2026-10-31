@@ -1,8 +1,6 @@
-import { Fragment, useRef, useState, type KeyboardEvent } from "react";
-import { AnimatePresence, m } from "framer-motion";
-import { Calendar, Flag, GitBranch, ListTodo, Lock, Plus, RefreshCw, SquareKanban, StickyNote, Trash2, X } from "lucide-react";
-import clsx from "clsx";
-import { normalizeTags, parseTagInput } from "../lib/markdownTasks";
+import { Fragment, useState } from "react";
+import { AnimatePresence } from "framer-motion";
+import { ListTodo, Plus, RefreshCw, SquareKanban, StickyNote } from "lucide-react";
 import type { Task } from "../lib/taskStore";
 import {
   addSubtask as addSubtaskTo,
@@ -15,17 +13,14 @@ import {
   toggleDone,
 } from "../lib/taskActions";
 import { useTaskStore } from "./useTaskStore";
-import {
-  PRIORITY_CLASS,
-  priorityLabel,
-} from "../lib/taskPriority";
 import { DUE_CLASS, dueKind, shortDate } from "../lib/taskDue";
 import { useT } from "../lib/i18n";
+import TaskRow from "./TaskRow";
+import { TagFilterBar } from "./TaskTags";
 import type { MessageKey, TranslateParams } from "../lib/i18n/core";
 import EmptyState from "./EmptyState";
 import SegmentedControl from "./SegmentedControl";
 import ViewHeader from "./ViewHeader";
-import CheckboxVisual from "./CheckboxVisual";
 import TaskRelations from "./TaskRelations";
 import { flattenTree, pendingBlockers, setParent, subtaskProgress, toggleBlocker } from "../lib/taskTree";
 import NoteTasksView from "./NoteTasksView";
@@ -45,22 +40,6 @@ export interface TaskListProps {
   /** Checkboxes de las notas (REQ-09): marcarlos reescribe la línea de su nota. */
   onToggleNoteTask?: (task: NoteTask) => Promise<void>;
   onOpenNote?: (path: string) => void;
-}
-
-const TAG_COLORS = [
-  "border-gus-accent/40 bg-gus-accent/15 text-gus-accent",
-  "border-emerald-400/30 bg-emerald-400/10 text-emerald-300",
-  "border-sky-400/30 bg-sky-400/10 text-sky-300",
-  "border-amber-400/30 bg-amber-400/10 text-amber-300",
-  "border-rose-400/30 bg-rose-400/10 text-rose-300",
-];
-
-function tagColor(tag: string): string {
-  let hash = 0;
-  for (let i = 0; i < tag.length; i++) {
-    hash = (hash * 31 + tag.charCodeAt(i)) >>> 0;
-  }
-  return TAG_COLORS[hash % TAG_COLORS.length];
 }
 
 function dueState(
@@ -96,69 +75,10 @@ export default function TaskList({
     onTasksChange,
   });
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editTags, setEditTags] = useState<string[]>([]);
-  const [editInput, setEditInput] = useState("");
-  const editCancelledRef = useRef(false);
 
   const [relationsId, setRelationsId] = useState<string | null>(null);
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [view, setView] = useState<"list" | "board" | "notes">("board");
-
-  function startEditTags(task: Task) {
-    if (editingId === task.id) return;
-
-    editCancelledRef.current = false;
-    setEditingId(task.id);
-    setEditTags([...task.tags]);
-    setEditInput("");
-  }
-
-  function closeEditTags(cancel: boolean) {
-    const id = editingId;
-    setEditingId(null);
-    if (cancel || id == null) return;
-
-    const row = items.find((task) => task.id === id);
-    if (!row) return;
-
-    const tags = normalizeTags([...editTags, ...parseTagInput(editInput)]);
-    if (tags.join("\u0000") === normalizeTags(row.tags).join("\u0000")) return;
-
-    commitTasks(setTags(items, id, tags));
-  }
-
-  function handleEditKeyDown(event: KeyboardEvent<HTMLInputElement>) {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      editCancelledRef.current = true;
-      setEditingId(null);
-      return;
-    }
-
-    if (event.key === "Enter") {
-      event.preventDefault();
-      const parsed = parseTagInput(editInput);
-      if (parsed.length > 0) {
-        setEditTags((prev) => normalizeTags([...prev, ...parsed]));
-        setEditInput("");
-      } else {
-        event.currentTarget.blur();
-      }
-      return;
-    }
-
-    if (event.key === "Backspace" && editInput === "" && editTags.length > 0) {
-      setEditTags((prev) => prev.slice(0, -1));
-    }
-  }
-
-  function handleEditBlur() {
-    if (editCancelledRef.current) {
-      editCancelledRef.current = false;
-      return;
-    }
-    closeEditTags(false);
-  }
 
   function toggle(id: string) {
     commitTasks(toggleDone(items, id));
@@ -202,8 +122,6 @@ export default function TaskList({
 
 
   const tagEntries = tagCounts(items);
-
-  const chipClass = "rounded-full border px-2 py-0.5 text-meta capitalize";
 
   return (
     <section data-tour="tasks" className="flex h-full flex-col gap-4 p-6">
@@ -252,49 +170,12 @@ export default function TaskList({
 
       </div>
 
-      {tagEntries.length > 0 && (
-        <div
-          role="group"
-          aria-label={t("tasks.filterTag")}
-          className="flex flex-wrap items-center gap-1.5"
-        >
-          <span className="text-meta text-gus-muted">{t("tasks.tagsLabel")}</span>
-          {tagEntries.map(({ label, count }) => {
-            const active =
-              !!tagFilter && tagFilter.toLowerCase() === label.toLowerCase();
-            return (
-              <button
-                key={label.toLowerCase()}
-                type="button"
-                onClick={() => toggleTagFilter(label)}
-                aria-pressed={active}
-                title={`Filtrar por #${label} · ${count} ${
-                  count === 1 ? "tarea" : "tareas"
-                }`}
-                className={clsx(
-                  chipClass,
-                  "inline-flex items-center gap-1 transition hover:opacity-80 focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none",
-                  tagColor(label),
-                  active && "ring-2 ring-gus-accent/70",
-                )}
-              >
-                {label}
-                <span className="opacity-60">{count}</span>
-              </button>
-            );
-          })}
-          {tagFilter && (
-            <button
-              type="button"
-              onClick={() => setTagFilter(null)}
-              title={t("tasks.removeFilter")}
-              className="flex items-center gap-1 rounded-full border border-gus-border px-2 py-0.5 text-meta text-gus-muted transition-colors hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
-            >
-              {t("common.all")} <X className="h-3 w-3" aria-hidden="true" />
-            </button>
-          )}
-        </div>
-      )}
+      <TagFilterBar
+        entries={tagEntries}
+        activeFilter={tagFilter}
+        onToggle={toggleTagFilter}
+        onClear={() => setTagFilter(null)}
+      />
 
       <div className="gus-scrollbar flex-1 space-y-6 overflow-y-auto pr-1">
         {/* La frontera vive fuera de las condiciones de vista: al cambiar de
@@ -341,219 +222,26 @@ export default function TaskList({
         {view === "list" && (
         <ul key="list" className="space-y-2">
             {visible.map(({ task, depth }) => {
-              const isEditing = editingId === task.id;
-              const plazo = dueState(task, t);
-              const progress = subtaskProgress(items, task.id);
-              const waiting = pendingBlockers(items, task);
-
               return (
                 <Fragment key={task.id}>
-                <m.li
-                  layout
-                  initial={{ opacity: 0, y: -8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, x: -24 }}
-                  transition={{
-                    duration: 0.15,
-                    ease: "easeOut",
-                    layout: { type: "spring", stiffness: 500, damping: 45 },
-                  }}
-                  style={{ marginLeft: depth * 24 }}
-                  className={clsx(
-                    "group relative flex items-center gap-3 overflow-hidden rounded-xl border border-gus-border bg-gus-card px-3 py-2.5",
-                    isEditing && "z-30",
-                  )}
-                >
-                  <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3">
-                    <input
-                      type="checkbox"
-                      checked={task.completes}
-                      onChange={() => toggle(task.id)}
-                      className="peer sr-only"
-                    />
-                    <CheckboxVisual checked={task.completes} />
-                    <span className="flex min-w-0 flex-col">
-                      <span
-                        className={clsx(
-                          "truncate text-sm transition-colors",
-                          task.completes ? "text-gus-muted line-through" : "text-gus-text",
-                        )}
-                      >
-                        {task.title}
-                      </span>
-                      {task.description && (
-                        <span
-                          className="truncate text-meta text-gus-muted"
-                          title={task.description}
-                        >
-                          {task.description.replace(/\n+/g, " · ")}
-                        </span>
-                      )}
-                    </span>
-                  </label>
-
-                  {progress.total > 0 && (
-                    <span
-                      title={t("tasks.subtaskProgress", { done: progress.done, total: progress.total })}
-                      className="flex shrink-0 items-center gap-1.5 rounded-full border border-gus-border bg-gus-panel px-2 py-0.5 text-meta text-gus-muted"
-                    >
-                      <span aria-hidden="true" className="h-1 w-8 overflow-hidden rounded-full bg-gus-border">
-                        <span
-                          className="block h-full bg-gus-accent"
-                          style={{ width: `${(progress.done / progress.total) * 100}%` }}
-                        />
-                      </span>
-                      {progress.done}/{progress.total}
-                    </span>
-                  )}
-
-                  {waiting.length > 0 && (
-                    <span
-                      title={t("tasks.waitingFor", { names: waiting.map((blocker) => blocker.title).join(", ") })}
-                      className="flex shrink-0 items-center gap-1 rounded-full border border-amber-400/40 bg-amber-400/10 px-2 py-0.5 text-meta text-amber-300"
-                    >
-                      <Lock className="h-3 w-3" aria-hidden="true" />
-                      {waiting.length}
-                    </span>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={() => cyclePriority(task.id)}
-                    title={
-                      task.priority
-                        ? t("tasks.priorityChange", { name: priorityLabel(task.priority) })
-                        : t("tasks.priorityHint")
-                    }
-                    aria-label={t("tasks.priorityAria", {
-                      title: task.title,
-                      name: task.priority ? priorityLabel(task.priority) : t("priority.none"),
-                    })}
-                    className={clsx(
-                      "flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-meta capitalize transition-colors focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none",
-                      task.priority
-                        ? PRIORITY_CLASS[task.priority]
-                        : "border-dashed border-gus-border text-gus-muted hover:border-gus-accent/50 hover:text-gus-accent",
-                    )}
-                  >
-                    <Flag className="h-3 w-3" aria-hidden="true" />
-                    {task.priority ? priorityLabel(task.priority) : null}
-                  </button>
-
-                  {plazo && (
-                    <span
-                      title={plazo.title}
-                      className={clsx(
-                        "flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-meta",
-                        plazo.className,
-                      )}
-                    >
-                      <Calendar className="h-3 w-3" aria-hidden="true" />
-                      {plazo.due ? shortDate(plazo.due) : null}
-                    </span>
-                  )}
-
-                  {isEditing ? (
-                    <div className="absolute top-full right-11 z-30 mt-1 w-60 rounded-xl border border-gus-border bg-gus-card p-2 shadow-xl shadow-black/40">
-                      <p className="mb-1.5 text-meta tracking-wider text-gus-muted uppercase">
-                        {t("tasks.tagsOf", { title: task.title })}
-                      </p>
-                      <div
-                        className="flex flex-wrap gap-1.5"
-                        onMouseDown={(event) => event.preventDefault()}
-                      >
-                        {editTags.map((tag) => (
-                          <span
-                            key={tag}
-                            className={clsx(
-                              "inline-flex items-center gap-1 capitalize",
-                              chipClass,
-                              tagColor(tag),
-                            )}
-                          >
-                            {tag}
-                            <button
-                              type="button"
-                              onClick={() => setEditTags((prev) => prev.filter((t) => t !== tag))}
-                              aria-label={t("tasks.removeTag", { tag })}
-                              className="-mr-1 rounded-full px-1 opacity-60 transition hover:opacity-100 focus-visible:ring-2 focus-visible:ring-current/60 focus-visible:outline-none"
-                            >
-                              <X className="h-3 w-3" aria-hidden="true" />
-                            </button>
-                          </span>
-                        ))}
-                        {editTags.length === 0 && (
-                          <span className="text-meta text-gus-muted">{t("tasks.noTags")}</span>
-                        )}
-                      </div>
-                      <input
-                        autoFocus
-                        value={editInput}
-                        onChange={(event) => setEditInput(event.target.value)}
-                        onKeyDown={handleEditKeyDown}
-                        onBlur={handleEditBlur}
-                        placeholder={t("tasks.addTagPlaceholder")}
-                        title={t("tasks.editHint")}
-                        aria-label={t("tasks.newTagFor", { title: task.title })}
-                        className="mt-2 w-full rounded-md border border-gus-border bg-gus-panel px-2 py-1 text-body text-gus-text outline-none transition-colors placeholder:text-gus-muted focus:border-gus-accent/60"
-                      />
-                    </div>
-                  ) : (
-                    <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
-                      {task.tags.map((tag) => {
-                        const active =
-                          !!tagFilter && tagFilter.toLowerCase() === tag.toLowerCase();
-                        return (
-                          <button
-                            key={tag}
-                            type="button"
-                            onClick={() => toggleTagFilter(tag)}
-                            title={t("tasks.filterByTag", { tag })}
-                            aria-pressed={active}
-                            className={clsx(
-                              chipClass,
-                              "transition hover:opacity-80 focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none",
-                              tagColor(tag),
-                              active && "ring-2 ring-gus-accent/70",
-                            )}
-                          >
-                            {tag}
-                          </button>
-                        );
-                      })}
-                      <button
-                        type="button"
-                        onClick={() => startEditTags(task)}
-                        title={t("tasks.editTags")}
-                        aria-label={t("tasks.tagsOf", { title: task.title })}
-                        aria-haspopup="dialog"
-                        className="rounded-full border border-dashed border-gus-border px-2 py-0.5 text-meta text-gus-muted transition-colors group-hover:border-gus-accent/50 group-hover:text-gus-accent focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
-                      >
-                        +
-                      </button>
-                    </div>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={() => setRelationsId((current) => (current === task.id ? null : task.id))}
-                    aria-expanded={relationsId === task.id}
-                    aria-label={t("tasks.relationsOf", { title: task.title })}
-                    title={t("tasks.relations")}
-                    className="shrink-0 rounded-md p-1.5 text-gus-muted opacity-0 transition hover:bg-gus-panel hover:text-gus-accent focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none group-hover:opacity-100"
-                  >
-                    <GitBranch className="h-4 w-4" aria-hidden="true" />
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => remove(task.id)}
-                    aria-label={t("tasks.deleteNamed", { title: task.title })}
-                    className="shrink-0 rounded-md p-1.5 text-gus-muted opacity-0 transition hover:bg-rose-400/10 hover:text-rose-400 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-rose-400/60 focus-visible:outline-none group-hover:opacity-100"
-                  >
-                    <Trash2 className="h-4 w-4" aria-hidden="true" />
-                  </button>
-                </m.li>
+                  <TaskRow
+                    task={task}
+                    depth={depth}
+                    due={dueState(task, t)}
+                    progress={subtaskProgress(items, task.id)}
+                    waiting={pendingBlockers(items, task)}
+                    tagFilter={tagFilter}
+                    isEditingTags={editingId === task.id}
+                    relationsOpen={relationsId === task.id}
+                    onToggle={() => toggle(task.id)}
+                    onCyclePriority={() => cyclePriority(task.id)}
+                    onToggleTagFilter={toggleTagFilter}
+                    onStartEditingTags={() => setEditingId(task.id)}
+                    onCommitTags={(tags) => commitTasks(setTags(items, task.id, tags))}
+                    onStopEditingTags={() => setEditingId(null)}
+                    onToggleRelations={() => setRelationsId((current) => (current === task.id ? null : task.id))}
+                    onRemove={() => remove(task.id)}
+                  />
                 {relationsId === task.id && (
                   <li style={{ marginLeft: depth * 24 }}>
                     <TaskRelations
