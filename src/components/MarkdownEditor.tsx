@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useEffectEvent, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type Ref } from "react";
+import { useEffect, useEffectEvent, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type Ref } from "react";
 import { AnimatePresence } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 import clsx from "clsx";
-import { pathWithTitle, safeFileName } from "../lib/fileName";
 import type { ImageInsertResult } from "../lib/importFiles";
 import { DRAG_ENTRY_MIME } from "./FileExplorer";
 import { isImagePath } from "../lib/imageLinks";
@@ -20,6 +19,7 @@ import EditorHeader from "./EditorHeader";
 import { caretAnchor, lineAtCaret } from "../lib/caretPosition";
 import { detectSlashQuery, detectWikiQuery, wikiMatches, type WikiNote } from "../lib/wikiLink";
 import { SlashMenu, SpellSuggestMenu, VaultImageMenu, WikiLinkMenu } from "./EditorMenus";
+import { useNotePersistence } from "./useNotePersistence";
 import { useEditorKeyboard } from "./useEditorKeyboard";
 import { usePointerEvents } from "./usePointerEvents";
 import { useTableActions } from "./useTableActions";
@@ -401,18 +401,6 @@ export default function MarkdownEditor({
   });
   const wikiRequestRef = useRef(0);
 
-  const ownPathRef = useRef(path);
-  const sequenceRef = useRef(0);
-  const dirtyRef = useRef(false);
-  const autoSaveRef = useRef(autoSave);
-  // Espejos sincronizados tras el commit y antes del paint: no se escribe en
-  // un ref durante el render y, como persist/autoSave se llaman también desde
-  // handlers, la ref es la vía válida (useEffectEvent solo sirve en efectos).
-  useLayoutEffect(() => {
-    autoSaveRef.current = autoSave;
-    dirtyRef.current = saveState === "dirty";
-  });
-
   useEffect(() => {
     if (viewMode === "preview") loadWikiNotes();
   }, [viewMode, vaultPath, path]);
@@ -487,38 +475,16 @@ export default function MarkdownEditor({
     syncOverlayGeometry();
   }, [content, spell]);
 
-  async function persist(): Promise<boolean> {
-    const sequence = ++sequenceRef.current;
-    const from = ownPathRef.current;
-    let target = from;
-
-    try {
-      const wanted = pathWithTitle(from, title);
-      if (wanted !== from) {
-        target = await invoke<string>("rename_vault_file", { from, to: wanted });
-      }
-      await invoke("write_vault_file", { path: target, content });
-    } catch (error) {
-      if (sequence === sequenceRef.current) {
-        setSaveState("error");
-        setSaveError(String(error));
-      }
-      return false;
-    }
-
-    // La nota cambió mientras se guardaba: no tocar el estado de la nueva.
-    if (sequence !== sequenceRef.current) return false;
-
-    ownPathRef.current = target;
-    autoSaveRef.current?.({ path: target, title: safeFileName(title), content });
-    setSaveState("saved");
-    setSaveError(null);
-    return true;
-  }
-
-  const persistRef = useRef(persist);
-  useLayoutEffect(() => {
-    persistRef.current = persist;
+  const { dirtyRef, persistRef, flush } = useNotePersistence({
+    path,
+    title,
+    content,
+    saveState,
+    setSaveState,
+    setSaveError,
+    autoSave,
+    autoSaveEnabled,
+    debounceMs,
   });
 
   const {
@@ -577,17 +543,6 @@ export default function MarkdownEditor({
     insertImagesRef.current = insertImagesAt;
   });
 
-  // `flush` solo lee refs: con useCallback su identidad deja de cambiar en
-  // cada render y useImperativeHandle no se vuelve a ejecutar sin motivo.
-  const flush = useCallback(async (): Promise<boolean> => {
-    if (!dirtyRef.current) return true;
-
-    dirtyRef.current = false;
-    const saved = await persistRef.current();
-    if (!saved) dirtyRef.current = true;
-    return saved;
-  }, []);
-
   useImperativeHandle(
     ref,
     () => ({
@@ -608,22 +563,6 @@ export default function MarkdownEditor({
     }),
     [flush],
   );
-
-  useEffect(() => {
-    if (saveState !== "dirty" || !autoSaveEnabled) return;
-
-    const timer = setTimeout(() => void persistRef.current(), debounceMs);
-    return () => clearTimeout(timer);
-  }, [title, content, saveState, debounceMs, autoSaveEnabled]);
-
-  useEffect(() => {
-    return () => {
-      if (dirtyRef.current) {
-        dirtyRef.current = false;
-        void persistRef.current();
-      }
-    };
-  }, []);
 
   function editTitle(next: string) {
     setTitle(next);
