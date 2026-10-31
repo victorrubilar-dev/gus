@@ -3,7 +3,6 @@ import {
   Suspense,
   useCallback,
   useEffect,
-  useEffectEvent,
   useRef,
   useState,
   type CSSProperties,
@@ -12,8 +11,6 @@ import { LucideProvider } from "lucide-react";
 import { AnimatePresence, domMax, LazyMotion, m, MotionConfig } from "framer-motion";
 import { Upload } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
-import { externalAction } from "./lib/externalChange";
 import { toggleNoteTaskText, type NoteTask } from "./lib/noteTasks";
 import clsx from "clsx";
 import CalendarView from "./components/CalendarView";
@@ -44,7 +41,6 @@ import { accentHex, DEFAULT_SETTINGS, type AppSettings } from "./lib/settings";
 import { themeDefinition, type ThemeScheme } from "./lib/themes";
 import { APP_VERSION } from "./lib/version";
 import { useAppUpdates } from "./components/useAppUpdates";
-import { globalShortcutFor } from "./lib/shortcuts";
 import {
   I18nProvider,
   readStoredLanguage,
@@ -57,6 +53,8 @@ import { useFileDrop } from "./components/useFileDrop";
 import ImagePane from "./components/ImagePane";
 import PdfPane from "./components/PdfPane";
 import ExternalNoticeBar from "./components/ExternalNoticeBar";
+import { useGlobalShortcuts } from "./components/useGlobalShortcuts";
+import { useExternalChanges } from "./components/useExternalChanges";
 import { useOpenEntries } from "./components/useOpenEntries";
 import { useSearchIndexSync } from "./components/useSearchIndexSync";
 import { useVaults } from "./components/useVaults";
@@ -157,12 +155,6 @@ function App({
   const [dailyBusy, setDailyBusy] = useState(false);
   const dailyBusyRef = useRef(false);
   const [vaultRefresh, setVaultRefresh] = useState(0);
-  /** Aviso de que la nota abierta cambió fuera de la app (REQ-13). */
-  const [externalNotice, setExternalNotice] = useState<{
-    path: string;
-    kind: "reloaded" | "conflict";
-  } | null>(null);
-  const externalNoticeTimerRef = useRef<number | null>(null);
   const [linkError, setLinkError] = useState<string | null>(null);
   const linkErrorTimerRef = useRef<number | null>(null);
   const sidebar = useSidebarWidth();
@@ -223,6 +215,15 @@ function App({
     handleSelectBaseDir,
   } = useVaults({ onVaultSwitch: closeOpenNote });
 
+  const { externalNotice, setExternalNotice } = useExternalChanges({
+    ready: bootStatus === "ready",
+    currentVault,
+    note,
+    notePathRef,
+    editorRef,
+    selectNote: handleSelectNote,
+    onFilesChanged: () => setVaultRefresh((key) => key + 1),
+  });
   const searchIndex = useSearchIndexSync(currentVault);
   const handleSearchIndexReady = searchIndex.handleSearchIndexReady;
 
@@ -275,138 +276,18 @@ function App({
     setVaultRefresh((key) => key + 1);
   }
 
-  /**
-   * Cambios hechos fuera de la app (REQ-13): el backend vigila el vault y avisa
-   * con las rutas tocadas, ya sin el ruido ni las escrituras propias.
-   */
-  const handleVaultChangedEvent = useEffectEvent(async (paths: string[]) => {
-    setVaultRefresh((key) => key + 1);
-
-    const open = notePathRef.current;
-    if (!open || !note || !paths.includes(open)) return;
-
-    let disk: string;
-    try {
-      disk = await invoke<string>("read_vault_file", { path: open });
-    } catch {
-      return; // borrada o ilegible: el explorador ya lo refleja
-    }
-    if (notePathRef.current !== open) return;
-
-    const action = externalAction(disk, note.content, editorRef.current?.isDirty() ?? false);
-    if (action === "ignore") return;
-
-    if (externalNoticeTimerRef.current !== null) window.clearTimeout(externalNoticeTimerRef.current);
-    if (action === "reload") {
-      handleSelectNote({ id: open, name: baseName(open), kind: "note" });
-      setExternalNotice({ path: open, kind: "reloaded" });
-      externalNoticeTimerRef.current = window.setTimeout(() => setExternalNotice(null), 6000);
-    } else {
-      setExternalNotice({ path: open, kind: "conflict" });
-    }
-  });
-
-  useEffect(() => {
-    if (bootStatus !== "ready" || currentVault === null) return;
-
-    const unlisten = listen<string[]>("vault-changed", (event) => {
-      void handleVaultChangedEvent(event.payload);
-    });
-    invoke("watch_vault", { path: currentVault }).catch(() => {
-      // Sin vigilancia la app funciona igual; solo no se enteraría de cambios externos.
-    });
-
-    return () => {
-      void unlisten.then((off) => off());
-      void invoke("unwatch_vault").catch(() => {});
-    };
-  }, [bootStatus, currentVault]);
-
-  /**
-   * Atajos globales de la ventana. Los lee de los ajustes, así que cambiarlos
-   * en Ajustes → Atajos los cambia aquí también. El editor tiene los suyos
-   * (Ctrl+S, deshacer…), que se atienden antes porque viven en el textarea.
-   */
-  // `handleSettingsChange` se recrea en cada render: llamarlo desde este
-  // efecto con useEffectEvent evita meterlo en las deps (re-registraría el
-  // listener en cada render) y siempre ejecuta la última versión.
-  const onSettingsChangeEvent = useEffectEvent(handleSettingsChange);
-  // La nota del día usa los últimos ajustes (carpeta/plantilla) sin volver a
-  // registrar el listener de teclado en cada render.
-  const openDailyNoteEvent = useEffectEvent(openDailyNote);
-
-  useEffect(() => {
-    function handleGlobalKey(event: KeyboardEvent) {
-      const id = globalShortcutFor(event, settings.shortcuts);
-      if (!id) return;
-
-      switch (id) {
-        case "zoomIn":
-        case "zoomOut":
-        case "zoomReset": {
-          // El «+» y el «−» del teclado numérico llegan como código, no como tecla.
-          const factor = id === "zoomIn" ? 10 : id === "zoomOut" ? -10 : 0;
-          const zoom =
-            factor === 0
-              ? 100
-              : Math.min(200, Math.max(50, settings.uiZoom + factor));
-          event.preventDefault();
-          if (zoom !== settings.uiZoom) onSettingsChangeEvent({ ...settings, uiZoom: zoom });
-          return;
-        }
-        case "newTask":
-          if (!currentVault) return;
-          event.preventDefault();
-          openNewTask();
-          return;
-        case "openDailyNote":
-          if (!currentVault) return;
-          event.preventDefault();
-          void openDailyNoteEvent();
-          return;
-        case "focusSearch":
-          // «Buscar nota» de la pantalla de bienvenida, con atajo propio.
-          event.preventDefault();
-          setActiveTab("notes");
-          setPaletteOpen(true);
-          return;
-        case "togglePanel":
-          // Muestra u oculta el contenido de la derecha, como un visor de lado.
-          event.preventDefault();
-          setRightHidden((hidden) => !hidden);
-          return;
-        case "commandPalette":
-          if (!currentVault) return;
-          event.preventDefault();
-          setPaletteOpen((open) => !open);
-          return;
-        default:
-      }
-    }
-
-    window.addEventListener("keydown", handleGlobalKey);
-    return () => window.removeEventListener("keydown", handleGlobalKey);
-  }, [settings, currentVault]);
-
-  // Menú nativo (macOS): sus etiquetas siguen el idioma de la app y cada
-  // entrada propia llega aquí como `menu-action`. Fuera de macOS no hace nada.
-  useEffect(() => {
-    invoke("set_app_menu", { lang: language }).catch(() => {});
-  }, [language]);
-
-  const onMenuAction = useEffectEvent((id: string) => {
-    if (!currentVault) return;
-    if (id === "new-task") openNewTask();
-    else if (id === "search") {
+  useGlobalShortcuts(settings, currentVault, language, {
+    changeSettings: handleSettingsChange,
+    openNewTask,
+    openDailyNote: () => openDailyNote(),
+    openPalette: () => {
       setActiveTab("notes");
       setPaletteOpen(true);
-    } else if (id.startsWith("tab-")) setActiveTab(id.slice(4) as TabId);
+    },
+    togglePalette: () => setPaletteOpen((open) => !open),
+    togglePanel: () => setRightHidden((hidden) => !hidden),
+    selectTab: setActiveTab,
   });
-
-  useEffect(() => {
-    const unlisten = listen<string>("menu-action", (event) => onMenuAction(event.payload));
-    return () => void unlisten.then((off) => off());
-  }, []);
 
   /**
    * «Exportar a PDF» desde el explorador: se abre la nota (si no lo estaba) y
