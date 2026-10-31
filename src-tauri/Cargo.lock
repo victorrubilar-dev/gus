@@ -1733,7 +1733,7 @@ dependencies = [
 
 [[package]]
 name = "gus"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "image",
  "notify-debouncer-mini",
