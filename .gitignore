@@ -24,7 +24,7 @@ dist-ssr
 *.sw?
 
 #Archivos tasks fix app and new features
-task/
+#task/
 # Capturas generadas por los benchmarks
 /capturas/
 /medida-*.png
