@@ -41,7 +41,12 @@ const biblioteca: { shelves: string[]; assign: Record<string, string> } = { shel
  * de `bench/capturas.mjs`. Sin ella el smoke test parte de un vault casi vacío.
  */
 if (location.search.includes("semilla")) {
-  const dia = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
+  // Fecha local, como la usa la app: con UTC las capturas cambiaban según la hora del día.
+  const dia = (n: number) => {
+    const fecha = new Date();
+    fecha.setDate(fecha.getDate() + n);
+    return `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, "0")}-${String(fecha.getDate()).padStart(2, "0")}`;
+  };
   archivos.set(
     "/vault/bienvenida.md",
     "# Bienvenida\n\nEste vault guarda **notas** y *tareas* personales. Ver [[proyecto-gus]] y [[lecturas]].\n\n## Para empezar\n\n- Crear una nota con `Ctrl+N`\n- Buscar con `Ctrl+K`\n- [ ] Revisar el plan semanal #planes\n- [x] Leer el manual\n\n> Una cita larga para ver cómo se parte el texto cuando la línea no cabe en el ancho disponible del editor.\n\n| Vista | Atajo |\n| --- | --- |\n| Notas | Ctrl+1 |\n| Tareas | Ctrl+2 |\n\n```ts\nconst gus = { local: true, nube: false };\n```\n",
