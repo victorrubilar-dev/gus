@@ -82,6 +82,19 @@ type Gesture =
   /** Texto o post-it: el editor se abre al soltar, porque al pulsar el navegador aún está moviendo el foco. */
   | { kind: "place"; el: Extract<BoardElement, { type: "text" | "note" }> };
 
+/**
+ * Punto del lienzo, en píxeles locales del SVG, bajo un evento. La interfaz se
+ * escala con `zoom` en `<html>`: eventos y rects llegan en px de pantalla y el
+ * SVG vive en px locales. La razón se mide (rect / ancho de layout) en vez de
+ * suponerla, así vale en cualquier motor.
+ */
+function localPoint(svg: SVGSVGElement, clientX: number, clientY: number): Point {
+  const rect = svg.getBoundingClientRect();
+  const layoutWidth = svg.parentElement?.offsetWidth ?? 0;
+  const ratio = layoutWidth > 0 && rect.width > 0 ? rect.width / layoutWidth : 1;
+  return [(clientX - rect.left) / ratio, (clientY - rect.top) / ratio];
+}
+
 function arrowHead(el: { x1: number; y1: number; x2: number; y2: number }): string {
   const angle = Math.atan2(el.y2 - el.y1, el.x2 - el.x1);
   const size = 14;
@@ -304,8 +317,10 @@ export default function BoardEditor({ vaultPath, boardId, onBack }: BoardEditorP
         probe.src = href;
       });
       const fit = Math.min(1, MAX_IMAGE_SIDE / Math.max(size.w, size.h));
-      const rect = svgRef.current?.getBoundingClientRect();
-      const [cx, cy] = toWorld(view, (rect?.width ?? 0) / 2, (rect?.height ?? 0) / 2);
+      const svg = svgRef.current;
+      const [cx, cy] = svg
+        ? toWorld(view, svg.parentElement!.offsetWidth / 2, svg.parentElement!.offsetHeight / 2)
+        : [0, 0];
       const el: BoardElement = {
         type: "image",
         id: createTaskId(),
@@ -327,8 +342,8 @@ export default function BoardEditor({ vaultPath, boardId, onBack }: BoardEditorP
   /* ----------------------------- gestos ----------------------------- */
 
   function pointOf(event: { clientX: number; clientY: number }): { screen: Point; world: Point } {
-    const rect = svgRef.current?.getBoundingClientRect();
-    const screen: Point = [event.clientX - (rect?.left ?? 0), event.clientY - (rect?.top ?? 0)];
+    const svg = svgRef.current;
+    const screen: Point = svg ? localPoint(svg, event.clientX, event.clientY) : [0, 0];
     return { screen, world: toWorld(view, screen[0], screen[1]) };
   }
 
@@ -475,8 +490,8 @@ export default function BoardEditor({ vaultPath, boardId, onBack }: BoardEditorP
     if (!svg) return;
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
-      const rect = svg.getBoundingClientRect();
-      setView((current) => zoomAt(current, event.deltaY < 0 ? 1.1 : 1 / 1.1, event.clientX - rect.left, event.clientY - rect.top));
+      const [sx, sy] = localPoint(svg, event.clientX, event.clientY);
+      setView((current) => zoomAt(current, event.deltaY < 0 ? 1.1 : 1 / 1.1, sx, sy));
     };
     svg.addEventListener("wheel", onWheel, { passive: false });
     return () => svg.removeEventListener("wheel", onWheel);
@@ -632,7 +647,8 @@ export default function BoardEditor({ vaultPath, boardId, onBack }: BoardEditorP
       {error && <p className="break-words border-b border-rose-400/30 bg-rose-400/5 px-3 py-2 text-body text-rose-300">{error}</p>}
 
       <div
-        className="relative min-h-0 flex-1 overflow-hidden bg-gus-bg"
+        className="gus-board relative min-h-0 flex-1 overflow-hidden bg-gus-bg select-none"
+        onDragStart={(event) => event.preventDefault()}
         style={{
           backgroundImage: "radial-gradient(var(--color-gus-border) 1px, transparent 1px)",
           backgroundSize: `${24 * view.scale}px ${24 * view.scale}px`,
@@ -647,7 +663,7 @@ export default function BoardEditor({ vaultPath, boardId, onBack }: BoardEditorP
             role="img"
             aria-label={name}
             className={clsx(
-              "h-full w-full touch-none",
+              "h-full w-full touch-none outline-none",
               tool === "hand" || spaceHeld ? "cursor-grab" : tool === "select" ? "cursor-default" : "cursor-crosshair",
             )}
             onPointerDown={onPointerDown}

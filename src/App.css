@@ -526,6 +526,18 @@ body {
   color: var(--color-gus-text);
 }
 
+/* Pizarra: arrastrar sobre texto o post-it no debe pintar la selección nativa
+   del motor (azul en WebKit). El cuadro de edición sí conserva la suya. */
+.gus-board,
+.gus-board svg * {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.gus-board svg *::selection {
+  background: transparent;
+}
+
 /* Fantasma: controles de navegación sin contorno (ruta del explorador, zoom
    del grafo). Solo cambian al pasar el puntero; no compiten con el contenido. */
 .gus-btn-ghost {

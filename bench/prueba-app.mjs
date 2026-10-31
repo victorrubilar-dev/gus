@@ -156,6 +156,31 @@ await page.waitForFunction(
 );
 ok(true, "deshacer quita el último elemento de la pizarra");
 
+// Con el zoom de interfaz activo, lo dibujado debe quedar bajo el cursor (no desplazado).
+for (const zoom of [1.5, 0.8]) {
+  await page.evaluate((z) => {
+    document.documentElement.style.zoom = String(z);
+    document.documentElement.style.setProperty("--gus-zoom", String(z));
+  }, zoom);
+  const area = await lienzo.boundingBox();
+  const [x1, y1, x2, y2] = [area.x + 120, area.y + 100, area.x + 300, area.y + 200];
+  await page.getByRole("button", { name: "Elipse", exact: true }).click();
+  await page.mouse.move(x1, y1);
+  await page.mouse.down();
+  await page.mouse.move(x2, y2, { steps: 5 });
+  await page.mouse.up();
+  const dibujado = await page.evaluate(() => {
+    const el = [...document.querySelectorAll("svg[aria-label] ellipse")].pop().getBoundingClientRect();
+    return [el.left, el.top, el.right, el.bottom];
+  });
+  const cerca = [x1, y1, x2, y2].every((v, i) => Math.abs(v - dibujado[i]) < 4);
+  ok(cerca, `con zoom de interfaz ${zoom * 100}% la elipse queda bajo el cursor`);
+}
+await page.evaluate(() => {
+  document.documentElement.style.zoom = "1";
+  document.documentElement.style.setProperty("--gus-zoom", "1");
+});
+
 // Hábitos: crear uno y marcar hoy.
 await page.getByRole("button", { name: "Hábitos", exact: true }).first().click();
 await page.getByRole("button", { name: "Nuevo hábito" }).click();
