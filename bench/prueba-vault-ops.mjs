@@ -64,6 +64,15 @@ await page.getByRole("menuitem", { name: /diario/ }).click();
 await espera();
 comprobar((await archivos()).includes("/vault/diario/proyecto-gus.md"), "mover proyecto-gus.md a diario/");
 
+console.log("\n--- arrastrar una fila sobre una carpeta ---");
+await page.locator('[data-tour="sidebar"]').getByRole("button", { name: "Resumen", exact: true }).first().click();
+await page.waitForTimeout(400);
+await page.locator('[data-tour="sidebar"]').getByRole("button", { name: "Notas", exact: true }).first().click();
+await page.waitForTimeout(600);
+await fila("/vault/libros.md").locator("div[draggable='true']").dragTo(fila("/vault/diario"));
+await espera();
+comprobar((await archivos()).includes("/vault/diario/libros.md"), "arrastrar libros.md sobre «diario» lo mueve allí");
+
 console.log("\n--- borrar ---");
 await fila("/vault/bienvenida.md").click({ button: "right" });
 await page.getByRole("menuitem", { name: "Eliminar…" }).click();

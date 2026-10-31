@@ -4,9 +4,9 @@ import {
   useImperativeHandle,
   useRef,
   useState,
-  type DragEvent as ReactDragEvent,
   type MouseEvent as ReactMouseEvent,
 } from "react";
+import { useExplorerDrag } from "./useExplorerDrag";
 import ExplorerHeader, { ExplorerNotices } from "./ExplorerHeader";
 import ExplorerTrail from "./ExplorerTrail";
 import { useConfirmKeys } from "./useConfirmKeys";
@@ -99,16 +99,7 @@ interface VaultDir {
   relative: string;
 }
 
-export interface DragEntry {
-  kind: "file" | "folder";
-  path: string;
-}
-
-/**
- * MIME con el que el explorador arrastra sus filas. El editor lo reconoce al
- * soltar: una imagen enlaza en la nota en vez de moverse de carpeta.
- */
-export const DRAG_ENTRY_MIME = "application/x-gus-explorer-entry";
+export { DRAG_ENTRY_MIME, type DragEntry } from "./useExplorerDrag";
 
 const MENU_WIDTH = 208;
 const MENU_MAX_HEIGHT = 280;
@@ -214,9 +205,9 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [movingId, setMovingId] = useState<string | null>(null);
   const [destinations, setDestinations] = useState<FolderEntry[] | null>(null);
-  const [dragEntry, setDragEntry] = useState<DragEntry | null>(null);
-  const [dragOverPath, setDragOverPath] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+
+  const busy = busyId !== null;
 
   /** Handler más reciente de Supr: el listener de window se engancha una sola vez. */
   const deleteKeyRef = useRef<(event: KeyboardEvent) => void>(() => {});
@@ -291,78 +282,15 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
     setDestinations(null);
   }
 
-  function startDrag(event: ReactDragEvent<HTMLElement>, entry: DragEntry) {
-    if (busy) {
-      event.preventDefault();
-      return;
-    }
-
-    event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData(DRAG_ENTRY_MIME, JSON.stringify(entry));
-    event.dataTransfer.setData("text/plain", entry.path);
-    setDragEntry(entry);
-  }
-
-  function readDragEntry(event: ReactDragEvent<HTMLElement>): DragEntry | null {
-    try {
-      const raw = event.dataTransfer.getData(DRAG_ENTRY_MIME);
-      const parsed: unknown = JSON.parse(raw);
-      if (
-        parsed &&
-        typeof parsed === "object" &&
-        "kind" in parsed &&
-        "path" in parsed &&
-        (parsed.kind === "file" || parsed.kind === "folder") &&
-        typeof parsed.path === "string"
-      ) {
-        return { kind: parsed.kind, path: parsed.path };
-      }
-    } catch {
-    }
-
-    return dragEntry;
-  }
-
-  function canDropOnFolder(entry: DragEntry, folder: FolderEntry): boolean {
-    if (busy || renamingId === folder.path || entry.path === folder.path) return false;
-    if (entry.kind === "folder" && isInsidePath(folder.path, entry.path)) return false;
-    if (parentPath(entry.path) === folder.path) return false;
-    return true;
-  }
-
-  function dragOverFolder(event: ReactDragEvent<HTMLElement>, folder: FolderEntry) {
-    const entry = readDragEntry(event);
-    if (!entry || !canDropOnFolder(entry, folder)) return;
-
-    event.preventDefault();
-    event.stopPropagation();
-    event.dataTransfer.dropEffect = "move";
-    setDragOverPath(folder.path);
-  }
-
-  function dropOnFolder(event: ReactDragEvent<HTMLElement>, folder: FolderEntry) {
-    const entry = readDragEntry(event);
-    setDragOverPath(null);
-    setDragEntry(null);
-    if (!entry || !canDropOnFolder(entry, folder)) return;
-
-    event.preventDefault();
-    event.stopPropagation();
-
-    if (entry.kind === "file") {
-      const file = items.find((item) => item.id === entry.path);
-      if (file) void moveFile(file, folder);
-      return;
-    }
-
-    const sourceFolder = folders.find((item) => item.path === entry.path);
-    if (sourceFolder) void moveFolder(sourceFolder, folder);
-  }
-
-  function clearDrag() {
-    setDragEntry(null);
-    setDragOverPath(null);
-  }
+  const { dragEntry, dragOverPath, setDragOverPath, startDrag, dragOverFolder, dropOnFolder, clearDrag } =
+    useExplorerDrag({
+      busy,
+      renamingId,
+      items,
+      folders,
+      onMoveFile: (file, dest) => void moveFile(file, dest),
+      onMoveFolder: (folder, dest) => void moveFolder(folder, dest),
+    });
 
   function startRename(id: string) {
     setMenu(null);
@@ -869,7 +797,6 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
     }
   }
 
-  const busy = busyId !== null;
 
   const menuFolder = menu?.kind === "folder" ? folders.find((f) => f.path === menu.id) : undefined;
   const menuFile = menu?.kind === "file" ? items.find((f) => f.id === menu.id) : undefined;
