@@ -51,6 +51,16 @@ import {
   relativeFolderLabel,
   summarizeImport,
 } from "../lib/importFiles";
+import {
+  goBack as trailGoBack,
+  goForward as trailGoForward,
+  goUp as trailGoUp,
+  navigateTo as trailNavigateTo,
+  rewriteTrail as trailRewrite,
+  splitTrail,
+  type FolderEntry,
+  type TrailState,
+} from "../lib/explorerTrail";
 
 export interface NoteFile {
   id: string;
@@ -99,27 +109,6 @@ interface VaultDir {
   relative: string;
 }
 
-interface FolderEntry {
-  name: string;
-  path: string;
-}
-
-/** Ruta actual más el historial que alimenta los botones «atrás»/«adelante». */
-interface TrailState {
-  /** Carpetas desde la raíz hasta la que estás viendo. */
-  trail: FolderEntry[];
-  /** Pasos anteriores (pila de «atrás»), el último es el inmediatamente previo. */
-  past: FolderEntry[][];
-  /** Pasos deshechos al retroceder (pila de «adelante»). */
-  future: FolderEntry[][];
-}
-
-/** Un tramo de la ruta con su posición real, para cortarla ahí donde se pulsa. */
-interface TrailPart {
-  folder: FolderEntry;
-  index: number;
-}
-
 interface MenuState {
   /** `""` cuando el menú es el de la lista (no apunta a ninguna entrada). */
   id: string;
@@ -143,9 +132,6 @@ const MENU_WIDTH = 208;
 const MENU_MAX_HEIGHT = 280;
 /** Altura real del menú de la lista: solo 4 filas, sin reservar como el de fila. */
 const PANEL_MENU_HEIGHT = 120;
-
-/** Pasos de historial que se conservan para «atrás»/«adelante». */
-const TRAIL_HISTORY_LIMIT = 50;
 
 const TRAIL_BUTTON_CLASS =
   "gus-btn gus-btn-ghost shrink-0 focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-30";
@@ -187,41 +173,6 @@ function TrailSeparator() {
       ›
     </span>
   );
-}
-
-/**
- * Reparte la ruta en tramos visibles y ocultos (el «…»), de más a menos detalle:
- * todo → raíz, penúltimo y actual → raíz y actual → penúltimo y actual → solo la
- * actual. `level` decide cuánto se colapsa y lo sube la medición del ancho real de
- * la barra, así la ruta siempre cabe en una línea pase lo que pase con el ancho.
- */
-function splitTrail(trail: FolderEntry[], level: number): {
-  visible: TrailPart[];
-  hidden: TrailPart[];
-  maxLevel: number;
-} {
-  const parts = trail.map((folder, index) => ({ folder, index }));
-  const last = parts.length - 1;
-
-  if (parts.length < 2) return { visible: parts, hidden: [], maxLevel: 0 };
-
-  const combos: number[][] = [
-    parts.map((part) => part.index),
-    ...(parts.length >= 3 ? [[0, last - 1, last]] : []),
-    [0, last],
-    ...(parts.length >= 3 ? [[last - 1, last]] : []),
-    [last],
-  ];
-  // Sin repetidos: con pocas carpetas varias opciones coinciden y solo harían parpadear la barra.
-  const distinct = combos.filter(
-    (combo, index, all) => all.findIndex((other) => other.join(",") === combo.join(",")) === index,
-  );
-
-  const chosen = distinct[Math.min(level, distinct.length - 1)];
-  const visible = chosen.map((index) => parts[index]);
-  const hidden = parts.filter((part) => !chosen.includes(part.index));
-
-  return { visible, hidden, maxLevel: distinct.length - 1 };
 }
 
 function createId(): string {
@@ -705,74 +656,30 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
   /** Cambia de carpeta guardando el paso anterior: habilita «atrás» y limpia «adelante». */
   function navigateTo(next: FolderEntry[]) {
     setTrailMenuOpen(false);
-    setNav((prev) => {
-      const unchanged =
-        prev.trail.length === next.length &&
-        prev.trail.every((step, index) => step.path === next[index].path);
-      if (unchanged) return prev;
-
-      return {
-        trail: next,
-        past: [...prev.past, prev.trail].slice(-TRAIL_HISTORY_LIMIT),
-        future: [],
-      };
-    });
+    setNav((prev) => trailNavigateTo(prev, next));
   }
 
   /** Un paso atrás en el historial (Alt+←). */
   function goBack() {
     setTrailMenuOpen(false);
-    setNav((prev) => {
-      const previous = prev.past[prev.past.length - 1];
-      if (!previous) return prev;
-
-      return {
-        trail: previous,
-        past: prev.past.slice(0, -1),
-        future: [...prev.future, prev.trail].slice(-TRAIL_HISTORY_LIMIT),
-      };
-    });
+    setNav(trailGoBack);
   }
 
   /** Un paso adelante, lo que se deshizo al retroceder (Alt+→). */
   function goForward() {
     setTrailMenuOpen(false);
-    setNav((prev) => {
-      const next = prev.future[prev.future.length - 1];
-      if (!next) return prev;
-
-      return {
-        trail: next,
-        past: [...prev.past, prev.trail].slice(-TRAIL_HISTORY_LIMIT),
-        future: prev.future.slice(0, -1),
-      };
-    });
+    setNav(trailGoForward);
   }
 
   /** Sube a la carpeta padre (Alt+↑). */
   function goUp() {
     setTrailMenuOpen(false);
-    setNav((prev) => {
-      if (prev.trail.length < 2) return prev;
-
-      return {
-        trail: prev.trail.slice(0, -1),
-        past: [...prev.past, prev.trail].slice(-TRAIL_HISTORY_LIMIT),
-        future: [],
-      };
-    });
+    setNav(trailGoUp);
   }
 
-  /**
-   * Reescribe la ruta tras renombrar o mover carpetas. No crea un paso de historial,
-   * pero sí corrige los guardados, para que «atrás» no apunte a rutas ya inexistentes.
-   */
+  /** Reescribe la ruta tras renombrar o mover carpetas (sin crear paso de historial). */
   function rewriteTrail(mapTrail: (trail: FolderEntry[]) => FolderEntry[]) {
-    setNav((prev) => ({
-      trail: mapTrail(prev.trail),
-      past: prev.past.map(mapTrail),
-      future: prev.future.map(mapTrail),
-    }));
+    setNav((prev) => trailRewrite(prev, mapTrail));
   }
 
   /**
