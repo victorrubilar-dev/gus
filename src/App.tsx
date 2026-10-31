@@ -25,23 +25,21 @@ import NewTaskDialog from "./components/NewTaskDialog";
 import DashboardView from "./components/DashboardView";
 import FileExplorer, { type FileExplorerHandle, type NoteFile } from "./components/FileExplorer";
 import MarkdownEditor, {
-  type EditorDraft,
   type MarkdownEditorHandle,
 } from "./components/MarkdownEditor";
 import SettingsPanel from "./components/SettingsPanel";
 import DailyNoteBar from "./components/DailyNoteBar";
 import HabitsView from "./components/HabitsView";
 import BoardsView from "./components/BoardsView";
-import NoteTabs, { type NoteTab } from "./components/NoteTabs";
+import NoteTabs from "./components/NoteTabs";
 import TaskList from "./components/TaskList";
 import TrashView from "./components/TrashView";
 import VaultPicker from "./components/VaultPicker";
 import WelcomePanel from "./components/WelcomePanel";
-import { baseName, isInsidePath, joinPath } from "./lib/fileName";
+import { baseName, joinPath } from "./lib/fileName";
 import { dailyNoteDateFor, dailyRelativePath, renderDailyTemplate } from "./lib/dailyNotes";
 import { relativeFolderLabel } from "./lib/importFiles";
 import { findWikiNote, wikiTargetToPath, type WikiNote } from "./lib/wikiLink";
-import { relativeNotePath } from "./lib/searchIndex";
 import { accentHex, DEFAULT_SETTINGS, type AppSettings } from "./lib/settings";
 import { themeDefinition, type ThemeScheme } from "./lib/themes";
 import { APP_VERSION } from "./lib/version";
@@ -56,9 +54,11 @@ import {
 } from "./lib/i18n";
 import { toLocalCoord } from "./lib/uiZoom";
 import { useFileDrop } from "./components/useFileDrop";
-import ImagePane, { type OpenImage } from "./components/ImagePane";
-import PdfPane, { type OpenPdf } from "./components/PdfPane";
+import ImagePane from "./components/ImagePane";
+import PdfPane from "./components/PdfPane";
 import ExternalNoticeBar from "./components/ExternalNoticeBar";
+import { useOpenEntries } from "./components/useOpenEntries";
+import { useSearchIndexSync } from "./components/useSearchIndexSync";
 import { useVaults } from "./components/useVaults";
 import { useAppearance } from "./components/useAppearance";
 import { useLinkGraph } from "./components/useLinkGraph";
@@ -71,13 +71,6 @@ import UpdateNotice from "./components/UpdateNotice";
 import gusIcon from "./assets/gus-icon-512.png";
 import "./App.css";
 
-type NoteStatus = "idle" | "loading" | "ready" | "error";
-
-interface OpenNote {
-  path: string;
-  title: string;
-  content: string;
-}
 
 
 
@@ -113,10 +106,6 @@ function clampExplorerWidth(width: number): number {
   // De sitio para el editor (y el menú, en su ancho máximo) siempre queda.
   const hardMax = Math.max(EXPLORER_MIN_WIDTH, toLocalCoord(window.innerWidth) - 700);
   return Math.max(EXPLORER_MIN_WIDTH, Math.round(Math.min(width, hardMax)));
-}
-
-function titleFromFileName(name: string): string {
-  return name.replace(/\.md$/i, "");
 }
 
 // Visor de PDF: carga pdf.js solo cuando se abre el primer documento.
@@ -161,23 +150,12 @@ function App({
     setNewTaskSeq((value) => value + 1);
     setNewTaskOpen(true);
   };
-  const [note, setNote] = useState<OpenNote | null>(null);
-  /** Notas abiertas, en el orden en que se abrieron; la visible es `note`. */
-  const [tabs, setTabs] = useState<NoteTab[]>([]);
-  const [noteStatus, setNoteStatus] = useState<NoteStatus>("idle");
-  const [noteError, setNoteError] = useState<string | null>(null);
   /**
    * Mientras se abre o se crea la nota de un día, los botones de día esperan
    * (el ref corta el segundo clic en el mismo instante, antes de que React pinte).
    */
   const [dailyBusy, setDailyBusy] = useState(false);
   const dailyBusyRef = useRef(false);
-  /** Nota que debe abrir el diálogo de exportación a PDF en cuanto cargue. */
-  const [pendingExport, setPendingExport] = useState<string | null>(null);
-  const [image, setImage] = useState<OpenImage | null>(null);
-  const [imageStatus, setImageStatus] = useState<NoteStatus>("idle");
-  const [pdf, setPdf] = useState<OpenPdf | null>(null);
-  const [pdfStatus, setPdfStatus] = useState<NoteStatus>("idle");
   const [vaultRefresh, setVaultRefresh] = useState(0);
   /** Aviso de que la nota abierta cambió fuera de la app (REQ-13). */
   const [externalNotice, setExternalNotice] = useState<{
@@ -187,12 +165,6 @@ function App({
   const externalNoticeTimerRef = useRef<number | null>(null);
   const [linkError, setLinkError] = useState<string | null>(null);
   const linkErrorTimerRef = useRef<number | null>(null);
-  /**
-   * El índice de búsqueda existe ya en el vault: solo entonces merece la pena
-   * mantenerlo al guardar. Si nadie ha buscado nunca, no se crea el archivo.
-   */
-  const searchIndexTimerRef = useRef<number | null>(null);
-  const searchIndexReadyRef = useRef(false);
   const sidebar = useSidebarWidth();
   const sidebarWidth = sidebar.width;
   const explorer = usePanelWidth({
@@ -205,6 +177,35 @@ function App({
   const explorerWidth = explorer.width;
 
 
+  const editorRef = useRef<MarkdownEditorHandle>(null);
+  /** Para que el panel de bienvenida cree notas igual que el «+» del explorador. */
+  const explorerRef = useRef<FileExplorerHandle>(null);
+
+  const {
+    note,
+    tabs,
+    noteStatus,
+    noteError,
+    pendingExport,
+    setPendingExport,
+    image,
+    imageStatus,
+    pdf,
+    pdfStatus,
+    notePathRef,
+    handleSelectNote,
+    handleSelectTab,
+    handleCloseTab,
+    handleAutoSave,
+    handleFileDeleted,
+    handleBeforeFileAction,
+    closeOpenNote,
+    failImage,
+  } = useOpenEntries({
+    editorRef,
+    onFilesChanged: () => setVaultRefresh((key) => key + 1),
+    onNoteSaved: (draft) => searchIndex.indexSavedNote(draft),
+  });
   const {
     bootStatus,
     vaultConfig,
@@ -222,17 +223,15 @@ function App({
     handleSelectBaseDir,
   } = useVaults({ onVaultSwitch: closeOpenNote });
 
+  const searchIndex = useSearchIndexSync(currentVault);
+  const handleSearchIndexReady = searchIndex.handleSearchIndexReady;
+
   /** Recorrido guiado: se abre solo al primer vault y también desde Ajustes. */
   const [tourOpen, setTourOpen] = useState(false);
   const { updateState, updateNotice, selfUpdate, checkNow, retryDownload, restartAndInstall, dismissNotice } =
     useAppUpdates(bootStatus === "ready");
 
   const settings = vaultConfig?.settings ?? DEFAULT_SETTINGS;
-
-  const notePathRef = useRef<string | null>(null);
-  const editorRef = useRef<MarkdownEditorHandle>(null);
-  /** Para que el panel de bienvenida cree notas igual que el «+» del explorador. */
-  const explorerRef = useRef<FileExplorerHandle>(null);
 
   const { importNotice, droppingFiles, dropFolder, dropOnNote } = useFileDrop({
     currentVault,
@@ -247,10 +246,6 @@ function App({
     vaultRefresh,
     note?.path,
   );
-  /** Solo la última petición de imagen puede escribir en el estado. */
-  const imageRequestRef = useRef(0);
-  /** Solo la última petición de PDF puede escribir en el estado. */
-  const pdfRequestRef = useRef(0);
 
   /**
    * El recorrido guiado queda pendiente en la primera bienvenida (entonces
@@ -413,81 +408,10 @@ function App({
     return () => void unlisten.then((off) => off());
   }, []);
 
-  function handleSelectNote(file: NoteFile) {
-    if (file.kind === "image") {
-      handleSelectImage(file);
-      return;
-    }
-    if (file.kind === "pdf") {
-      handleSelectPdf(file);
-      return;
-    }
-
-    imageRequestRef.current += 1;
-    setImage(null);
-    setImageStatus("idle");
-    pdfRequestRef.current += 1;
-    setPdf(null);
-    setPdfStatus("idle");
-
-    setNoteStatus("loading");
-    setNoteError(null);
-
-    invoke<string>("read_vault_file", { path: file.id })
-      .then((content) => {
-        notePathRef.current = file.id;
-        const title = titleFromFileName(file.name);
-        setNote({ path: file.id, title, content });
-        setTabs((open) => (open.some((tab) => tab.path === file.id) ? open : [...open, { path: file.id, title }]));
-        setNoteStatus("ready");
-      })
-      .catch((error: unknown) => {
-        setTabs((open) => open.filter((tab) => tab.path !== file.id));
-        notePathRef.current = null;
-        setNote(null);
-        setNoteError(String(error));
-        setNoteStatus("error");
-        setPendingExport(null);
-      });
-  }
-
   /**
    * «Exportar a PDF» desde el explorador: se abre la nota (si no lo estaba) y
    * el editor muestra el diálogo con la vista previa ya montada.
    */
-  /** Cambia de pestaña guardando antes lo que haya sin guardar en la nota actual. */
-  async function handleSelectTab(tab: NoteTab) {
-    if (tab.path === note?.path) return;
-    try {
-      if (notePathRef.current) await handleBeforeFileAction(notePathRef.current);
-    } catch (error: unknown) {
-      setNoteError(String(error));
-      return;
-    }
-    handleSelectNote({ id: tab.path, name: baseName(tab.path), kind: "note" });
-  }
-
-  async function handleCloseTab(tab: NoteTab) {
-    if (tab.path !== note?.path) {
-      setTabs((open) => open.filter((other) => other.path !== tab.path));
-      return;
-    }
-    try {
-      await handleBeforeFileAction(tab.path);
-    } catch (error: unknown) {
-      setNoteError(String(error));
-      return;
-    }
-    const index = tabs.findIndex((other) => other.path === tab.path);
-    const next = tabs[index + 1] ?? tabs[index - 1];
-    if (!next) {
-      closeOpenNote();
-      return;
-    }
-    setTabs((open) => open.filter((other) => other.path !== tab.path));
-    handleSelectNote({ id: next.path, name: baseName(next.path), kind: "note" });
-  }
-
   function handleExportPdf(file: NoteFile) {
     // Nota ya abierta: el evento va directo al editor montado. En otro caso la
     // petición viaja como prop y el editor la consume al montarse.
@@ -503,150 +427,6 @@ function App({
     setPaletteOpen(false);
     setActiveTab("notes");
     handleSelectNote({ id: file.path, name: file.name, kind: "note" });
-  }
-
-  function handleSelectImage(file: NoteFile) {
-    const token = ++imageRequestRef.current;
-    pdfRequestRef.current += 1;
-    setPdf(null);
-    setPdfStatus("idle");
-    notePathRef.current = null;
-    setNote(null);
-    setNoteStatus("idle");
-    setNoteError(null);
-
-    setImage({ path: file.id, title: file.name, src: null });
-    setImageStatus("loading");
-
-    invoke<string>("read_vault_image", { path: file.id })
-      .then((src) => {
-        if (token !== imageRequestRef.current) return;
-        setImage({ path: file.id, title: file.name, src });
-        setImageStatus("ready");
-      })
-      .catch((error: unknown) => {
-        if (token !== imageRequestRef.current) return;
-        setImage({ path: file.id, title: file.name, src: null, error: String(error) });
-        setImageStatus("error");
-      });
-  }
-
-  function handleSelectPdf(file: NoteFile) {
-    const token = ++pdfRequestRef.current;
-    imageRequestRef.current += 1;
-    setImage(null);
-    setImageStatus("idle");
-    notePathRef.current = null;
-    setNote(null);
-    setNoteStatus("idle");
-    setNoteError(null);
-
-    setPdf({ path: file.id, title: file.name, src: null });
-    setPdfStatus("loading");
-
-    invoke<string>("read_vault_pdf", { path: file.id })
-      .then((src) => {
-        if (token !== pdfRequestRef.current) return;
-        setPdf({ path: file.id, title: file.name, src });
-        setPdfStatus("ready");
-      })
-      .catch((error: unknown) => {
-        if (token !== pdfRequestRef.current) return;
-        setPdf({ path: file.id, title: file.name, src: null, error: String(error) });
-        setPdfStatus("error");
-      });
-  }
-
-  function handleAutoSave(draft: EditorDraft) {
-    if (notePathRef.current && notePathRef.current !== draft.path) {
-      const previous = notePathRef.current;
-      setTabs((open) => open.map((tab) => (tab.path === previous ? { path: draft.path, title: draft.title } : tab)));
-      setVaultRefresh((key) => key + 1);
-    }
-    notePathRef.current = draft.path;
-    setNote((prev) => (prev ? { ...prev, ...draft } : prev));
-
-    // El índice se toca solo si ya existe: así buscar sigue reflejando lo que
-    // se escribe sin crear `.gus-index` en vaults donde nadie ha buscado.
-    if (!searchIndexReadyRef.current || !currentVault) return;
-
-    const vault = currentVault;
-    const notePath = draft.path;
-    const text = draft.content;
-    const relative = relativeNotePath(vault, notePath);
-    if (relative === null) return;
-
-    if (searchIndexTimerRef.current !== null) {
-      window.clearTimeout(searchIndexTimerRef.current);
-    }
-    searchIndexTimerRef.current = window.setTimeout(() => {
-      searchIndexTimerRef.current = null;
-      invoke("update_index_note", {
-        path: vault,
-        relative,
-        text,
-        modifiedMs: Date.now(),
-      }).catch(() => {
-        // Un fallo al reindexar no interrumpe el guardado: la próxima
-        // reconstrucción completa lo pone al día.
-      });
-    }, 800);
-  }
-
-  /** La vista de búsqueda avisa cuando el índice ya está levantado. */
-  const handleSearchIndexReady = useCallback(() => {
-    searchIndexReadyRef.current = true;
-  }, []);
-
-  useEffect(() => {
-    // Cambiar de vault deja el índice de la anterior sesión fuera de juego.
-    searchIndexReadyRef.current = false;
-    if (searchIndexTimerRef.current !== null) {
-      window.clearTimeout(searchIndexTimerRef.current);
-      searchIndexTimerRef.current = null;
-    }
-  }, [currentVault]);
-
-  useEffect(
-    () => () => {
-      if (searchIndexTimerRef.current !== null) {
-        window.clearTimeout(searchIndexTimerRef.current);
-      }
-    },
-    [],
-  );
-
-  function handleFileDeleted(path: string) {
-    setTabs((open) => open.filter((tab) => !isInsidePath(tab.path, path)));
-    if (image?.path === path) {
-      imageRequestRef.current += 1;
-      setImage(null);
-      setImageStatus("idle");
-      return;
-    }
-
-    if (pdf?.path === path) {
-      pdfRequestRef.current += 1;
-      setPdf(null);
-      setPdfStatus("idle");
-      return;
-    }
-
-    if (notePathRef.current !== path) return;
-    notePathRef.current = null;
-    setNote(null);
-    setNoteError(null);
-    setNoteStatus("idle");
-  }
-
-  // Volcado previo: evita que el editor recriba el archivo en la ruta vieja al desmontarse.
-  async function handleBeforeFileAction(path: string): Promise<void> {
-    if (notePathRef.current !== path) return;
-
-    const saved = await editorRef.current?.flush() ?? true;
-    if (!saved) {
-      throw new Error(t("app.saveBeforeAction"));
-    }
   }
 
   function showLinkError(message: string) {
@@ -734,20 +514,6 @@ function App({
       dailyBusyRef.current = false;
       setDailyBusy(false);
     }
-  }
-
-  function closeOpenNote() {
-    setTabs([]);
-    imageRequestRef.current += 1;
-    pdfRequestRef.current += 1;
-    notePathRef.current = null;
-    setNote(null);
-    setNoteStatus("idle");
-    setNoteError(null);
-    setImage(null);
-    setImageStatus("idle");
-    setPdf(null);
-    setPdfStatus("idle");
   }
 
   function openVault(path: string) {
@@ -854,10 +620,7 @@ function App({
             <ImagePane
               image={image}
               status={imageStatus}
-              onDecodeError={(error) => {
-                setImage({ ...image, error });
-                setImageStatus("error");
-              }}
+              onDecodeError={failImage}
             />
           ) : pdf ? (
             <PdfPane pdf={pdf} status={pdfStatus} />
