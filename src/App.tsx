@@ -31,8 +31,6 @@ import {
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { externalAction } from "./lib/externalChange";
-import type { Update } from "@tauri-apps/plugin-updater";
-import { checkSelfUpdate, reduceDownload, START_PROGRESS, type SelfUpdateState } from "./lib/selfUpdate";
 import { toggleNoteTaskText, type NoteTask } from "./lib/noteTasks";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import clsx from "clsx";
@@ -84,15 +82,8 @@ import {
 import { incomingCountMap, type LinkGraph } from "./lib/linkGraph";
 import { accentHex, DEFAULT_SETTINGS, normalizeSettings, type AppSettings } from "./lib/settings";
 import { applyTheme, themeDefinition, type ThemeScheme } from "./lib/themes";
-import {
-  checkForUpdate,
-  dismissUpdate,
-  dismissedVersion,
-  type UpdateCheckResult,
-  type UpdateInfo,
-  type UpdateUiState,
-} from "./lib/updateCheck";
-import { APP_VERSION, RELEASES_URL } from "./lib/version";
+import { APP_VERSION } from "./lib/version";
+import { useAppUpdates } from "./components/useAppUpdates";
 import { setPersonalWords } from "./lib/spellCheck";
 import { globalShortcutFor } from "./lib/shortcuts";
 import {
@@ -339,12 +330,8 @@ function App({
 
   /** Recorrido guiado: se abre solo al primer vault y también desde Ajustes. */
   const [tourOpen, setTourOpen] = useState(false);
-  /** Comprobación de versiones nuevas en el repositorio de GitHub. */
-  const [updateState, setUpdateState] = useState<UpdateUiState>({ status: "idle" });
-  const [updateNotice, setUpdateNotice] = useState<UpdateInfo | null>(null);
-  /** Actualización automática en curso (descarga, lista o instalando); `null` si el flujo es el manual. */
-  const [selfUpdate, setSelfUpdate] = useState<SelfUpdateState | null>(null);
-  const selfUpdateRef = useRef<{ update: Update; info: UpdateInfo } | null>(null);
+  const { updateState, updateNotice, selfUpdate, checkNow, retryDownload, restartAndInstall, dismissNotice } =
+    useAppUpdates(bootStatus === "ready");
 
   const settings = vaultConfig?.settings ?? DEFAULT_SETTINGS;
 
@@ -467,98 +454,6 @@ function App({
 
   /** Contador por nota para cada enlace [[wiki]] de la vista previa. */
   const linkRefs = useMemo(() => incomingCountMap(linkGraph), [linkGraph]);
-
-  /** Comprobación de versión nueva al arrancar: nunca frena ni rompe la app. */
-  useEffect(() => {
-    if (bootStatus !== "ready") return;
-
-    let cancelled = false;
-    setUpdateState({ status: "checking" });
-    void checkAndPrepareUpdate().then((result) => {
-      if (cancelled) return;
-      applyUpdateResult(result);
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [bootStatus]);
-
-  /**
-   * Comprueba si hay versión nueva. Donde la app puede actualizarse sola (ver
-   * `can_self_update`) la descarga de inmediato; en el resto devuelve el aviso
-   * de siempre, con descarga manual.
-   */
-  async function checkAndPrepareUpdate(): Promise<UpdateCheckResult> {
-    // Ya hay una descarga en marcha o terminada: no se repite.
-    if (selfUpdateRef.current && selfUpdate?.phase !== "error") {
-      return { status: "available", info: selfUpdateRef.current.info };
-    }
-
-    const self = await checkSelfUpdate();
-    if (!self.capable) return checkForUpdate();
-    if (self.failed) return { status: "unavailable" };
-    if (!self.update) return { status: "uptodate" };
-
-    const info: UpdateInfo = {
-      version: self.update.version,
-      url: `${RELEASES_URL}/tag/v${self.update.version}`,
-      publishedAt: self.update.date ?? null,
-      installer: null,
-    };
-    selfUpdateRef.current = { update: self.update, info };
-    void downloadSelfUpdate();
-    return { status: "available", info };
-  }
-
-  async function downloadSelfUpdate() {
-    const pending = selfUpdateRef.current;
-    if (!pending) return;
-    const version = pending.info.version;
-
-    setSelfUpdate({ phase: "downloading", version, progress: START_PROGRESS });
-    try {
-      await pending.update.download((event) =>
-        setSelfUpdate((current) =>
-          current?.phase === "downloading"
-            ? { ...current, progress: reduceDownload(current.progress, event) }
-            : current,
-        ),
-      );
-      setSelfUpdate({ phase: "ready", version });
-    } catch (error) {
-      setSelfUpdate({ phase: "error", version, message: String(error) });
-    }
-  }
-
-  /** Instala lo ya descargado y vuelve a abrir la app. */
-  async function installSelfUpdate() {
-    const pending = selfUpdateRef.current;
-    if (!pending) return;
-    const version = pending.info.version;
-
-    setSelfUpdate({ phase: "installing", version });
-    try {
-      await pending.update.install();
-      const { relaunch } = await import("@tauri-apps/plugin-process");
-      await relaunch();
-    } catch (error) {
-      setSelfUpdate({ phase: "error", version, message: String(error) });
-    }
-  }
-
-  /** Traduce el resultado de la comprobación al estado que pinta la interfaz. */
-  function applyUpdateResult(result: UpdateCheckResult) {
-    setUpdateState(result);
-    // De la versión que ya se decidió ignorar no se vuelve a avisar, salvo que
-    // se esté actualizando sola: ese aviso trae el botón de reiniciar.
-    if (
-      result.status === "available" &&
-      (selfUpdateRef.current !== null || dismissedVersion() !== result.info.version)
-    ) {
-      setUpdateNotice(result.info);
-    }
-  }
 
   /**
    * Avisos del sistema al arrancar (REQ-12): tareas por vencer según la
@@ -694,12 +589,6 @@ function App({
       void invoke("unwatch_vault").catch(() => {});
     };
   }, [bootStatus, currentVault]);
-
-  /** Comprobación manual, desde Ajustes → General. */
-  async function handleCheckUpdate() {
-    setUpdateState({ status: "checking" });
-    applyUpdateResult(await checkAndPrepareUpdate());
-  }
 
   /**
    * Atajos globales de la ventana. Los lee de los ajustes, así que cambiarlos
@@ -2047,7 +1936,7 @@ function App({
                       language={language}
                       onLanguageChange={handleLanguageChange}
                       onStartTour={() => setTourOpen(true)}
-                      onCheckUpdate={() => void handleCheckUpdate()}
+                      onCheckUpdate={() => void checkNow()}
                       updateState={updateState}
                     />
                   )}
@@ -2085,13 +1974,9 @@ function App({
                 // A la derecha del menú lateral para no tapar sus botones.
                 offsetLeft={currentVault ? sidebarWidth + 16 : 16}
                 self={selfUpdate}
-                onRestart={() => void installSelfUpdate()}
-                onRetry={() => void downloadSelfUpdate()}
-                onDismiss={() => {
-                  // En automático «más tarde» solo oculta el aviso: no se da por ignorada la versión.
-                  if (!selfUpdate) dismissUpdate(updateNotice.version);
-                  setUpdateNotice(null);
-                }}
+                onRestart={() => void restartAndInstall()}
+                onRetry={() => void retryDownload()}
+                onDismiss={dismissNotice}
               />
             )}
           </AnimatePresence>
