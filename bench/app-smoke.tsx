@@ -65,10 +65,34 @@ if (location.search.includes("semilla")) {
   );
 }
 
+/** Carpetas vacías (el mapa de archivos solo conoce carpetas que tienen algo dentro). */
+const carpetas = new Set<string>();
+
+/** Cambia el prefijo de ruta de todo lo que cuelga de `de` (renombrar y mover). */
+function moverRuta(de: string, a: string) {
+  for (const [ruta, texto] of [...archivos]) {
+    if (ruta === de || ruta.startsWith(`${de}/`)) {
+      archivos.delete(ruta);
+      archivos.set(a + ruta.slice(de.length), texto);
+    }
+  }
+  for (const ruta of [...carpetas]) {
+    if (ruta === de || ruta.startsWith(`${de}/`)) {
+      carpetas.delete(ruta);
+      carpetas.add(a + ruta.slice(de.length));
+    }
+  }
+}
+
 /** Entradas directas de `dir`, como las da `list_vault_entries`. */
 function entradasDe(dir: string): Entrada[] {
   const prefijo = `${dir.replace(/\/$/, "")}/`;
   const vistas = new Map<string, Entrada>();
+  for (const ruta of carpetas) {
+    if (!ruta.startsWith(prefijo)) continue;
+    const primero = ruta.slice(prefijo.length).split("/")[0];
+    vistas.set(prefijo + primero, { name: primero, path: prefijo + primero, is_dir: true, modified_ms: ahora });
+  }
   for (const ruta of archivos.keys()) {
     if (!ruta.startsWith(prefijo)) continue;
     const [primero, ...resto] = ruta.slice(prefijo.length).split("/");
@@ -122,6 +146,37 @@ const respuestas: Record<string, (args: Record<string, unknown>) => unknown> = {
   create_vault_file: (args) => {
     archivos.set(String(args.path), String(args.content));
     return args.path;
+  },
+  create_vault_dir: (args) => {
+    carpetas.add(String(args.path));
+    return args.path;
+  },
+  rename_vault_file: (args) => {
+    moverRuta(String(args.from), String(args.to));
+    return args.to;
+  },
+  rename_vault_dir: (args) => {
+    moverRuta(String(args.from), String(args.to));
+    return args.to;
+  },
+  move_vault_file: (args) => {
+    const destino = `${String(args.toDir)}/${String(args.from).split("/").pop()}`;
+    moverRuta(String(args.from), destino);
+    return destino;
+  },
+  move_to_trash: (args) => {
+    const ruta = String(args.path);
+    for (const clave of [...archivos.keys()]) if (clave === ruta || clave.startsWith(`${ruta}/`)) archivos.delete(clave);
+    for (const clave of [...carpetas]) if (clave === ruta || clave.startsWith(`${ruta}/`)) carpetas.delete(clave);
+    return null;
+  },
+  list_vault_dirs: () => {
+    const dirs = new Set<string>(carpetas);
+    for (const ruta of archivos.keys()) {
+      const partes = ruta.replace("/vault/", "").split("/");
+      for (let i = 1; i < partes.length; i++) dirs.add(`/vault/${partes.slice(0, i).join("/")}`);
+    }
+    return [...dirs].map((path) => ({ path, relative: path.replace("/vault/", "") }));
   },
   read_vault_pdf: () => PDF_DE_PRUEBA,
   list_notes_with_checkboxes: () =>

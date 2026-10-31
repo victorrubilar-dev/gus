@@ -27,6 +27,7 @@
     "bench:explorer": "node bench/prueba-explorador.mjs",
     "bench:app": "node bench/prueba-app.mjs",
     "bench:botones": "node bench/prueba-botones.mjs",
+    "bench:operaciones": "node bench/prueba-vault-ops.mjs",
     "bench:medida": "node bench/prueba-medida.mjs",
     "bench:pestanas": "node bench/prueba-pestanas.mjs",
     "bench:capturas": "node bench/capturas.mjs",
