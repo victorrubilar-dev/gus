@@ -197,7 +197,7 @@ pub(crate) fn save_index(root: &std::path::Path, index: &SearchIndex) -> Result<
     let file = index_file(root);
     let raw = serde_json::to_string(index)
         .map_err(|err| format!("No se pudo serializar el índice: {err}"))?;
-    std::fs::write(&file, raw)
+    write_atomic(&file, raw)
         .map_err(|err| format!("No se pudo escribir «{}»: {err}", file.display()))
 }
 

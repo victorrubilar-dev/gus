@@ -94,7 +94,7 @@ pub(crate) fn save_habits(vault_path: String, store: HabitStore) -> Result<(), S
         .map_err(|err| format!("No se pudo serializar los hábitos: {err}"))?;
 
     vigilancia::note_own_write(&path);
-    std::fs::write(&path, raw)
+    write_atomic(&path, raw)
         .map_err(|err| format!("No se pudo escribir «{}»: {err}", path.display()))
 }
 

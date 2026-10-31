@@ -83,7 +83,7 @@ pub(crate) fn save_board(vault_path: String, id: String, json: String) -> Result
     }
 
     vigilancia::note_own_write(&path);
-    std::fs::write(&path, json)
+    write_atomic(&path, json)
         .map_err(|err| format!("No se pudo escribir la pizarra «{}»: {err}", path.display()))
 }
 

@@ -38,7 +38,7 @@ pub(crate) fn write_vault_file(path: String, content: String) -> Result<(), Stri
     }
 
     vigilancia::note_own_write(std::path::Path::new(&path));
-    std::fs::write(&path, content).map_err(|err| format!("No se pudo escribir «{path}»: {err}"))
+    write_atomic(std::path::Path::new(&path), content).map_err(|err| format!("No se pudo escribir «{path}»: {err}"))
 }
 
 /// Filtro de `rename_vault_file`, `move_vault_file` y `delete_vault_file`: solo

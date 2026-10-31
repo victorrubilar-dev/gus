@@ -176,7 +176,6 @@ pub(crate) fn build_link_graph(path: String) -> Result<LinkGraph, String> {
     let mut notes = Vec::new();
     collect_notes(root, "", 0, &mut notes);
     notes.sort_by_key(|note| note.relative.to_lowercase());
-    notes.truncate(1000);
 
     let mut nodes = Vec::with_capacity(notes.len());
     for note in notes {

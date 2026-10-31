@@ -42,7 +42,7 @@ pub(crate) fn save_library(vault_path: String, store: LibraryStore) -> Result<()
         .map_err(|err| format!("No se pudo serializar la biblioteca: {err}"))?;
 
     vigilancia::note_own_write(&path);
-    std::fs::write(&path, raw)
+    write_atomic(&path, raw)
         .map_err(|err| format!("No se pudo escribir «{}»: {err}", path.display()))
 }
 

@@ -40,6 +40,18 @@ fn is_md_file(path: &std::path::Path) -> bool {
         .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
 }
 
+/// Escribe en un temporal oculto y lo renombra sobre el destino: un corte a mitad
+/// de escritura deja el fichero anterior intacto, nunca uno vacío o cortado.
+fn write_atomic(path: &std::path::Path, contents: impl AsRef<[u8]>) -> std::io::Result<()> {
+    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let tmp = path.with_file_name(format!(".{name}.gus-tmp"));
+    std::fs::write(&tmp, contents)
+        .and_then(|()| std::fs::rename(&tmp, path))
+        .inspect_err(|_| {
+            let _ = std::fs::remove_file(&tmp);
+        })
+}
+
 fn ensure_dir_exists(path: &std::path::Path) -> Result<(), String> {
     if !path.exists() {
         std::fs::create_dir_all(path)
@@ -581,6 +593,27 @@ mod vault_trash_tests {
         assert_eq!(load_trash_manifest(&legacy).len(), 1);
 
         let _ = std::fs::remove_dir_all(&base);
+    }
+}
+
+#[cfg(test)]
+mod write_atomic_tests {
+    use super::*;
+
+    #[test]
+    fn write_atomic_reemplaza_el_contenido_y_no_deja_temporales() {
+        let dir = std::env::temp_dir().join(format!("gus-atomic-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("carpeta");
+        let file = dir.join("nota.md");
+
+        write_atomic(&file, "uno").expect("crear");
+        write_atomic(&file, "dos").expect("reemplazar");
+
+        assert_eq!(std::fs::read_to_string(&file).expect("leer"), "dos");
+        assert_eq!(std::fs::read_dir(&dir).expect("listar").count(), 1);
+        assert!(write_atomic(&dir.join("falta/x.md"), "a").is_err());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
 

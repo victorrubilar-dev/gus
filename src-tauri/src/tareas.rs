@@ -166,7 +166,7 @@ pub(crate) fn save_tasks(vault_path: String, tasks: Vec<StoredTask>) -> Result<(
         .map_err(|err| format!("No se pudo serializar las tareas: {err}"))?;
 
     vigilancia::note_own_write(&path);
-    std::fs::write(&path, raw)
+    write_atomic(&path, raw)
         .map_err(|err| format!("No se pudo escribir «{}»: {err}", path.display()))
 }
 
