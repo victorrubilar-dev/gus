@@ -6,6 +6,7 @@ import {
   ArrowUpRight,
   Circle,
   Diamond,
+  Eraser,
   Hand,
   Image as ImageIcon,
   Minus,
@@ -27,6 +28,7 @@ import {
   bounds,
   boxFrom,
   EMPTY_HISTORY,
+  eraseAt,
   handlePoint,
   INK_COLORS,
   NOTE_COLORS,
@@ -49,12 +51,13 @@ import { joinPath } from "../lib/fileName";
 import type { VaultImage } from "../lib/imageLinks";
 import { createTaskId } from "../lib/taskStore";
 
-type Tool = "select" | "hand" | "pen" | "rect" | "ellipse" | "diamond" | "line" | "arrow" | "text" | "note" | "image";
+type Tool = "select" | "hand" | "pen" | "eraser" | "rect" | "ellipse" | "diamond" | "line" | "arrow" | "text" | "note" | "image";
 
 const TOOLS: { id: Tool; Icon: LucideIcon; labelKey: MessageKey; key: string }[] = [
   { id: "select", Icon: MousePointer2, labelKey: "boards.tool.select", key: "v" },
   { id: "hand", Icon: Hand, labelKey: "boards.tool.hand", key: "h" },
   { id: "pen", Icon: Pencil, labelKey: "boards.tool.pen", key: "p" },
+  { id: "eraser", Icon: Eraser, labelKey: "boards.tool.eraser", key: "e" },
   { id: "rect", Icon: Square, labelKey: "boards.tool.rect", key: "r" },
   { id: "ellipse", Icon: Circle, labelKey: "boards.tool.ellipse", key: "o" },
   { id: "diamond", Icon: Diamond, labelKey: "boards.tool.diamond", key: "d" },
@@ -70,6 +73,8 @@ const SAVE_DELAY_MS = 800;
 const HANDLE = 10;
 const HIT_TOLERANCE = 6;
 const PEN_WIDTH = 3;
+/** Alcance de la goma en píxeles de pantalla; en el lienzo se divide por el zoom. */
+const ERASER_RADIUS = 10;
 const NOTE_SIZE = { w: 180, h: 140 };
 const NOTE_TEXT = "#1f2937";
 const MAX_IMAGE_SIDE = 400;
@@ -79,6 +84,8 @@ type Gesture =
   | { kind: "move"; start: Point; orig: BoardElement; before: BoardElement[] }
   | { kind: "resize"; orig: BoardElement; before: BoardElement[] }
   | { kind: "draw"; start: Point }
+  /** Pasada de goma: `erased` pasa a true si quitó algo, y entonces se anota un solo paso de deshacer. */
+  | { kind: "erase"; before: BoardElement[]; last: Point; erased: boolean }
   /** Texto o post-it: el editor se abre al soltar, porque al pulsar el navegador aún está moviendo el foco. */
   | { kind: "place"; el: Extract<BoardElement, { type: "text" | "note" }> };
 
@@ -202,6 +209,12 @@ export default function BoardEditor({ vaultPath, boardId, onBack }: BoardEditorP
   const gestureRef = useRef<Gesture | null>(null);
   const draftRef = useRef<BoardElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  /** Copia de trabajo durante la pasada de goma: varios eventos pueden llegar antes de repintar. */
+  const elementsRef = useRef(elements);
+  useEffect(() => {
+    elementsRef.current = elements;
+  });
+  const [eraserAt, setEraserAt] = useState<Point | null>(null);
 
   /* ------------------------- carga y guardado ------------------------- */
 
@@ -382,6 +395,12 @@ export default function BoardEditor({ vaultPath, boardId, onBack }: BoardEditorP
     setSelectedId(null);
     const id = createTaskId();
 
+    if (tool === "eraser") {
+      gestureRef.current = { kind: "erase", before: elements, last: world, erased: false };
+      eraseStep(gestureRef.current, world);
+      return;
+    }
+
     if (tool === "text") {
       gestureRef.current = { kind: "place", el: { type: "text", id, color: ink, x: world[0], y: world[1], text: "", size: 20 } };
       return;
@@ -405,7 +424,17 @@ export default function BoardEditor({ vaultPath, boardId, onBack }: BoardEditorP
     }
   }
 
+  /** Quita lo que la goma toca en `p`, sobre la copia de trabajo, y repinta si cambió algo. */
+  function eraseStep(gesture: Extract<Gesture, { kind: "erase" }>, p: Point) {
+    const next = eraseAt(elementsRef.current, p, ERASER_RADIUS / view.scale);
+    if (next === elementsRef.current) return;
+    elementsRef.current = next;
+    gesture.erased = true;
+    setElements(next);
+  }
+
   function onPointerMove(event: ReactPointerEvent<SVGSVGElement>) {
+    if (tool === "eraser") setEraserAt(pointOf(event).world);
     const gesture = gestureRef.current;
     if (!gesture) return;
     const { screen, world } = pointOf(event);
@@ -422,6 +451,18 @@ export default function BoardEditor({ vaultPath, boardId, onBack }: BoardEditorP
       case "resize": {
         const resized = resizeTo(gesture.orig, world);
         setElements(gesture.before.map((el) => (el.id === resized.id ? resized : el)));
+        break;
+      }
+      case "erase": {
+        // Un movimiento rápido salta de un punto a otro: se recorre el tramo para no dejar trazos finos sin borrar.
+        const spacing = ERASER_RADIUS / view.scale / 2;
+        const distance = Math.hypot(world[0] - gesture.last[0], world[1] - gesture.last[1]);
+        const steps = Math.max(1, Math.ceil(distance / spacing));
+        for (let i = 1; i <= steps; i++) {
+          const t = i / steps;
+          eraseStep(gesture, [gesture.last[0] + (world[0] - gesture.last[0]) * t, gesture.last[1] + (world[1] - gesture.last[1]) * t]);
+        }
+        gesture.last = world;
         break;
       }
       case "draw": {
@@ -449,6 +490,14 @@ export default function BoardEditor({ vaultPath, boardId, onBack }: BoardEditorP
     if (gesture.kind === "move" || gesture.kind === "resize") {
       // El arrastre ya movió `elements`; aquí solo se anota para deshacer.
       if (elements !== gesture.before && elements.some((el, i) => el !== gesture.before[i])) {
+        setHistory((current) => recordChange(current, gesture.before));
+        setDirty(true);
+      }
+      return;
+    }
+
+    if (gesture.kind === "erase") {
+      if (gesture.erased) {
         setHistory((current) => recordChange(current, gesture.before));
         setDirty(true);
       }
@@ -670,6 +719,7 @@ export default function BoardEditor({ vaultPath, boardId, onBack }: BoardEditorP
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
             onPointerCancel={onPointerUp}
+            onPointerLeave={() => setEraserAt(null)}
             onDoubleClick={startEditing}
           >
             <g transform={`translate(${view.x} ${view.y}) scale(${view.scale})`}>
@@ -679,6 +729,17 @@ export default function BoardEditor({ vaultPath, boardId, onBack }: BoardEditorP
                 ),
               )}
               {draft && <ElementShape el={draft} images={images} />}
+              {tool === "eraser" && eraserAt && (
+                <circle
+                  cx={eraserAt[0]}
+                  cy={eraserAt[1]}
+                  r={ERASER_RADIUS / view.scale}
+                  fill="none"
+                  strokeWidth={1.5 / view.scale}
+                  pointerEvents="none"
+                  style={{ stroke: "var(--color-gus-muted)" }}
+                />
+              )}
               {selectedBox && !editing && (
                 <g pointerEvents="none">
                   <rect

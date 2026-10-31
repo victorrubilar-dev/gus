@@ -156,6 +156,26 @@ await page.waitForFunction(
 );
 ok(true, "deshacer quita el último elemento de la pizarra");
 
+// Goma: pasar sobre el borde del rectángulo lo borra de una pasada, y deshacer lo devuelve entero.
+await page.getByRole("button", { name: "Goma de borrar" }).click();
+await page.mouse.move(caja.x + 200, caja.y + 130);
+await page.mouse.down();
+await page.mouse.move(caja.x + 200, caja.y + 280, { steps: 4 });
+await page.mouse.up();
+await page.waitForFunction(
+  () => [...window.__smoke.pizarras.values()].some((json) => (JSON.parse(json).elements ?? []).length === 0),
+  null,
+  { timeout: 8000 },
+);
+ok(true, "la goma borra una forma al pasar por su contorno");
+await page.getByRole("button", { name: "Deshacer" }).click();
+await page.waitForFunction(
+  () => [...window.__smoke.pizarras.values()].some((json) => (JSON.parse(json).elements ?? []).length === 1),
+  null,
+  { timeout: 8000 },
+);
+ok(true, "deshacer devuelve lo que borró la goma en una sola pasada");
+
 // Con el zoom de interfaz activo, lo dibujado debe quedar bajo el cursor (no desplazado).
 for (const zoom of [1.5, 0.8]) {
   await page.evaluate((z) => {

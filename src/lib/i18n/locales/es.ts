@@ -101,6 +101,7 @@ export default {
   "boards.tool.select": "Seleccionar",
   "boards.tool.hand": "Mover el lienzo",
   "boards.tool.pen": "Lápiz",
+  "boards.tool.eraser": "Goma de borrar",
   "boards.tool.rect": "Rectángulo",
   "boards.tool.ellipse": "Elipse",
   "boards.tool.diamond": "Rombo",

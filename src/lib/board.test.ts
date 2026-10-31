@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   boxFrom,
+  eraseAt,
   EMPTY_HISTORY,
   handlePoint,
   hits,
@@ -62,6 +63,45 @@ describe("geometría", () => {
     expect(resizeTo(pen, [9, 9])).toBe(pen);
     const arrow: BoardElement = { type: "arrow", id: "a", color: "#fff", x1: 0, y1: 0, x2: 4, y2: 4 };
     expect(resizeTo(arrow, [9, 8])).toMatchObject({ x2: 9, y2: 8 });
+  });
+});
+
+describe("goma", () => {
+  const stroke: BoardElement = { type: "pen", id: "trazo", color: "#fff", width: 3, points: [[0, 50], [200, 50]] };
+
+  it("borra un trazo y deja el resto", () => {
+    const els = [rect("r", 300, 300), stroke];
+    expect(eraseAt(els, [100, 52], 8).map((el) => el.id)).toEqual(["r"]);
+  });
+
+  it("una forma hueca solo se borra por el contorno, no por dentro", () => {
+    const hueca = rect("hueca", 0, 0, 200, 100);
+    expect(eraseAt([hueca], [100, 50], 8)).toEqual([hueca]); // centro
+    expect(eraseAt([hueca], [100, 2], 8)).toEqual([]); // borde superior
+    expect(eraseAt([hueca], [2, 50], 8)).toEqual([]); // borde izquierdo
+  });
+
+  it("una forma rellena se borra también por dentro", () => {
+    const rellena: BoardElement = { ...rect("llena", 0, 0, 200, 100), fill: true } as BoardElement;
+    expect(eraseAt([rellena], [100, 50], 8)).toEqual([]);
+  });
+
+  it("un trazo que cruza una forma hueca se borra sin llevarse la forma", () => {
+    const hueca = rect("hueca", 0, 0, 200, 100);
+    expect(eraseAt([hueca, stroke], [100, 50], 8).map((el) => el.id)).toEqual(["hueca"]);
+  });
+
+  it("borra solo el de más arriba y no toca la lista si no hay nada", () => {
+    const a: BoardElement = { type: "note", id: "a", color: "#fde68a", x: 0, y: 0, w: 100, h: 100, text: "" };
+    const b: BoardElement = { ...a, id: "b" };
+    expect(eraseAt([a, b], [50, 50], 8).map((el) => el.id)).toEqual(["a"]);
+    const lista = [a];
+    expect(eraseAt(lista, [900, 900], 8)).toBe(lista);
+  });
+
+  it("formas pequeñas con radio grande no producen NaN", () => {
+    const chica: BoardElement = { type: "ellipse", id: "e", color: "#fff", x: 0, y: 0, w: 4, h: 4, fill: false };
+    expect(eraseAt([chica], [2, 2], 8)).toEqual([]);
   });
 });
 

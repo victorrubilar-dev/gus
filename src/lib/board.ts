@@ -148,15 +148,36 @@ export function hits(el: BoardElement, p: Point, tolerance: number): boolean {
       return distanceToSegment(p, [el.x1, el.y1], [el.x2, el.y2]) <= tolerance;
     case "ellipse": {
       const [rx, ry] = [el.w / 2 + tolerance, el.h / 2 + tolerance];
+      if (rx <= 0 || ry <= 0) return false;
       return ((p[0] - el.x - el.w / 2) / rx) ** 2 + ((p[1] - el.y - el.h / 2) / ry) ** 2 <= 1;
     }
     case "diamond": {
       const [rx, ry] = [el.w / 2 + tolerance, el.h / 2 + tolerance];
+      if (rx <= 0 || ry <= 0) return false;
       return Math.abs(p[0] - el.x - el.w / 2) / rx + Math.abs(p[1] - el.y - el.h / 2) / ry <= 1;
     }
     default:
       return inside(bounds(el), p, tolerance);
   }
+}
+
+/**
+ * ¿Debe la goma llevarse el elemento si pasa por `p`? Las formas huecas solo
+ * se borran por el contorno: si no, pasar la goma por un trazo que cruza un
+ * rectángulo se llevaría también el rectángulo.
+ */
+function erasableAt(el: BoardElement, p: Point, radius: number): boolean {
+  if (!hits(el, p, radius)) return false;
+  const hollow = (el.type === "rect" || el.type === "ellipse" || el.type === "diamond") && !el.fill;
+  return !hollow || !hits(el, p, -radius);
+}
+
+/** Quita el elemento más arriba que la goma toca en `p`; devuelve la misma lista si no toca ninguno. */
+export function eraseAt(elements: BoardElement[], p: Point, radius: number): BoardElement[] {
+  for (let i = elements.length - 1; i >= 0; i--) {
+    if (erasableAt(elements[i], p, radius)) return elements.filter((_, index) => index !== i);
+  }
+  return elements;
 }
 
 /** El elemento más arriba (el último dibujado) bajo `p`, o `null`. */

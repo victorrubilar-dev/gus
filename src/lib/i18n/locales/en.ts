@@ -103,6 +103,7 @@ const en: Record<keyof typeof es, string> = {
   "boards.tool.select": "Select",
   "boards.tool.hand": "Pan the canvas",
   "boards.tool.pen": "Pencil",
+  "boards.tool.eraser": "Eraser",
   "boards.tool.rect": "Rectangle",
   "boards.tool.ellipse": "Ellipse",
   "boards.tool.diamond": "Diamond",
