@@ -945,6 +945,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
             <strong className="font-medium text-gus-text">+</strong>
             {t("explorer.emptyHintMid")}{" "}
             <strong className="font-medium text-gus-text">{t("explorer.newFolder")}</strong>
+            {" "}
             {t("explorer.emptyHintAfter")}
           </li>
         )}

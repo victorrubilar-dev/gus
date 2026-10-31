@@ -158,8 +158,9 @@ const respuestas: Record<string, (args: Record<string, unknown>) => unknown> = {
   "plugin:process|restart": () => null,
   load_app_config: () => ({
     baseDir: "/vaults",
-    vaults: [{ name: "Demo", path: "/vault" }],
-    lastVault: "/vault",
+    // Con `?vacio` es la primera vez: sin vaults, como tras instalar Gus.
+    vaults: location.search.includes("vacio") ? [] : [{ name: "Demo", path: "/vault" }],
+    lastVault: location.search.includes("vacio") ? null : "/vault",
     settings: { openLastVault: true, ...(tema ? { theme: tema } : {}) },
   }),
   vault_dir_exists: () => true,

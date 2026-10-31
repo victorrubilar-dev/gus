@@ -16,6 +16,7 @@ import { joinPath } from "../lib/fileName";
 import gusIcon from "../assets/gus-icon-512.png";
 import { LANGUAGE_LIST, useT, type Language } from "../lib/i18n";
 import type { ThemeScheme } from "../lib/themes";
+import FirstVaultStep from "./FirstVaultStep";
 import ThemeCard from "./ThemeCard";
 
 export interface VaultInfo {
@@ -461,6 +462,21 @@ export default function VaultPicker({
           </m.button>
         </m.section>
       </div>
+    );
+  }
+
+  // Sin ningún vault todavía el selector completo no sirve de nada: se guía a crear el primero.
+  if (vaults.length === 0) {
+    return (
+      <FirstVaultStep
+        baseDir={baseDir}
+        busy={busy}
+        error={shownError}
+        onCreate={onCreate}
+        onAddExisting={onAddExisting}
+        onSelectBaseDir={onSelectBaseDir}
+        onBack={() => setShowWelcome(true)}
+      />
     );
   }
 

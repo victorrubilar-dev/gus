@@ -1027,7 +1027,8 @@ const en: Record<keyof typeof es, string> = {
 
   /* ---------------- first-run welcome ---------------- */
   "onboarding.title": "Welcome to Gus",
-  "onboarding.subtitle": "Your app to get your day in order",
+  "onboarding.subtitle":
+    "Notes, tasks and habits in one place. Everything stays on your computer: no account, no cloud.",
   "onboarding.start": "Get started",
   "onboarding.setup": "Before you start, pick Gus's language and style.",
   "onboarding.language": "Application language",
@@ -1046,16 +1047,16 @@ const en: Record<keyof typeof es, string> = {
   "tour.finish": "Finish",
   "tour.welcome.title": "Your overview",
   "tour.welcome.body":
-    "The Summary gathers your day: upcoming tasks, recently edited notes and quick actions.",
+    "Your day at a glance: today's and overdue tasks, your habits, the daily note and what you touched last.",
   "tour.sidebar.title": "The sidebar",
   "tour.sidebar.body":
-    "Switch sections from here: Overview, Notes, Tasks, Calendar and Graph. Drag its edge to resize it.",
+    "Switch sections from here: Notes, Tasks, Calendar, Graph, Library, Habits and Boards. Drag its edge to make it wider or narrower.",
   "tour.explorer.title": "Your notes",
   "tour.explorer.body":
     "The explorer shows the vault folder. Create notes with the “+”, rename them with a double click and move them by dragging.",
   "tour.editor.title": "Writing and reading",
   "tour.editor.body":
-    "This is your markdown: type “/” to insert blocks and “[[” to link other notes. Everything saves on its own.",
+    "This is where your markdown goes: type “/” to insert blocks and “[[” to link other notes. Everything saves by itself, and Ctrl+K finds any note instantly.",
   "tour.tasks.title": "Tasks",
   "tour.tasks.body":
     "List or board, with priorities, tags and due dates, so nothing stays pending on you.",
@@ -1066,6 +1067,20 @@ const en: Record<keyof typeof es, string> = {
   "tour.tools.body":
     "At the bottom sit the trash (deleted items stay recoverable for 30 days) and Settings: language, theme, shortcuts and more.",
   "tour.done.title": "All set!",
+  "firstVault.title": "Create your first vault",
+  "firstVault.intro": "A vault is a folder on your computer where Gus keeps your notes as .md files. Nothing leaves your computer.",
+  "firstVault.newTitle": "Start from scratch",
+  "firstVault.defaultName": "My notes",
+  "firstVault.changeFolder": "Change folder",
+  "firstVault.existingTitle": "I already have a folder",
+  "firstVault.existingBody": "Use it as it is, for example an Obsidian one. Gus reads your .md notes and only adds a few hidden files for its tasks and settings.",
+  "firstVault.existingButton": "Choose folder…",
+  "firstVault.or": "or",
+  "firstVault.back": "Back",
+  "tour.habits.title": "Habits",
+  "tour.habits.body": "Pick fixed days or a weekly goal (for example, 3 times a week, any day you like) and keep track of your streaks.",
+  "tour.more.title": "And much more",
+  "tour.more.body": "The Graph draws how your notes link together, the Library sorts your PDFs onto shelves and Boards are free canvases to draw and think.",
   "tour.done.body":
     "That is the basics. If you ever get lost, hit “Take the Gus tour again” in Settings → General.",
 

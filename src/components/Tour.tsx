@@ -7,7 +7,7 @@ import type { MessageKey } from "../lib/i18n/core";
 import { toLocalCoord } from "../lib/uiZoom";
 
 /** Secciones que el tour puede abrir mientras avanza. */
-export type TourTab = "home" | "notes" | "tasks" | "calendar";
+export type TourTab = "home" | "notes" | "tasks" | "calendar" | "habits";
 
 interface TourStep {
   /** Pestaña que se abre al llegar al paso (el resaltado vive en esa vista). */
@@ -55,6 +55,18 @@ const STEPS: TourStep[] = [
     targets: ["calendar"],
     titleKey: "tour.calendar.title",
     bodyKey: "tour.calendar.body",
+  },
+  {
+    tab: "habits",
+    targets: ["habits"],
+    titleKey: "tour.habits.title",
+    bodyKey: "tour.habits.body",
+  },
+  {
+    tab: "home",
+    targets: ["sidebar"],
+    titleKey: "tour.more.title",
+    bodyKey: "tour.more.body",
   },
   {
     tab: "home",

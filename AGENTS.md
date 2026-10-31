@@ -151,7 +151,8 @@ gus/
 │   │   ├── BacklinksPanel.tsx    # Panel de backlinks de la nota abierta
 │   │   ├── DailyNoteBar.tsx      # Barra de la nota diaria (qué día se ve)
 │   │   ├── useResolvedImage.ts   # Resuelve imágenes del vault a datos `data:`
-│   │   ├── Tour.tsx              # Tour de onboarding guiado
+│   │   ├── Tour.tsx              # Recorrido guiado (10 pasos: resumen, menú, notas, editor, tareas, calendario, hábitos, extras, papelera y ajustes)
+│   │   ├── FirstVaultStep.tsx    # Segundo paso de la primera vez: crear el primer vault (nombre ya puesto) o usar una carpeta existente
 │   │   ├── UpdateNotice.tsx      # Aviso de versión nueva: descarga automática con barra de progreso y «Reiniciar y actualizar» (o descarga manual en .deb/.rpm)
 │   │   ├── ThemeCard.tsx         # Tarjeta de vista previa de tema
 │   │   ├── DatePicker.tsx        # Componente de entrada de fecha

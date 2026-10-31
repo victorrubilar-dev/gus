@@ -32,6 +32,7 @@
     "bench:soltar": "node bench/prueba-soltar.mjs",
     "bench:tareas": "node bench/prueba-tareas.mjs",
     "bench:resumen": "node bench/prueba-resumen.mjs",
+    "bench:inicio": "node bench/prueba-inicio.mjs",
     "bench:medida": "node bench/prueba-medida.mjs",
     "bench:pestanas": "node bench/prueba-pestanas.mjs",
     "bench:capturas": "node bench/capturas.mjs",

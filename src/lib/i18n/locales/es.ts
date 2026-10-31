@@ -1024,7 +1024,8 @@ export default {
 
   /* ---------------- primera bienvenida ---------------- */
   "onboarding.title": "Bienvenido a Gus",
-  "onboarding.subtitle": "Tu app para organizar tu día a día",
+  "onboarding.subtitle":
+    "Notas, tareas y hábitos en un solo sitio. Todo se queda en tu equipo: sin cuenta y sin nube.",
   "onboarding.start": "Empezar",
   "onboarding.setup": "Antes de empezar, elige el idioma y el estilo de Gus.",
   "onboarding.language": "Idioma de la aplicación",
@@ -1043,16 +1044,16 @@ export default {
   "tour.finish": "Terminar",
   "tour.welcome.title": "Tu resumen",
   "tour.welcome.body":
-    "El Resumen reúne tu día: próximas tareas, últimas notas editadas y los accesos rápidos.",
+    "Tu día de un vistazo: las tareas de hoy y las vencidas, tus hábitos, la nota del día y lo último que tocaste.",
   "tour.sidebar.title": "El menú lateral",
   "tour.sidebar.body":
-    "Desde aquí cambias de sección: Resumen, Notas, Tareas, Calendario y Grafo. Arrastra su borde para agrandarlo o achicarlo.",
+    "Desde aquí cambias de sección: Notas, Tareas, Calendario, Grafo, Biblioteca, Hábitos y Pizarras. Arrastra su borde para agrandarlo o achicarlo.",
   "tour.explorer.title": "Tus notas",
   "tour.explorer.body":
     "El explorador muestra la carpeta del vault. Crea notas con el «+», renómbralas con doble clic y muévelas arrastrando.",
   "tour.editor.title": "Escribir y leer",
   "tour.editor.body":
-    "Aquí va tu markdown: escribe con «/» para insertar bloques y «[[» para enlazar otras notas. Todo se guarda solo.",
+    "Aquí va tu markdown: escribe «/» para insertar bloques y «[[» para enlazar otras notas. Todo se guarda solo, y con Ctrl+K encuentras cualquier nota al momento.",
   "tour.tasks.title": "Tareas",
   "tour.tasks.body":
     "Lista o tablero, con prioridades, etiquetas y fecha límite para no dejarte nada pendiente.",
@@ -1063,6 +1064,20 @@ export default {
   "tour.tools.body":
     "Abajo están la papelera (lo borrado se recupera 30 días) y Configuración: idioma, tema, atajos y más.",
   "tour.done.title": "¡Ya está!",
+  "firstVault.title": "Crea tu primer vault",
+  "firstVault.intro": "Un vault es una carpeta de tu equipo donde Gus guarda tus notas como archivos .md. Nada sale de tu equipo.",
+  "firstVault.newTitle": "Empezar de cero",
+  "firstVault.defaultName": "Mis notas",
+  "firstVault.changeFolder": "Cambiar carpeta",
+  "firstVault.existingTitle": "Ya tengo una carpeta",
+  "firstVault.existingBody": "Úsala tal cual, por ejemplo una de Obsidian. Gus lee tus notas .md y solo añade unos archivos ocultos para sus tareas y ajustes.",
+  "firstVault.existingButton": "Elegir carpeta…",
+  "firstVault.or": "o",
+  "firstVault.back": "Volver",
+  "tour.habits.title": "Hábitos",
+  "tour.habits.body": "Elige días fijos o una meta semanal (por ejemplo, 3 veces por semana, el día que quieras) y sigue tus rachas.",
+  "tour.more.title": "Y mucho más",
+  "tour.more.body": "El Grafo dibuja cómo se enlazan tus notas, la Biblioteca ordena tus PDF en estanterías y las Pizarras son lienzos libres para dibujar y pensar.",
   "tour.done.body":
     "Esto es todo lo básico. Si te pierdes, pulsa «Volver a recorrer Gus» en Configuración → General.",
 
