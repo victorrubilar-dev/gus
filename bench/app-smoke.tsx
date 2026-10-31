@@ -113,7 +113,21 @@ let siguienteCallback = 1;
 const autoupdate = location.search.includes("autoupdate");
 let terminarDescarga: () => void = () => {};
 
+/** Oyentes de eventos de Tauri: nombre → id del callback (el test los dispara con `emitir`). */
+const oyentes = new Map<string, number>();
+
 const respuestas: Record<string, (args: Record<string, unknown>) => unknown> = {
+  "plugin:event|listen": (args) => {
+    oyentes.set(String(args.event), Number(args.handler));
+    return Number(args.handler);
+  },
+  "plugin:event|unlisten": () => null,
+  import_files_to_vault: (args) =>
+    (args.sources as string[]).map((source) => {
+      const destino = `${String(args.destDir).replace(/\/$/, "")}/${source.split("/").pop()}`;
+      archivos.set(destino, "");
+      return { source, path: destino, error: null };
+    }),
   can_self_update: () => autoupdate,
   "plugin:updater|check": () =>
     autoupdate ? { rid: 1, currentVersion: "0.2.0", version: "9.9.9", date: null, body: "", rawJson: {} } : null,
@@ -235,11 +249,12 @@ const respuestas: Record<string, (args: Record<string, unknown>) => unknown> = {
   },
 };
 
-(window as unknown as { __smoke: unknown }).__smoke = { configGuardada, archivos, llamadas, tareas, pizarras, terminarDescarga: () => terminarDescarga() };
+(window as unknown as { __smoke: unknown }).__smoke = { emitir: (evento: string, payload: unknown) => callbacks.get(oyentes.get(evento) ?? -1)?.({ event: evento, id: 0, payload }), configGuardada, archivos, llamadas, tareas, pizarras, terminarDescarga: () => terminarDescarga() };
 (window as unknown as { __TAURI_EVENT_PLUGIN_INTERNALS__: unknown }).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
   unregisterListener: () => {},
 };
 (window as unknown as { __TAURI_INTERNALS__: unknown }).__TAURI_INTERNALS__ = {
+  metadata: { currentWindow: { label: "main" }, currentWebview: { windowLabel: "main", label: "main" } },
   // `listen` y los canales registran callbacks con esto; solo las descargas simuladas emiten.
   transformCallback: (callback: (message: unknown) => void) => {
     const id = siguienteCallback++;
