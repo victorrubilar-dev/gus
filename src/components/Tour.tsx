@@ -323,7 +323,8 @@ export default function Tour({ open, onFinish, onStepChange }: TourProps) {
         <h2 className="text-sm font-semibold text-gus-text">{t(step.titleKey)}</h2>
         <p className="mt-1.5 text-body leading-5 text-gus-muted">{t(step.bodyKey)}</p>
 
-        <div className="mt-4 flex items-center justify-between gap-3">
+        {/* Con 10 puntos de progreso y tres botones no cabe en una fila de 328 px: si falta sitio, los puntos pasan a su propia línea. */}
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-3">
           <div aria-hidden="true" className="flex items-center gap-1.5">
             {STEPS.map((entry, index) => (
               <span
@@ -336,7 +337,7 @@ export default function Tour({ open, onFinish, onStepChange }: TourProps) {
             ))}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="ml-auto flex items-center gap-2">
             <button type="button" onClick={onFinish} className="gus-btn gus-btn-ghost w-auto px-2">
               {t("tour.skip")}
             </button>

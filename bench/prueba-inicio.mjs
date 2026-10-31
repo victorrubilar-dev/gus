@@ -40,15 +40,23 @@ console.log("\n--- recorrido ---");
 await page.getByText("Tu resumen", { exact: true }).waitFor({ timeout: 8000 });
 comprobar(await page.getByText("Paso 1 de 10").isVisible(), "el recorrido empieza en el paso 1 de 10");
 comprobar(await page.getByText(/tus hábitos, la nota del día/).isVisible(), "el primer paso habla del resumen de hoy");
-const vistos = [];
+let fueraDelCartel = 0;
 for (let paso = 1; paso <= 10; paso++) {
-  vistos.push(await page.locator("h2, h3, [role=dialog] p").first().innerText().catch(() => ""));
+  // El botón «Siguiente» debe quedar dentro del relleno del cartel (16 px), no pegado o fuera.
+  const margen = await page.evaluate(() => {
+    const cartel = document.querySelector("div.rounded-2xl.shadow-black\\/50");
+    const botones = cartel ? [...cartel.querySelectorAll("button")] : [];
+    const siguiente = botones[botones.length - 1];
+    return cartel && siguiente ? cartel.getBoundingClientRect().right - siguiente.getBoundingClientRect().right : -99;
+  });
+  if (margen < 12) fueraDelCartel++;
   const siguiente = page.getByRole("button", { name: /Siguiente|Terminar/ });
   if (paso === 7) comprobar(await page.getByText("Hábitos", { exact: true }).first().isVisible(), "pasa por Hábitos (paso 7)");
   await siguiente.click();
   await page.waitForTimeout(300);
 }
 await page.waitForTimeout(500);
+comprobar(fueraDelCartel === 0, "el botón «Siguiente» queda dentro del cartel en los 10 pasos");
 comprobar((await page.getByText(/Paso \d+ de 10/).count()) === 0, "al terminar el recorrido se cierra");
 comprobar(await page.evaluate(() => localStorage.getItem("gus.tour")) === "done", "queda marcado como visto");
 
