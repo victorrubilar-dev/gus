@@ -1,3 +1,4 @@
+import type { FormatKind } from "../lib/textFormat";
 import { useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { toLocalCoord } from "../lib/uiZoom";
 import {
@@ -38,7 +39,7 @@ import { useT } from "../lib/i18n";
 import type { MessageKey } from "../lib/i18n/core";
 import type { TableMenuState } from "../lib/tableLayout";
 
-export type FormatKind = "bold" | "italic" | "strike" | "code" | "link";
+export type { FormatKind };
 
 /** Acciones sobre la tabla bajo el clic derecho. */
 export type { TableAction };

@@ -6,6 +6,7 @@ import { pathWithTitle, safeFileName } from "../lib/fileName";
 import type { ImageInsertResult } from "../lib/importFiles";
 import { DRAG_ENTRY_MIME } from "./FileExplorer";
 import { imageMarkdown, isImagePath, parseImageLine } from "../lib/imageLinks";
+import { formatSelection } from "../lib/textFormat";
 import { listEnterEdit } from "../lib/listContinue";
 import { orderedBlockAt, renumberAfterPaste, renumberOrderedLists, type OrderedBlockRef, type PasteRange } from "../lib/listNumbering";
 import { moveLines } from "../lib/moveLines";
@@ -110,13 +111,6 @@ const SLASH_HINT_KEY = "gus-slash-hint-used";
 const TASK_CHECKBOX_PX = 36;
 
 /** Lista vacía de imágenes, para no crear una nueva en cada render. */
-
-const FORMAT_MARKERS: Record<Exclude<FormatKind, "link">, [string, string]> = {
-  bold: ["**", "**"],
-  italic: ["*", "*"],
-  strike: ["~~", "~~"],
-  code: ["`", "`"],
-};
 
 export default function MarkdownEditor({
   path,
@@ -1769,23 +1763,8 @@ export default function MarkdownEditor({
     const area = textareaRef.current;
     if (!area) return;
     const start = area.selectionStart;
-    const selected = area.value.slice(start, area.selectionEnd);
-
-    if (kind === "link") {
-      replaceRange(start, `[${selected}]()`, `[${selected}](`.length);
-      return;
-    }
-
-    const [open, close] = FORMAT_MARKERS[kind];
-    const wrapped =
-      selected.startsWith(open) &&
-      selected.endsWith(close) &&
-      selected.length >= open.length + close.length
-        ? selected.slice(open.length, selected.length - close.length)
-        : open + selected + close;
-
-    if (selected) replaceRange(start, wrapped, wrapped.length);
-    else replaceRange(start, open + close, open.length);
+    const { text, caret } = formatSelection(kind, area.value.slice(start, area.selectionEnd));
+    replaceRange(start, text, caret);
   }
 
   /**
