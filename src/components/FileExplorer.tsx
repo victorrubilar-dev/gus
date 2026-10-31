@@ -1,25 +1,19 @@
 import {
-  Fragment,
   forwardRef,
   useEffect,
   useImperativeHandle,
-  useLayoutEffect,
   useRef,
   useState,
   type DragEvent as ReactDragEvent,
   type MouseEvent as ReactMouseEvent,
 } from "react";
+import ExplorerTrail from "./ExplorerTrail";
 import { FileRow, FolderRow } from "./ExplorerRows";
-import ExplorerContextMenu, { MENU_ITEM_CLASS, type MenuState } from "./ExplorerContextMenu";
+import ExplorerContextMenu, { type MenuState } from "./ExplorerContextMenu";
 import { AnimatePresence } from "framer-motion";
 import {
-  ArrowLeft,
-  ArrowRight,
-  Folder,
   FolderPlus,
-  CalendarClock,
   Import as ImportIcon,
-  Search,
   Plus,
   RefreshCw,
 } from "lucide-react";
@@ -56,7 +50,6 @@ import {
   goUp as trailGoUp,
   navigateTo as trailNavigateTo,
   rewriteTrail as trailRewrite,
-  splitTrail,
   type FolderEntry,
   type TrailState,
 } from "../lib/explorerTrail";
@@ -124,13 +117,6 @@ const MENU_MAX_HEIGHT = 280;
 /** Altura real del menú de la lista: solo 4 filas, sin reservar como el de fila. */
 const PANEL_MENU_HEIGHT = 120;
 
-const TRAIL_BUTTON_CLASS =
-  "gus-btn gus-btn-ghost shrink-0 focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-30";
-
-/** `shrink-0` es clave: si algo no cabe, la barra prefiere ocultar tramos antes que encogerlos. */
-const TRAIL_SEGMENT_CLASS =
-  "gus-btn gus-btn-ghost w-auto min-w-0 max-w-full shrink-0 justify-start truncate px-1.5 text-left focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none";
-
 function formatModified(ms: number | null | undefined): string | undefined {
   if (!ms) return undefined;
 
@@ -153,14 +139,6 @@ function toNoteFile(entry: VaultEntry): NoteFile {
 
 function rootLabel(vaultPath: string): string {
   return baseName(vaultPath.replace(/[\\/]+$/, "")) || vaultPath || "vault";
-}
-
-function TrailSeparator() {
-  return (
-    <span aria-hidden="true" className="shrink-0 text-gus-muted/60">
-      ›
-    </span>
-  );
 }
 
 function createId(): string {
@@ -214,8 +192,6 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
     future: [],
   }));
   const trail = nav.trail;
-  /** Clave de la ruta: al cambiarla la barra vuelve a intentar mostrarla entera. */
-  const trailKey = trail.map((step) => step.path).join("\n");
   const currentDir = trail[trail.length - 1].path;
   const rootDir = trail[0];
 
@@ -236,10 +212,6 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
 
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [trailMenuOpen, setTrailMenuOpen] = useState(false);
-  /** Nivel de colapso de la ruta, dictado por la medición del ancho (ver efecto). */
-  const [collapse, setCollapse] = useState({ key: "", level: 0 });
-  /** Ancho medido de la barra: cambia al redimensionar el explorador. */
-  const [boxWidth, setBoxWidth] = useState(0);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [movingId, setMovingId] = useState<string | null>(null);
@@ -255,8 +227,6 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
   const confirmCancelRef = useRef<HTMLButtonElement | null>(null);
   /** Raíz de la lista de filas: para anclar el menú a la fila bajo el teclado. */
   const listRef = useRef<HTMLUListElement | null>(null);
-  /** Barra de ruta: mide su ancho para decidir cuántos tramos mostrar. */
-  const trailRef = useRef<HTMLDivElement | null>(null);
   /** Temporizador del aviso de importación. */
   const noticeTimerRef = useRef<number | null>(null);
 
@@ -903,63 +873,6 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
 
   const busy = busyId !== null;
 
-  const collapseLevel = collapse.key === trailKey ? collapse.level : 0;
-  const { visible: trailParts, hidden: hiddenParts, maxLevel } = splitTrail(trail, collapseLevel);
-
-  /** Si la raíz quedó fuera, el «…» abre la fila («… › carpeta actual»); si no, va tras la raíz. */
-  const abreConEllipsis = hiddenParts.length > 0 && !trailParts.some((part) => part.index === 0);
-
-  const ellipsisButton = (
-    <button
-      type="button"
-      onClick={() => setTrailMenuOpen((open) => !open)}
-      aria-haspopup="menu"
-      aria-expanded={trailMenuOpen}
-      aria-label={t("explorer.hiddenFolders", { count: hiddenParts.length })}
-      title={t("explorer.trailEarlier")}
-      className={clsx(
-        "shrink-0 rounded px-0.5 py-0.5 transition-colors focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none",
-        trailMenuOpen ? "text-gus-accent" : "text-gus-muted hover:text-gus-text",
-      )}
-    >
-      …
-    </button>
-  );
-
-  /**
-   * La barra mide su ancho real: si los tramos visibles no caben, se oculta alguno
-   * —nunca se encogen todos juntos, que era lo que se veía tosco—. Al cambiar de
-   * carpeta o de ancho de explorador se vuelve a intentar con la ruta entera.
-   */
-  useLayoutEffect(() => {
-    const box = trailRef.current;
-    if (!box) return;
-
-    // Solo falta sitio: se oculta un tramo más (nunca se encogen todos juntos).
-    // El nuevo nivel se calcula desde `prev` y no desde `collapseLevel`: el
-    // valor derivado en render no debe copiarse al estado (costaría un render
-    // extra y la regla no-derived-state-effect lo marca).
-    if (box.scrollWidth > box.clientWidth + 1 && collapseLevel < maxLevel) {
-      setCollapse((prev) => ({
-        key: trailKey,
-        level: (prev.key === trailKey ? prev.level : 0) + 1,
-      }));
-    }
-
-    let ancho = box.clientWidth;
-    const observer = new ResizeObserver(() => {
-      // El primer disparo no es un cambio real; después, con otro ancho se
-      // vuelve a intentar con la ruta entera y la medición de arriba repliega.
-      if (box.clientWidth === ancho) return;
-      ancho = box.clientWidth;
-      setBoxWidth(box.clientWidth);
-      setCollapse({ key: trailKey, level: 0 });
-    });
-    observer.observe(box);
-
-    return () => observer.disconnect();
-  }, [trailKey, collapseLevel, maxLevel, boxWidth]);
-
   const menuFolder = menu?.kind === "folder" ? folders.find((f) => f.path === menu.id) : undefined;
   const menuFile = menu?.kind === "file" ? items.find((f) => f.id === menu.id) : undefined;
   const menuTarget = menuFolder ?? menuFile;
@@ -1087,134 +1000,26 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
       </header>
 
       {!staticMode && trail.length > 0 && (
-        <nav
-          aria-label={t("explorer.currentFolder")}
-          data-trail-menu="true"
-          className="relative -mt-1 flex items-center gap-1 text-meta"
-        >
-          <div className="flex shrink-0 items-center gap-0.5">
-            <button
-              type="button"
-              onClick={goBack}
-              disabled={nav.past.length === 0}
-              title={t("explorer.backHint", { combo: backCombo })}
-              aria-label={t("explorer.back")}
-              className={TRAIL_BUTTON_CLASS}
-            >
-              <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              onClick={goForward}
-              disabled={nav.future.length === 0}
-              title={t("explorer.forwardHint", { combo: forwardCombo })}
-              aria-label={t("explorer.forward")}
-              className={TRAIL_BUTTON_CLASS}
-            >
-              <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-            </button>
-          </div>
-
-          <div
-            ref={trailRef}
-            className="flex min-w-0 flex-1 items-center gap-x-0.5 overflow-hidden"
-          >
-            {abreConEllipsis && ellipsisButton}
-            {trailParts.map((part, position) => (
-              <Fragment key={part.folder.path}>
-                {(position > 0 || abreConEllipsis) && <TrailSeparator />}
-                <button
-                  type="button"
-                  data-drop-folder={part.folder.path}
-                  onClick={() => navigateTo(trail.slice(0, part.index + 1))}
-                  onDragOver={(event) => dragOverFolder(event, part.folder)}
-                  onDragLeave={() => {
-                    if (dragOverPath === part.folder.path) setDragOverPath(null);
-                  }}
-                  onDrop={(event) => dropOnFolder(event, part.folder)}
-                  title={t("explorer.trailDropHint", { path: part.folder.path })}
-                  aria-current={part.index === trail.length - 1 ? "true" : undefined}
-                  className={clsx(
-                    TRAIL_SEGMENT_CLASS,
-                    dragOverPath === part.folder.path &&
-                      "bg-gus-accent/20 text-gus-accent ring-1 ring-gus-accent/50",
-                    part.index === trail.length - 1
-                      ? "font-medium text-gus-text"
-                      : "text-gus-muted hover:text-gus-text",
-                  )}
-                >
-                  {part.folder.name}
-                </button>
-
-                {position === 0 && hiddenParts.length > 0 && !abreConEllipsis && (
-                  <>
-                    <TrailSeparator />
-                    {ellipsisButton}
-                  </>
-                )}
-              </Fragment>
-            ))}
-          </div>
-
-          {trailMenuOpen && hiddenParts.length > 0 && (
-            <div
-              role="menu"
-              aria-label={t("explorer.trailEarlier")}
-              className="absolute top-full right-0 left-11 z-30 mt-1 overflow-hidden rounded-lg border border-gus-border bg-gus-card shadow-xl shadow-black/40"
-            >
-              <ul className="gus-scrollbar max-h-52 overflow-y-auto py-1">
-                {hiddenParts.map((part) => (
-                  <li key={part.folder.path}>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => navigateTo(trail.slice(0, part.index + 1))}
-                      onDragOver={(event) => dragOverFolder(event, part.folder)}
-                      onDragLeave={() => {
-                        if (dragOverPath === part.folder.path) setDragOverPath(null);
-                      }}
-                      onDrop={(event) => dropOnFolder(event, part.folder)}
-                      title={t("explorer.trailDropHint", { path: part.folder.path })}
-                      className={clsx(
-                        MENU_ITEM_CLASS,
-                        "text-gus-muted hover:bg-gus-panel hover:text-gus-text",
-                      )}
-                    >
-                      <Folder
-                        className="h-3.5 w-3.5 shrink-0"
-                        strokeWidth={1.75}
-                        aria-hidden="true"
-                      />
-                      <span className="min-w-0 flex-1 truncate">{part.folder.name}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-            {onOpenSearch && (
-              <button
-                type="button"
-                onClick={onOpenSearch}
-                title={t("app.tab.search")}
-                aria-label={t("app.tab.search")}
-                className={TRAIL_BUTTON_CLASS}
-              >
-                <Search className="h-3.5 w-3.5" aria-hidden="true" />
-              </button>
-            )}
-            {onOpenDailyNote && (
-              <button
-                type="button"
-                onClick={onOpenDailyNote}
-                title={t("daily.openToday")}
-                aria-label={t("daily.openToday")}
-                className={TRAIL_BUTTON_CLASS}
-              >
-                <CalendarClock className="h-3.5 w-3.5" aria-hidden="true" />
-              </button>
-            )}
-        </nav>
+        <ExplorerTrail
+          trail={trail}
+          canGoBack={nav.past.length > 0}
+          canGoForward={nav.future.length > 0}
+          backCombo={backCombo}
+          forwardCombo={forwardCombo}
+          onBack={goBack}
+          onForward={goForward}
+          onNavigate={navigateTo}
+          menuOpen={trailMenuOpen}
+          onMenuOpenChange={setTrailMenuOpen}
+          dragOverPath={dragOverPath}
+          onDragOverFolder={dragOverFolder}
+          onDragLeaveFolder={(folder) => {
+            if (dragOverPath === folder.path) setDragOverPath(null);
+          }}
+          onDropOnFolder={dropOnFolder}
+          onOpenSearch={onOpenSearch}
+          onOpenDailyNote={onOpenDailyNote}
+        />
       )}
 
       {notice && (

@@ -73,6 +73,27 @@ await page.getByRole("menuitem", { name: "Mover a la papelera" }).click().catch(
 await espera();
 comprobar(!(await archivos()).includes("/vault/bienvenida.md"), "mover a la papelera quita bienvenida.md");
 
+console.log("\n--- ruta larga: tramos ocultos y desplegable «…» ---");
+await page.evaluate(() => window.__smoke.archivos.set("/vault/carpeta-muy-larga-uno/carpeta-muy-larga-dos/carpeta-muy-larga-tres/carpeta-muy-larga-cuatro/x.md", "# x"));
+await page.locator('[data-tour="sidebar"]').getByRole("button", { name: "Resumen", exact: true }).first().click();
+await page.waitForTimeout(400);
+await page.locator('[data-tour="sidebar"]').getByRole("button", { name: "Notas", exact: true }).first().click();
+await page.waitForTimeout(800);
+let ruta = "/vault";
+for (const nombre of ["uno", "dos", "tres", "cuatro"]) {
+  ruta += `/carpeta-muy-larga-${nombre}`;
+  await fila(ruta).getByRole("button").first().click();
+  await page.waitForTimeout(300);
+}
+const ocultas = page.getByRole("button", { name: /carpetas ocultas/ });
+comprobar((await ocultas.count()) === 1, "una ruta que no cabe esconde tramos tras un «…»");
+await ocultas.first().click();
+const desplegable = page.getByRole("menu", { name: "Carpetas anteriores de la ruta" });
+comprobar((await desplegable.count()) === 1, "el «…» abre el desplegable de tramos");
+await page.keyboard.press("Escape");
+await page.waitForTimeout(150);
+comprobar((await desplegable.count()) === 0, "Esc cierra el desplegable");
+
 await browser.close();
 console.log(fallos.length === 0 ? "\nTODO EN VERDE" : `\n${fallos.length} comprobación(es) fallaron`);
 process.exit(fallos.length === 0 ? 0 : 1);
