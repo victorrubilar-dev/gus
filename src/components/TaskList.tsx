@@ -12,6 +12,7 @@ import {
   isTaskPriority,
   nextPriority,
 } from "../lib/taskPriority";
+import { DUE_CLASS, dueKind, shortDate } from "../lib/taskDue";
 import { useT } from "../lib/i18n";
 import type { MessageKey, TranslateParams } from "../lib/i18n/core";
 import { NEW_TASK_EVENT, type NewTask } from "../lib/newTask";
@@ -56,24 +57,6 @@ function tagColor(tag: string): string {
   return TAG_COLORS[hash % TAG_COLORS.length];
 }
 
-function hoyIso(): string {
-  const hoy = new Date();
-  return `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}-${String(
-    hoy.getDate(),
-  ).padStart(2, "0")}`;
-}
-
-function formatoFecha(iso: string): string {
-  const fecha = new Date(`${iso}T00:00:00`);
-  if (Number.isNaN(fecha.getTime())) return iso;
-
-  return fecha.toLocaleDateString(undefined, {
-    day: "numeric",
-    month: "short",
-    ...(fecha.getFullYear() === new Date().getFullYear() ? {} : { year: "numeric" }),
-  });
-}
-
 function dueState(
   task: { completes: boolean; due?: string },
   t: Translator,
@@ -81,28 +64,14 @@ function dueState(
   const due = task.due;
   if (!due) return null;
 
-  const normal = "border-gus-border bg-gus-panel text-gus-muted";
-  const plain = `${t("tasks.dueLabel")}: ${formatoFecha(due)}`;
-  if (task.completes) {
-    return { due, title: plain, className: normal };
-  }
-
-  const hoy = hoyIso();
-  if (due < hoy) {
-    return {
-      due,
-      title: t("tasks.dueOverdue"),
-      className: "border-rose-400/40 bg-rose-400/10 text-rose-300",
-    };
-  }
-  if (due === hoy) {
-    return {
-      due,
-      title: t("tasks.dueToday"),
-      className: "border-amber-400/40 bg-amber-400/10 text-amber-300",
-    };
-  }
-  return { due, title: plain, className: normal };
+  const kind = dueKind(task, due);
+  const title =
+    kind === "overdue"
+      ? t("tasks.dueOverdue")
+      : kind === "today"
+        ? t("tasks.dueToday")
+        : `${t("tasks.dueLabel")}: ${shortDate(due)}`;
+  return { due, title, className: DUE_CLASS[kind] };
 }
 
 export default function TaskList({
@@ -639,7 +608,7 @@ export default function TaskList({
                       )}
                     >
                       <Calendar className="h-3 w-3" aria-hidden="true" />
-                      {plazo.due ? formatoFecha(plazo.due) : null}
+                      {plazo.due ? shortDate(plazo.due) : null}
                     </span>
                   )}
 

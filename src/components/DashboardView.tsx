@@ -20,6 +20,7 @@ import type { NoteFile } from "./FileExplorer";
 import { NEW_TASK_EVENT } from "../lib/newTask";
 import { loadTaskStore, type Task } from "../lib/taskStore";
 import { PRIORITY_CLASS, priorityLabel, priorityRank } from "../lib/taskPriority";
+import { DUE_CLASS, dueKind, shortDate, todayIso } from "../lib/taskDue";
 import { useT } from "../lib/i18n";
 import type { MessageKey, TranslateParams } from "../lib/i18n/core";
 
@@ -47,44 +48,17 @@ const ICON_BOX =
 
 const CARD = "rounded-xl border border-gus-border bg-gus-card";
 
-function todayIso(): string {
-  const today = new Date();
-  return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(
-    today.getDate(),
-  ).padStart(2, "0")}`;
-}
-
-function shortDate(iso: string): string {
-  const date = new Date(`${iso}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return iso;
-
-  return date.toLocaleDateString(undefined, {
-    day: "numeric",
-    month: "short",
-    ...(date.getFullYear() === new Date().getFullYear() ? {} : { year: "numeric" }),
-  });
-}
-
 function dueChip(due: string, t: Translator): { label: string; title: string; className: string } {
-  const today = todayIso();
-  if (due < today) {
-    return {
-      label: shortDate(due),
-      title: t("tasks.dueOverdue"),
-      className: "border-rose-400/40 bg-rose-400/10 text-rose-300",
-    };
-  }
-  if (due === today) {
-    return {
-      label: t("common.today"),
-      title: t("tasks.dueToday"),
-      className: "border-amber-400/40 bg-amber-400/10 text-amber-300",
-    };
-  }
+  const kind = dueKind({ completes: false }, due);
   return {
-    label: shortDate(due),
-    title: `${t("tasks.dueLabel")}: ${shortDate(due)}`,
-    className: "border-gus-border bg-gus-panel text-gus-muted",
+    label: kind === "today" ? t("common.today") : shortDate(due),
+    title:
+      kind === "overdue"
+        ? t("tasks.dueOverdue")
+        : kind === "today"
+          ? t("tasks.dueToday")
+          : `${t("tasks.dueLabel")}: ${shortDate(due)}`,
+    className: DUE_CLASS[kind],
   };
 }
 

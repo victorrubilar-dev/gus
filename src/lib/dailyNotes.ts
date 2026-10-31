@@ -1,3 +1,5 @@
+import { toIso } from "./calendarDate";
+
 import { safeFileName } from "./fileName.ts";
 import { getLanguage, type Language } from "./i18n/core";
 
@@ -26,13 +28,9 @@ const MAX_FOLDER_DEPTH = 4;
 /** Tamaño máximo de la plantilla guardada. */
 const MAX_TEMPLATE_LENGTH = 4000;
 
-function pad2(value: number): string {
-  return String(value).padStart(2, "0");
-}
-
 /** Fecha en formato ISO corto, con los componentes locales del día. */
 export function isoDate(date: Date): string {
-  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+  return toIso(date);
 }
 
 /** «2026-10-09.md»: el nombre del archivo de un día. */

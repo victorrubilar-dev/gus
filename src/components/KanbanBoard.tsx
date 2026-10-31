@@ -4,6 +4,7 @@ import { Calendar, Flag } from "lucide-react";
 import clsx from "clsx";
 import type { Task } from "../lib/taskStore";
 import { PRIORITY_CLASS, priorityLabel } from "../lib/taskPriority";
+import { DUE_CLASS, dueKind, shortDate, todayIso } from "../lib/taskDue";
 import { useT } from "../lib/i18n";
 import type { MessageKey } from "../lib/i18n/core";
 
@@ -18,19 +19,6 @@ const COLUMNS: { id: KanbanColumnId; labelKey: MessageKey; hintKey: MessageKey }
 export function columnOf(task: Task): KanbanColumnId {
   if (task.completes) return "done";
   return task.doing ? "doing" : "todo";
-}
-
-function todayIso(): string {
-  const today = new Date();
-  return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(
-    today.getDate(),
-  ).padStart(2, "0")}`;
-}
-
-function shortDue(iso: string): string {
-  const date = new Date(`${iso}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return iso;
-  return date.toLocaleDateString(undefined, { day: "numeric", month: "short" });
 }
 
 export interface KanbanBoardProps {
@@ -105,8 +93,7 @@ export default function KanbanBoard({
             >
               <AnimatePresence initial={false}>
                 {cards.map((task) => {
-                  const overdue =
-                    !task.completes && !!task.due && task.due < now;
+                  const dueStatus = task.due ? dueKind(task, task.due, now) : null;
 
                   return (
                     <m.li
@@ -167,16 +154,14 @@ export default function KanbanBoard({
                           <div className="mt-1.5 flex flex-wrap items-center gap-1">
                             {task.due && (
                               <span
-                                title={`Plazo: ${task.due}`}
+                                title={`${t("tasks.dueLabel")}: ${task.due}`}
                                 className={clsx(
                                   "inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-meta",
-                                  overdue
-                                    ? "border-rose-400/40 bg-rose-400/10 text-rose-300"
-                                    : "border-gus-border bg-gus-panel text-gus-muted",
+                                  DUE_CLASS[dueStatus ?? "later"],
                                 )}
                               >
                                 <Calendar className="h-2.5 w-2.5" aria-hidden="true" />
-                                {shortDue(task.due)}
+                                {shortDate(task.due)}
                               </span>
                             )}
                             {task.tags.map((tag) => {

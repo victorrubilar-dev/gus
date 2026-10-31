@@ -1,3 +1,4 @@
+import { toIso } from "./calendarDate";
 /**
  * Avisos del sistema (REQ-12): vencimientos de tareas y recordatorio de la
  * nota del día.
@@ -26,10 +27,7 @@ export interface RemindableTask {
 
 /** Fecha «AAAA-MM-DD» en la zona horaria local, a partir de milisegundos. */
 export function isoDay(ms: number): string {
-  const date = new Date(ms);
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
-    date.getDate(),
-  ).padStart(2, "0")}`;
+  return toIso(new Date(ms));
 }
 
 const ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
