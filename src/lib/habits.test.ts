@@ -7,11 +7,14 @@ import {
   dayProgress,
   EMPTY_HABITS,
   isScheduled,
+  isWeekly,
   lastDays,
   markDay,
   onWeekday,
   removeHabit,
   toggleDay,
+  weekDone,
+  weekOf,
   type Habit,
 } from "./habits";
 
@@ -93,5 +96,62 @@ describe("resúmenes", () => {
 
   it("lastDays acaba en hoy y atraviesa meses", () => {
     expect(lastDays("2026-11-02", 4)).toEqual(["2026-10-30", "2026-10-31", "2026-11-01", "2026-11-02"]);
+  });
+});
+
+describe("meta semanal", () => {
+  // Semana del 26 oct (lunes) al 1 nov (domingo).
+  const semanal = (goal: number, created = "2026-10-01"): Habit => ({ id: "w", name: "w", days: [0, 1, 2, 3, 4, 5, 6], created, weeklyGoal: goal });
+
+  it("se puede hacer cualquier día desde el alta, no antes", () => {
+    const h = semanal(3, "2026-10-05");
+    expect(isWeekly(h)).toBe(true);
+    expect(isScheduled(h, "2026-10-28")).toBe(true);
+    expect(isScheduled(h, "2026-10-04")).toBe(false);
+    expect(isWeekly(habit("a", [0]))).toBe(false);
+  });
+
+  it("la semana va de lunes a domingo y se cuenta lo hecho en ella", () => {
+    expect(weekOf("2026-10-28")[0]).toBe("2026-10-26");
+    expect(weekOf("2026-10-28")[6]).toBe("2026-11-01");
+    const s = store([semanal(3)], { w: ["2026-10-25", "2026-10-26", "2026-10-29"] });
+    expect(weekDone(s, "w", "2026-10-30")).toBe(2); // el domingo 25 es de la semana anterior
+  });
+
+  it("la racha son semanas seguidas que llegaron a la meta", () => {
+    const h = semanal(2);
+    const s = store([h], {
+      w: ["2026-10-12", "2026-10-14", "2026-10-19", "2026-10-21", "2026-10-26", "2026-10-27"],
+    });
+    expect(currentStreak(h, s, "2026-10-28")).toBe(3);
+    expect(bestStreak(h, s, "2026-10-28")).toBe(3);
+  });
+
+  it("la semana en curso sin cumplir aún no corta la racha, una pasada sí", () => {
+    const h = semanal(2);
+    const aun = store([h], { w: ["2026-10-19", "2026-10-21", "2026-10-26"] });
+    expect(currentStreak(h, aun, "2026-10-28")).toBe(1);
+    const corta = store([h], { w: ["2026-10-12", "2026-10-14", "2026-10-26", "2026-10-27"] });
+    expect(currentStreak(h, corta, "2026-10-28")).toBe(1);
+    expect(bestStreak(h, corta, "2026-10-28")).toBe(1);
+  });
+
+  it("en el anillo de hoy cuenta hasta cumplir la meta y no en los días pasados", () => {
+    const h = semanal(2);
+    const s0 = store([h]);
+    expect(dayProgress(s0, "2026-10-28", "2026-10-28")).toEqual({ done: 0, total: 1 });
+    const hecho = store([h], { w: ["2026-10-28"] });
+    expect(dayProgress(hecho, "2026-10-28", "2026-10-28")).toEqual({ done: 1, total: 1 });
+    const cumplida = store([h], { w: ["2026-10-26", "2026-10-27"] });
+    expect(dayProgress(cumplida, "2026-10-28", "2026-10-28")).toEqual({ done: 0, total: 0 });
+    expect(dayProgress(hecho, "2026-10-27", "2026-10-28")).toEqual({ done: 0, total: 0 });
+  });
+
+  it("el porcentaje compara lo hecho con lo que pedía la meta, sin pasar de 100", () => {
+    const h = semanal(2, "2026-10-01");
+    const s = store([h], { w: ["2026-10-26", "2026-10-27", "2026-10-28", "2026-10-29"] });
+    expect(completionRate(h, s, "2026-10-28", 7)).toBe(100);
+    const medio = store([h], { w: ["2026-10-26"] });
+    expect(completionRate(h, medio, "2026-10-28", 7)).toBe(50);
   });
 });

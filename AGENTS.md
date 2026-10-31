@@ -127,7 +127,7 @@ gus/
 │   │   ├── CheckboxVisual.tsx    # Casilla visual compartida por las listas de tareas
 │   │   ├── KanbanBoard.tsx       # Tablero Kanban para tareas
 │   │   ├── LibraryView.tsx       # Biblioteca de PDF en estanterías, con portada (lazy)
-│   │   ├── HabitsView.tsx        # Hábitos: anillos de cierre diario y tracker clásico
+│   │   ├── HabitsView.tsx        # Hábitos: anillos de cierre diario y tracker clásico; días fijos o meta semanal (cualquier día)
 │   │   ├── BoardsView.tsx        # Lista de pizarras (crear, abrir, borrar a la papelera)
 │   │   ├── BoardEditor.tsx       # Lienzo de una pizarra: lápiz, goma, formas, flechas, texto, post-it e imágenes
 │   │   ├── BoardImagePicker.tsx  # Selector de imágenes del vault para la pizarra
@@ -294,7 +294,7 @@ pnpm build
 pnpm tauri build
 
 # Tests
-pnpm test              # Todos los tests Vitest (316 tests en 33 ficheros)
+pnpm test              # Todos los tests Vitest (322 tests en 33 ficheros)
 pnpm test:watch        # Modo watch
 
 # Type checking

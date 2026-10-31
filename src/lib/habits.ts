@@ -12,6 +12,12 @@ export interface Habit {
   days: number[];
   /** Día de alta: antes de él el hábito no cuenta como fallado. */
   created: string;
+  /**
+   * Meta semanal (1–7 veces por semana, de lunes a domingo): se puede hacer
+   * cualquier día y lo que cuenta es llegar al total de la semana. En ese caso
+   * `days` son los siete días.
+   */
+  weeklyGoal?: number;
 }
 
 export interface HabitStore {
@@ -34,10 +40,32 @@ function addDays(date: Date, amount: number): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate() + amount);
 }
 
-/** ¿Toca el hábito ese día? Antes de su alta nunca toca. */
+/** ¿Es un hábito de meta semanal (cualquier día, tantas veces por semana)? */
+export function isWeekly(habit: Habit): boolean {
+  return habit.weeklyGoal !== undefined && habit.weeklyGoal > 0;
+}
+
+/** Los siete días (lunes primero) de la semana a la que pertenece `iso`. */
+export function weekOf(iso: string): string[] {
+  const date = fromIso(iso);
+  if (!date) return [];
+  const monday = addDays(date, -weekdayIndex(date));
+  return Array.from({ length: 7 }, (_, index) => toIso(addDays(monday, index)));
+}
+
+/** Veces que se hizo el hábito en la semana de `iso`. */
+export function weekDone(store: HabitStore, habitId: string, iso: string): number {
+  return weekOf(iso).filter((day) => isDone(store, habitId, day)).length;
+}
+
+/**
+ * ¿Se puede (y se espera) hacer el hábito ese día? Los de días fijos, solo en
+ * sus días; los de meta semanal, cualquier día desde el alta. Antes del alta nunca.
+ */
 export function isScheduled(habit: Habit, iso: string): boolean {
   const date = fromIso(iso);
-  return date !== null && iso >= habit.created && habit.days.includes(weekdayIndex(date));
+  if (date === null || iso < habit.created) return false;
+  return isWeekly(habit) || habit.days.includes(weekdayIndex(date));
 }
 
 export function isDone(store: HabitStore, habitId: string, iso: string): boolean {
@@ -98,6 +126,7 @@ export function lastDays(today: string, count: number): string[] {
  * programado anterior sin hacer sí.
  */
 export function currentStreak(habit: Habit, store: HabitStore, today: string): number {
+  if (isWeekly(habit)) return weeklyStreak(habit, store, today).current;
   let streak = 0;
   let day = fromIso(today);
   if (!day) return 0;
@@ -117,6 +146,7 @@ export function currentStreak(habit: Habit, store: HabitStore, today: string): n
 
 /** Mejor racha de la historia del hábito. */
 export function bestStreak(habit: Habit, store: HabitStore, today: string): number {
+  if (isWeekly(habit)) return weeklyStreak(habit, store, today).best;
   const start = fromIso(habit.created);
   const end = fromIso(today);
   if (!start || !end) return 0;
@@ -132,14 +162,52 @@ export function bestStreak(habit: Habit, store: HabitStore, today: string): numb
   return best;
 }
 
-/** Hechos y programados de un día entre todos los hábitos (el anillo del día). */
-export function dayProgress(store: HabitStore, iso: string): { done: number; total: number } {
-  const scheduled = store.habits.filter((habit) => isScheduled(habit, iso));
-  return { done: scheduled.filter((habit) => isDone(store, habit.id, iso)).length, total: scheduled.length };
+/**
+ * Rachas de un hábito de meta semanal, en semanas seguidas que llegaron a la
+ * meta. La semana en curso suma si ya la cumplió y, si aún no, no corta nada
+ * (todavía hay tiempo); una semana anterior sin cumplir sí corta.
+ */
+function weeklyStreak(habit: Habit, store: HabitStore, today: string): { current: number; best: number } {
+  const goal = habit.weeklyGoal ?? 1;
+  const first = weekOf(habit.created)[0];
+  const thisWeek = weekOf(today)[0];
+  if (!first || !thisWeek) return { current: 0, best: 0 };
+
+  let best = 0;
+  let run = 0;
+  for (let monday = fromIso(first); monday !== null && toIso(monday) <= thisWeek; monday = addDays(monday, 7)) {
+    const met = weekDone(store, habit.id, toIso(monday)) >= goal;
+    if (met) run += 1;
+    else if (toIso(monday) !== thisWeek) run = 0;
+    best = Math.max(best, run);
+  }
+  return { current: run, best };
+}
+
+/**
+ * Hechos y esperados de un día entre todos los hábitos (el anillo del día).
+ * Los de meta semanal solo cuentan hoy —y mientras les falte para la meta o
+ * ya estén hechos hoy—; en los días pasados no hay un «tocaba» que juzgar.
+ */
+export function dayProgress(store: HabitStore, iso: string, today?: string): { done: number; total: number } {
+  const expected = store.habits.filter((habit) => {
+    if (!isScheduled(habit, iso)) return false;
+    if (!isWeekly(habit)) return true;
+    return iso === today && (isDone(store, habit.id, iso) || weekDone(store, habit.id, iso) < (habit.weeklyGoal ?? 1));
+  });
+  return { done: expected.filter((habit) => isDone(store, habit.id, iso)).length, total: expected.length };
 }
 
 /** Porcentaje (0–100) de días programados cumplidos en los últimos `count` días. */
 export function completionRate(habit: Habit, store: HabitStore, today: string, count: number): number | null {
+  if (isWeekly(habit)) {
+    // Veces hechas frente a las que pedía la meta en ese tiempo, sin pasarse del 100 %.
+    const days = lastDays(today, count).filter((iso) => iso >= habit.created);
+    const wanted = ((habit.weeklyGoal ?? 1) * days.length) / 7;
+    if (wanted === 0) return null;
+    const done = days.filter((iso) => isDone(store, habit.id, iso)).length;
+    return Math.min(100, Math.round((done / wanted) * 100));
+  }
   const scheduled = lastDays(today, count).filter((iso) => isScheduled(habit, iso));
   if (scheduled.length === 0) return null;
   const done = scheduled.filter((iso) => isDone(store, habit.id, iso)).length;

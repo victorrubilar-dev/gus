@@ -16,9 +16,9 @@ App de escritorio **local-first** para notas Markdown y tareas personales. Tauri
 pnpm install
 pnpm tauri dev            # Vite en :1420 + ventana Tauri
 pnpm build                # tsc + vite build
-pnpm test                 # Vitest: 316 tests en 33 ficheros
+pnpm test                 # Vitest: 322 tests en 33 ficheros
 npx tsc --noEmit
-cd src-tauri && cargo test   # Rust: 79 tests
+cd src-tauri && cargo test   # Rust: 80 tests
 ```
 
 Benchmarks (Playwright, en `bench/`; casi todos necesitan `npx vite --port 5199` en marcha): `pnpm bench`, `bench:menu`, `bench:images`, `bench:explorer`, `bench:app`, `bench:botones`, `bench:medida`, `bench:pestanas`, `bench:foco`, `bench:corrector`, `bench:portapapeles`, `bench:tablas`, `bench:cursor`, `bench:operaciones` (explorador: crear, renombrar, mover, arrastrar, borrar, ruta), `bench:vaults`, `bench:soltar`, `bench:tareas` (drop nativo de Tauri simulado) y `bench:regresion` (capturas contra `bench/linea-base/`, de esta máquina; `--actualizar` tras un cambio visual aceptado). `pnpm traza` aparte.

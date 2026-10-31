@@ -17,6 +17,9 @@ pub(crate) struct Habit {
     pub(crate) days: Vec<u8>,
     /// Día de alta `AAAA-MM-DD`: antes de él el hábito no cuenta como fallado.
     pub(crate) created: String,
+    /// Meta semanal (1–7 veces por semana, cualquier día): sustituye a los días fijos.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) weekly_goal: Option<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -52,6 +55,9 @@ pub(crate) fn validate_habits(store: &HabitStore) -> Result<(), String> {
         }
         if habit.days.iter().any(|day| *day > 6) {
             return Err(format!("«{}» tiene un día de la semana fuera de rango", habit.name));
+        }
+        if habit.weekly_goal.is_some_and(|goal| !(1..=7).contains(&goal)) {
+            return Err(format!("«{}» tiene una meta semanal fuera de 1 a 7", habit.name));
         }
         if !is_iso_day(&habit.created) {
             return Err(format!("«{}» tiene una fecha de alta no válida", habit.name));
@@ -109,6 +115,7 @@ mod tests {
             description: None,
             days: vec![0, 2, 4],
             created: "2026-10-01".into(),
+            weekly_goal: None,
         }
     }
 
@@ -132,7 +139,9 @@ mod tests {
 
         assert_eq!(load_habits(vault.clone()).expect("vacío"), HabitStore::default());
 
-        let datos = store(vec![habit("a")], &[("a", &["2026-10-02", "2026-10-04"])]);
+        let mut semanal = habit("b");
+        semanal.weekly_goal = Some(3);
+        let datos = store(vec![habit("a"), semanal], &[("a", &["2026-10-02", "2026-10-04"])]);
         save_habits(vault.clone(), datos.clone()).expect("guardar");
         let leidos = load_habits(vault).expect("leer");
         assert_eq!(leidos.habits, datos.habits);
@@ -149,12 +158,18 @@ mod tests {
         dia_raro.days = vec![7];
         let mut fecha_mala = habit("a");
         fecha_mala.created = "ayer".into();
+        let mut meta_cero = habit("a");
+        meta_cero.weekly_goal = Some(0);
+        let mut meta_alta = habit("a");
+        meta_alta.weekly_goal = Some(8);
 
         let casos = [
             store(vec![habit("a"), habit("a")], &[]),
             store(vec![sin_nombre], &[]),
             store(vec![dia_raro], &[]),
             store(vec![fecha_mala], &[]),
+            store(vec![meta_cero], &[]),
+            store(vec![meta_alta], &[]),
             store(vec![habit("a")], &[("fantasma", &["2026-10-02"])]),
             store(vec![habit("a")], &[("a", &["2026-13"])]),
         ];

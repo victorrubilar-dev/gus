@@ -217,6 +217,27 @@ await page.waitForFunction(
 );
 ok(true, "crear un hábito y marcar hoy se guarda en el backend (save_habits)");
 
+// Hábito de meta semanal: cualquier día, 4 veces por semana; hoy se puede marcar siempre.
+await page.getByRole("button", { name: "Nuevo hábito" }).click();
+await page.getByLabel("Hábito", { exact: true }).fill("Correr");
+await page.getByRole("tab", { name: "Meta semanal" }).click();
+await page.getByRole("button", { name: "4", exact: true }).click();
+await page.getByRole("button", { name: "Guardar" }).click();
+await page.getByText("Correr").first().waitFor({ timeout: 8000 });
+const casillaCorrer = page.getByRole("checkbox", { name: /Correr/ });
+ok(await casillaCorrer.isEnabled(), "un hábito de meta semanal se puede marcar hoy sea el día que sea");
+ok(await page.getByText("0 de 4 esta semana").first().isVisible(), "enseña el avance de la semana (0 de 4)");
+await casillaCorrer.check({ force: true });
+await page.waitForFunction(
+  () => window.__smoke.llamadas.some(
+    (c) => c.cmd === "save_habits" && c.args.store?.habits?.some((h) => h.name === "Correr" && h.weeklyGoal === 4 && h.days.length === 7),
+  ),
+  null,
+  { timeout: 8000 },
+);
+ok(true, "la meta semanal (4) se guarda en el hábito (save_habits)");
+ok(await page.getByText("1 de 4 esta semana").first().isVisible(), "marcarlo suma uno a la semana (1 de 4)");
+
 // Biblioteca de PDF: portada con pdf.js, estantería nueva y asignación.
 await page.getByRole("button", { name: "Biblioteca", exact: true }).first().click();
 await page.locator('li img[src^="data:image/jpeg"]').first().waitFor({ timeout: 15000 });
