@@ -23,6 +23,7 @@ import EditorHeader from "./EditorHeader";
 import { caretAnchor, lineAtCaret } from "../lib/caretPosition";
 import { detectSlashQuery, detectWikiQuery, wikiInsertText, wikiMatches, type WikiNote } from "../lib/wikiLink";
 import { filterSlashItems, SlashMenu, SpellSuggestMenu, VaultImageMenu, WikiLinkMenu, type SlashItem } from "./EditorMenus";
+import { useBlockDrift } from "./useBlockDrift";
 import InlinePreview, { classifySource, type TableBarHover, type TableResizeHover, type TableSelection } from "./InlinePreview";
 import EditorContextMenu, { type ContextSpell, type FormatKind, type TableAction, type TableMenuInfo } from "./EditorContextMenu";
 import PdfExportDialog from "./PdfExportDialog";
@@ -33,7 +34,7 @@ import { useEditorHistory } from "./useEditorHistory";
 import { readExplorerEntry, useEditorImages } from "./useEditorImages";
 import { useEditorClipboard } from "./useEditorClipboard";
 import { useEditorSpell } from "./useEditorSpell";
-import type { BlockDrift, EditorMenu, ContextMenuState, ImageResizeDrag, SaveState, ViewMode } from "./markdownEditorTypes";
+import type { EditorMenu, ContextMenuState, ImageResizeDrag, SaveState, ViewMode } from "./markdownEditorTypes";
 import { countWords, deletionRange } from "../lib/editorText";
 import { measureRowPitch, measureTableCols } from "../lib/editorMeasure";
 import { MarkdownBody } from "./markdownPreview";
@@ -108,9 +109,6 @@ const SLASH_HINT_KEY = "gus-slash-hint-used";
 /** Zona de clic de la casilla de tarea (unos cinco caracteres con el relleno). */
 const TASK_CHECKBOX_PX = 36;
 
-/** Mapa de alturas vacío reutilizable: evita re-renderizar por un Map nuevo. */
-const EMPTY_DRIFT: Map<number, BlockDrift> = new Map();
-
 /** Lista vacía de imágenes, para no crear una nueva en cada render. */
 
 const FORMAT_MARKERS: Record<Exclude<FormatKind, "link">, [string, string]> = {
@@ -119,16 +117,6 @@ const FORMAT_MARKERS: Record<Exclude<FormatKind, "link">, [string, string]> = {
   strike: ["~~", "~~"],
   code: ["`", "`"],
 };
-
-/** ¿Dos mapas de alturas de bloque dicen lo mismo? (evita re-renderizar) */
-function sameDrift(a: Map<number, BlockDrift>, b: Map<number, BlockDrift>): boolean {
-  if (a.size !== b.size) return false;
-  for (const [key, drift] of a) {
-    const other = b.get(key);
-    if (!other || other.end !== drift.end || other.extra !== drift.extra) return false;
-  }
-  return true;
-}
 
 export default function MarkdownEditor({
   path,
@@ -181,8 +169,6 @@ export default function MarkdownEditor({
   const [tableWidths, setTableWidths] = useState<Map<number, number[]> | null>(null);
   /** Cursor y selección absolutos, para que los pinte el overlay. */
   const [caretMark, setCaretMark] = useState<{ at: number; sel: TableSelection } | null>(null);
-  /** Alto ganado por cada tabla al envolver sus celdas (por bloque). */
-  const [blockDrift, setBlockDrift] = useState<Map<number, BlockDrift>>(EMPTY_DRIFT);
   /** Borde de columna bajo el ratón, listo para arrastrar. */
   const [hoverResize, setHoverResize] = useState<TableResizeHover | null>(null);
   /** Redimensionado de imagen en marcha: línea y ancho en píxeles. */
@@ -194,8 +180,6 @@ export default function MarkdownEditor({
   const tableAnchorRef = useRef<{ line: number; col: number } | null>(null);
   /** Espejo de tableWidths para leerlo en los escuchadores del arrastre. */
   const colWidthsRef = useRef<Map<number, number[]>>(new Map());
-  /** Espejo de blockDrift: se lee al hacer scroll y al situar el cursor. */
-  const blockDriftRef = useRef<Map<number, BlockDrift>>(blockDrift);
   /** Espejo de `content`: el arrastre de imagen se suelta desde un escuchador
    * global montado una sola vez, y su cierre no ve el estado de este render. */
   const contentRef = useRef(content);
@@ -215,7 +199,6 @@ export default function MarkdownEditor({
   // paint, para no escribir en un ref mientras se renderiza.
   useLayoutEffect(() => {
     colWidthsRef.current = tableWidths ?? new Map();
-    blockDriftRef.current = blockDrift;
     contentRef.current = content;
   });
   /** Arrastre de columna en curso: bloque, columna, x inicial y anchuras. */
@@ -2725,43 +2708,17 @@ export default function MarkdownEditor({
     // medición local de arriba).
   }, [sourceInfo, inlineActive, tableCols, zoomTick, fontSize]);
 
-  // Alto que gana un bloque por encima de su markdown: las tablas al envolver
-  // sus celdas y las líneas de imagen que se pintan a tamaño real. A partir de
-  // su última línea el overlay queda más abajo que el textarea, así que se mide
-  // para poder compensarlo (scroll, clic y cursor).
-  //
-  // Esta medición depende de que el efecto anterior ya haya pintado los anchos
-  // y de que R haya fijado la altura de fila: la cadena de efectos es el
-  // propósito (medir el resultado de lo anterior), no un accidente de renders.
-  useEffect(() => {
-    const overlay = overlayRef.current;
-    if (!overlay || !inlineActive || tableCols === null) {
-      setBlockDrift(EMPTY_DRIFT);
-      return;
-    }
-    const next = new Map<number, BlockDrift>();
-    for (const segment of sourceSegments(sourceInfo, false, tableCols)) {
-      if (segment.kind !== "table") continue;
-      const element = overlay.querySelector<HTMLElement>(`[data-table-block="${segment.start}"]`);
-      if (!element) continue;
-      const extra = element.offsetHeight - (segment.end - segment.start + 1) * rowPitch;
-      // offsetHeight viene entero: se ignoran los restos de subpíxel.
-      if (extra > 1) next.set(segment.start, { end: segment.end, extra });
-    }
-    // Las imágenes de bloque: su sobrante es lo que la línea mide de más
-    // sobre el alto que el textarea reserva para su markdown (medido con el
-    // medidor de la propia línea, que envuelve igual).
-    for (const element of overlay.querySelectorAll<HTMLElement>("[data-drift-line]")) {
-      const line = Number(element.dataset.driftLine);
-      if (!Number.isInteger(line)) continue;
-      const measure = element.querySelector<HTMLElement>("[data-line-measure]");
-      const extra = element.offsetHeight - (measure?.offsetHeight ?? rowPitch);
-      if (extra > 1) next.set(line, { end: line, extra });
-    }
-    setBlockDrift((prev) => (sameDrift(prev, next) ? prev : next));
-    // `imageResize`: mientras se arrastra el asa, la altura de la línea cambia
-    // en cada movimiento y hay que remesurar el sobrante al momento.
-  }, [sourceInfo, inlineActive, tableCols, rowPitch, tableWidths, caretLine, imageResize]);
+  const { blockDriftRef, driftTotal, driftBeforeLine, driftBeforeScroll, driftAtPointer } = useBlockDrift({
+    overlayRef,
+    textareaRef,
+    sourceInfo,
+    inlineActive,
+    tableCols,
+    rowPitch,
+    tableWidths,
+    caretLine,
+    imageResize,
+  });
 
   // Con un bloque crecido por encima (una tabla envuelta o una imagen de
   // bloque a tamaño real), el overlay ya no coincide con el textarea: el
@@ -2775,9 +2732,6 @@ export default function MarkdownEditor({
     !composing &&
     (tableCaret !== null || tableSelection !== null || driftBeforeLine(caretLine) > 0);
 
-  // El textarea reserva al final el alto que ganan los bloques crecidos: así su
-  // scroll llega hasta el final del overlay (si no, no se puede bajar al último renglón).
-  const driftTotal = [...blockDrift.values()].reduce((sum, drift) => sum + drift.extra, 0);
 
   // El scroll nativo sigue a un cursor que va más arriba que el dibujado cuando
   // hay un bloque crecido por encima: aquí se lleva la vista hasta el cursor del
@@ -2796,48 +2750,6 @@ export default function MarkdownEditor({
       syncOverlayGeometry();
     }
   }, [caretMark, caretLine, overlayMark]);
-
-  /** Píxeles que los bloques ya superados dejan más abajo en el overlay. */
-  function driftBeforeLine(line: number): number {
-    let extra = 0;
-    for (const drift of blockDriftRef.current.values()) {
-      if (drift.end < line) extra += drift.extra;
-    }
-    return extra;
-  }
-
-  /** Igual, pero medido sobre el overlay: sirve para compensar el scroll. */
-  function driftBeforeScroll(scrollTop: number): number {
-    const overlay = overlayRef.current;
-    if (!overlay || blockDriftRef.current.size === 0) return 0;
-    let extra = 0;
-    for (const [block, drift] of blockDriftRef.current) {
-      // Las tablas se identifican por bloque y las imágenes por su línea.
-      const element = overlay.querySelector<HTMLElement>(
-        `[data-table-block="${block}"], [data-drift-line="${block}"]`,
-      );
-      if (element && element.offsetTop + element.offsetHeight <= scrollTop) extra += drift.extra;
-    }
-    return extra;
-  }
-
-  /**
-   * Desplazamiento que los bloques crecidos añaden a un punto del ratón. El
-   * textarea no lo sabe, así que se lo pasamos al cálculo geométrico del offset
-   * (el nativo ya acierta por su cuenta).
-   *
-   * El punto se mide desde el borde del área (padding incluido), que es la
-   * misma convención de los `offsetTop` del overlay con los que se compara:
-   * restar el relleno aquí dejaría cada bloque16 px «más abajo» y el clic
-   * justo debajo de uno crecido no lo contaría.
-   */
-  function driftAtPointer(clientY: number): number {
-    const area = textareaRef.current;
-    if (!area || blockDriftRef.current.size === 0) return 0;
-    const rect = area.getBoundingClientRect();
-    const y = toLocalCoord(clientY) - toLocalCoord(rect.top) + area.scrollTop;
-    return driftBeforeScroll(y);
-  }
 
   // Los botones «copiar» se cachean: viven dentro del overlay (que va debajo
   // del textarea) y se detectan por coordenadas en cada movimiento del ratón,
