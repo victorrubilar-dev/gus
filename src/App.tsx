@@ -8,8 +8,6 @@ import {
   useRef,
   useState,
   type CSSProperties,
-  type KeyboardEvent as ReactKeyboardEvent,
-  type PointerEvent as ReactPointerEvent,
 } from "react";
 import { LucideProvider } from "lucide-react";
 import { AnimatePresence, domMax, LazyMotion, m, MotionConfig } from "framer-motion";
@@ -105,7 +103,8 @@ import {
   type Language,
   type MessageKey,
 } from "./lib/i18n";
-import { toLocalCoord, uiZoomFactor } from "./lib/uiZoom";
+import { toLocalCoord } from "./lib/uiZoom";
+import { usePanelWidth } from "./components/usePanelWidth";
 import Tour, { type TourTab } from "./components/Tour";
 import UpdateNotice from "./components/UpdateNotice";
 import gusIcon from "./assets/gus-icon-512.png";
@@ -181,15 +180,6 @@ function clampSidebarWidth(width: number): number {
   return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, Math.round(width)));
 }
 
-function readStoredSidebarWidth(): number {
-  try {
-    const stored = window.localStorage.getItem(SIDEBAR_WIDTH_KEY);
-    if (stored !== null) return clampSidebarWidth(Number.parseInt(stored, 10));
-  } catch {
-  }
-  return SIDEBAR_DEFAULT_WIDTH;
-}
-
 const EXPLORER_MIN_WIDTH = 200;
 const EXPLORER_MAX_WIDTH = 560;
 const EXPLORER_DEFAULT_WIDTH = 240;
@@ -200,15 +190,6 @@ function clampExplorerWidth(width: number): number {
   // De sitio para el editor (y el menú, en su ancho máximo) siempre queda.
   const hardMax = Math.max(EXPLORER_MIN_WIDTH, toLocalCoord(window.innerWidth) - 700);
   return Math.max(EXPLORER_MIN_WIDTH, Math.round(Math.min(width, hardMax)));
-}
-
-function readStoredExplorerWidth(): number {
-  try {
-    const stored = window.localStorage.getItem(EXPLORER_WIDTH_KEY);
-    if (stored !== null) return clampExplorerWidth(Number.parseInt(stored, 10));
-  } catch {
-  }
-  return EXPLORER_DEFAULT_WIDTH;
 }
 
 interface VaultConfig {
@@ -332,11 +313,23 @@ function App({
     drop: (paths: string[], position: { x: number; y: number }) => Promise<void>;
   }>({ folder: () => null, editor: () => false, drop: async () => {} });
 
-  const [sidebarWidth, setSidebarWidth] = useState(readStoredSidebarWidth);
+  const sidebar = usePanelWidth({
+    storageKey: SIDEBAR_WIDTH_KEY,
+    min: SIDEBAR_MIN_WIDTH,
+    max: SIDEBAR_MAX_WIDTH,
+    fallback: SIDEBAR_DEFAULT_WIDTH,
+    clamp: clampSidebarWidth,
+  });
+  const sidebarWidth = sidebar.width;
   const sidebarLabeled = sidebarWidth >= SIDEBAR_LABEL_MIN;
-  const sidebarWidthRef = useRef(sidebarWidth);
-  const [explorerWidth, setExplorerWidth] = useState(readStoredExplorerWidth);
-  const explorerWidthRef = useRef(explorerWidth);
+  const explorer = usePanelWidth({
+    storageKey: EXPLORER_WIDTH_KEY,
+    min: EXPLORER_MIN_WIDTH,
+    max: EXPLORER_MAX_WIDTH,
+    fallback: EXPLORER_DEFAULT_WIDTH,
+    clamp: clampExplorerWidth,
+  });
+  const explorerWidth = explorer.width;
 
   const [bootStatus, setBootStatus] = useState<"loading" | "ready">("loading");
   const [vaultConfig, setVaultConfig] = useState<VaultConfig | null>(null);
@@ -1310,143 +1303,15 @@ function App({
     closeOpenNote();
   }
 
-  function storeSidebarWidth(width: number) {
-    try {
-      window.localStorage.setItem(SIDEBAR_WIDTH_KEY, String(width));
-    } catch {
-    }
-  }
-
   /** Contrae a solo iconos y, al expandir, vuelve al ancho que tenía con etiquetas. */
   const lastLabeledWidth = useRef(SIDEBAR_DEFAULT_WIDTH);
   function toggleSidebar() {
     if (sidebarLabeled) {
-      lastLabeledWidth.current = sidebarWidthRef.current;
-      changeSidebarWidth(SIDEBAR_MIN_WIDTH);
+      lastLabeledWidth.current = sidebar.widthRef.current;
+      sidebar.change(SIDEBAR_MIN_WIDTH);
     } else {
-      changeSidebarWidth(lastLabeledWidth.current);
+      sidebar.change(lastLabeledWidth.current);
     }
-  }
-
-  function changeSidebarWidth(width: number, persist = true) {
-    const next = clampSidebarWidth(width);
-    sidebarWidthRef.current = next;
-    setSidebarWidth(next);
-    if (persist) storeSidebarWidth(next);
-  }
-
-  function handleSidebarResizeStart(event: ReactPointerEvent<HTMLDivElement>) {
-    if (event.button !== 0) return;
-    event.preventDefault();
-
-    const startX = event.clientX;
-    const startWidth = sidebarWidthRef.current;
-    const handle = event.currentTarget;
-    handle.setPointerCapture(event.pointerId);
-
-    const previousSelection = document.body.style.userSelect;
-    document.body.style.userSelect = "none";
-
-    const onMove = (moveEvent: PointerEvent) => {
-      changeSidebarWidth(startWidth + (moveEvent.clientX - startX) / uiZoomFactor(), false);
-    };
-    const onEnd = () => {
-      handle.removeEventListener("pointermove", onMove);
-      handle.removeEventListener("pointerup", onEnd);
-      handle.removeEventListener("pointercancel", onEnd);
-      document.body.style.userSelect = previousSelection;
-      storeSidebarWidth(sidebarWidthRef.current);
-    };
-
-    handle.addEventListener("pointermove", onMove);
-    handle.addEventListener("pointerup", onEnd);
-    handle.addEventListener("pointercancel", onEnd);
-  }
-
-  function handleSidebarResizeKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
-    const step = event.shiftKey ? 32 : 8;
-
-    switch (event.key) {
-      case "ArrowLeft":
-        changeSidebarWidth(sidebarWidth - step);
-        break;
-      case "ArrowRight":
-        changeSidebarWidth(sidebarWidth + step);
-        break;
-      case "Home":
-        changeSidebarWidth(SIDEBAR_MIN_WIDTH);
-        break;
-      case "End":
-        changeSidebarWidth(SIDEBAR_MAX_WIDTH);
-        break;
-      default:
-        return;
-    }
-    event.preventDefault();
-  }
-
-  function storeExplorerWidth(width: number) {
-    try {
-      window.localStorage.setItem(EXPLORER_WIDTH_KEY, String(width));
-    } catch {
-    }
-  }
-
-  function changeExplorerWidth(width: number, persist = true) {
-    const next = clampExplorerWidth(width);
-    explorerWidthRef.current = next;
-    setExplorerWidth(next);
-    if (persist) storeExplorerWidth(next);
-  }
-
-  function handleExplorerResizeStart(event: ReactPointerEvent<HTMLDivElement>) {
-    if (event.button !== 0) return;
-    event.preventDefault();
-
-    const startX = event.clientX;
-    const startWidth = explorerWidthRef.current;
-    const handle = event.currentTarget;
-    handle.setPointerCapture(event.pointerId);
-
-    const previousSelection = document.body.style.userSelect;
-    document.body.style.userSelect = "none";
-
-    const onMove = (moveEvent: PointerEvent) => {
-      changeExplorerWidth(startWidth + (moveEvent.clientX - startX) / uiZoomFactor(), false);
-    };
-    const onEnd = () => {
-      handle.removeEventListener("pointermove", onMove);
-      handle.removeEventListener("pointerup", onEnd);
-      handle.removeEventListener("pointercancel", onEnd);
-      document.body.style.userSelect = previousSelection;
-      storeExplorerWidth(explorerWidthRef.current);
-    };
-
-    handle.addEventListener("pointermove", onMove);
-    handle.addEventListener("pointerup", onEnd);
-    handle.addEventListener("pointercancel", onEnd);
-  }
-
-  function handleExplorerResizeKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
-    const step = event.shiftKey ? 32 : 8;
-
-    switch (event.key) {
-      case "ArrowRight":
-        changeExplorerWidth(explorerWidth + step);
-        break;
-      case "ArrowLeft":
-        changeExplorerWidth(explorerWidth - step);
-        break;
-      case "Home":
-        changeExplorerWidth(EXPLORER_MIN_WIDTH);
-        break;
-      case "End":
-        changeExplorerWidth(EXPLORER_MAX_WIDTH);
-        break;
-      default:
-        return;
-    }
-    event.preventDefault();
   }
 
   async function handleCreateVault(name: string, base: string): Promise<boolean> {
@@ -1669,9 +1534,9 @@ function App({
         aria-valuemax={EXPLORER_MAX_WIDTH}
         tabIndex={0}
         title={t("app.resizeHint")}
-        onPointerDown={handleExplorerResizeStart}
-        onDoubleClick={() => changeExplorerWidth(EXPLORER_DEFAULT_WIDTH)}
-          onKeyDown={handleExplorerResizeKeyDown}
+        onPointerDown={explorer.onResizeStart}
+        onDoubleClick={() => explorer.change(EXPLORER_DEFAULT_WIDTH)}
+          onKeyDown={explorer.onResizeKeyDown}
           className="w-1.5 shrink-0 cursor-col-resize touch-none transition-colors hover:bg-gus-accent/40 focus-visible:bg-gus-accent/60 focus-visible:outline-none"
         />
       )}
@@ -2041,9 +1906,9 @@ function App({
                 aria-valuemax={SIDEBAR_MAX_WIDTH}
                 tabIndex={0}
                 title={t("app.resizeHint")}
-                onPointerDown={handleSidebarResizeStart}
-                onDoubleClick={() => changeSidebarWidth(SIDEBAR_DEFAULT_WIDTH)}
-                onKeyDown={handleSidebarResizeKeyDown}
+                onPointerDown={sidebar.onResizeStart}
+                onDoubleClick={() => sidebar.change(SIDEBAR_DEFAULT_WIDTH)}
+                onKeyDown={sidebar.onResizeKeyDown}
                 className="absolute inset-y-0 right-0 w-1.5 cursor-col-resize touch-none rounded-r-sm transition-colors hover:bg-gus-accent/40 focus-visible:bg-gus-accent/60 focus-visible:outline-none"
               />
             </aside>
