@@ -1,36 +1,16 @@
-import { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { useState } from "react";
 import clsx from "clsx";
 import { Check, Circle, Flame, Pencil, Plus, Target, Trash2 } from "lucide-react";
 import CheckboxVisual from "./CheckboxVisual";
 import EmptyState from "./EmptyState";
+import HabitRing from "./HabitRing";
 import SegmentedControl from "./SegmentedControl";
 import ViewHeader from "./ViewHeader";
 import { useT } from "../lib/i18n";
 import { fromIso, todayIso, weekdayLabels } from "../lib/calendarDate";
-import {
-  addHabit,
-  ALL_DAYS,
-  bestStreak,
-  completionRate,
-  currentStreak,
-  dayProgress,
-  EMPTY_HABITS,
-  isDone,
-  isScheduled,
-  isWeekly,
-  lastDays,
-  markDay,
-  onWeekday,
-  removeHabit,
-  toggleDay,
-  updateHabit,
-  weekDone,
-  weekdayIndex,
-  type Habit,
-  type HabitStore,
-} from "../lib/habits";
+import { addHabit, ALL_DAYS, bestStreak, completionRate, currentStreak, dayProgress, isDone, isScheduled, isWeekly, lastDays, markDay, onWeekday, removeHabit, toggleDay, updateHabit, weekDone, weekdayIndex, type Habit } from "../lib/habits";
 import { createTaskId } from "../lib/taskStore";
+import { useHabitStore } from "./useHabitStore";
 
 export interface HabitsViewProps {
   vaultPath: string;
@@ -38,32 +18,6 @@ export interface HabitsViewProps {
 
 /** Días que enseña el tracker: dos semanas caben sin scroll en una ventana normal. */
 const TRACKER_DAYS = 14;
-
-function Ring({ done, total, size, stroke, label }: { done: number; total: number; size: number; stroke: number; label?: string }) {
-  const radius = (size - stroke) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const ratio = total === 0 ? 0 : done / total;
-
-  return (
-    <span className="relative inline-grid place-items-center" style={{ width: size, height: size }}>
-      <svg width={size} height={size} className="-rotate-90" aria-hidden="true">
-        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" strokeWidth={stroke} className="stroke-gus-border" />
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          strokeWidth={stroke}
-          strokeLinecap="round"
-          strokeDasharray={circumference}
-          strokeDashoffset={circumference * (1 - ratio)}
-          className={clsx("transition-[stroke-dashoffset] duration-300", ratio === 1 ? "stroke-gus-accent" : "stroke-gus-accent/70")}
-        />
-      </svg>
-      {label && <span className="absolute text-center leading-none">{label}</span>}
-    </span>
-  );
-}
 
 interface HabitFormProps {
   initial: Habit | null;
@@ -200,36 +154,10 @@ function HabitForm({ initial, onSave, onDelete, onCancel }: HabitFormProps) {
  */
 export default function HabitsView({ vaultPath }: HabitsViewProps) {
   const t = useT();
-  const [store, setStore] = useState<HabitStore>(EMPTY_HABITS);
-  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
-  const [error, setError] = useState<string | null>(null);
+  const { store, status, error, update } = useHabitStore(vaultPath);
   const [mode, setMode] = useState<"rings" | "tracker">("rings");
   /** `"new"` abre el formulario vacío; un hábito, su edición. */
   const [editing, setEditing] = useState<Habit | "new" | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    invoke<HabitStore>("load_habits", { vaultPath })
-      .then((loaded) => {
-        if (cancelled) return;
-        setStore(loaded);
-        setStatus("ready");
-      })
-      .catch((reason: unknown) => {
-        if (cancelled) return;
-        setError(String(reason));
-        setStatus("error");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [vaultPath]);
-
-  function update(next: HabitStore) {
-    setStore(next);
-    setError(null);
-    invoke("save_habits", { vaultPath, store: next }).catch((reason: unknown) => setError(String(reason)));
-  }
 
   const today = todayIso();
   const labels = weekdayLabels();
@@ -287,7 +215,7 @@ export default function HabitsView({ vaultPath }: HabitsViewProps) {
       {status === "ready" && store.habits.length > 0 && mode === "rings" && (
         <>
           <div className="flex flex-wrap items-center gap-8 rounded-xl border border-gus-border bg-gus-card p-5">
-            <Ring
+            <HabitRing
               done={todayProgress.done}
               total={todayProgress.total}
               size={132}
@@ -308,7 +236,7 @@ export default function HabitsView({ vaultPath }: HabitsViewProps) {
                   const date = fromIso(iso);
                   return (
                     <li key={iso} className="flex flex-col items-center gap-1 text-meta text-gus-muted" title={`${iso}: ${progress.done}/${progress.total}`}>
-                      <Ring done={progress.done} total={progress.total} size={30} stroke={4} />
+                      <HabitRing done={progress.done} total={progress.total} size={30} stroke={4} />
                       <span className={clsx("capitalize", iso === today && "text-gus-accent")}>{date ? labels[weekdayIndex(date)] : ""}</span>
                     </li>
                   );

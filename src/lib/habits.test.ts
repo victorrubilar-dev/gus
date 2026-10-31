@@ -5,6 +5,7 @@ import {
   completionRate,
   currentStreak,
   dayProgress,
+  expectedHabits,
   EMPTY_HABITS,
   isScheduled,
   isWeekly,
@@ -153,5 +154,17 @@ describe("meta semanal", () => {
     expect(completionRate(h, s, "2026-10-28", 7)).toBe(100);
     const medio = store([h], { w: ["2026-10-26"] });
     expect(completionRate(h, medio, "2026-10-28", 7)).toBe(50);
+  });
+});
+
+describe("expectedHabits", () => {
+  it("los de días fijos solo en su día y los semanales mientras falte la meta", () => {
+    const lunes = habit("l", [0]);
+    const semanal: Habit = { id: "w", name: "w", days: [0, 1, 2, 3, 4, 5, 6], created: "2026-10-01", weeklyGoal: 1 };
+    const s = store([lunes, semanal]);
+    expect(expectedHabits(s, "2026-10-26", "2026-10-26").map((h) => h.id)).toEqual(["l", "w"]); // lunes
+    expect(expectedHabits(s, "2026-10-27", "2026-10-27").map((h) => h.id)).toEqual(["w"]); // martes
+    const hecho = store([lunes, semanal], { w: ["2026-10-26"] });
+    expect(expectedHabits(hecho, "2026-10-27", "2026-10-27")).toEqual([]); // meta cumplida
   });
 });

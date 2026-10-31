@@ -673,6 +673,11 @@ function App({
                   {activeTab === "home" ? (
                     <DashboardView
                       vaultPath={currentVault}
+                      dailyNotesFolder={settings.dailyNotesFolder}
+                      onOpenDailyNote={() => {
+                        setActiveTab("notes");
+                        void openDailyNote();
+                      }}
                       vaultName={
                         vaultConfig?.vaults.find((vault) => vault.path === currentVault)?.name ??
                         baseName(currentVault)

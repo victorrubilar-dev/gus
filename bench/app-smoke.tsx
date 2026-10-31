@@ -35,6 +35,16 @@ const pizarras = new Map<string, string>();
 /** Cada `save_app_config` que recibe el backend, para comprobar vaults y último abierto. */
 const configGuardada: unknown[] = [];
 const habitos: { habits: unknown[]; log: Record<string, string[]> } = { habits: [], log: {} };
+/** Con `?semilla` hay dos hábitos de ejemplo: uno diario y uno de meta semanal. */
+if (location.search.includes("semilla")) {
+  const hoy = new Date();
+  const iso = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}-${String(hoy.getDate()).padStart(2, "0")}`;
+  habitos.habits.push(
+    { id: "h1", name: "Leer 20 minutos", days: [0, 1, 2, 3, 4, 5, 6], created: "2026-10-01" },
+    { id: "h2", name: "Salir a correr", days: [0, 1, 2, 3, 4, 5, 6], created: "2026-10-01", weeklyGoal: 3 },
+  );
+  habitos.log = { h1: [iso] };
+}
 const biblioteca: { shelves: string[]; assign: Record<string, string> } = { shelves: [], assign: {} };
 
 /**
@@ -208,6 +218,16 @@ const respuestas: Record<string, (args: Record<string, unknown>) => unknown> = {
         path,
         relative: path.replace("/vault/", ""),
         text,
+      })),
+  list_recent_notes: (args) =>
+    [...archivos.keys()]
+      .filter((ruta) => ruta.endsWith(".md"))
+      .slice(0, Number(args.limit ?? 6))
+      .map((path, index) => ({
+        name: path.split("/").pop() as string,
+        path,
+        relative: path.replace("/vault/", ""),
+        modified_ms: Date.now() - (index + 1) * 5_400_000,
       })),
   list_vault_pdfs: () => [
     { name: "manual.pdf", path: "/vault/manual.pdf", relative: "manual.pdf", modified_ms: ahora },

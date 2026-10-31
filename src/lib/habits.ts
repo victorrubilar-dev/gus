@@ -185,16 +185,21 @@ function weeklyStreak(habit: Habit, store: HabitStore, today: string): { current
 }
 
 /**
- * Hechos y esperados de un día entre todos los hábitos (el anillo del día).
- * Los de meta semanal solo cuentan hoy —y mientras les falte para la meta o
- * ya estén hechos hoy—; en los días pasados no hay un «tocaba» que juzgar.
+ * Hábitos que se esperan ese día. Los de meta semanal solo cuentan hoy —y
+ * mientras les falte para la meta o ya estén hechos hoy—; en los días pasados no
+ * hay un «tocaba» que juzgar (`today` es el día de hoy).
  */
-export function dayProgress(store: HabitStore, iso: string, today?: string): { done: number; total: number } {
-  const expected = store.habits.filter((habit) => {
+export function expectedHabits(store: HabitStore, iso: string, today?: string): Habit[] {
+  return store.habits.filter((habit) => {
     if (!isScheduled(habit, iso)) return false;
     if (!isWeekly(habit)) return true;
     return iso === today && (isDone(store, habit.id, iso) || weekDone(store, habit.id, iso) < (habit.weeklyGoal ?? 1));
   });
+}
+
+/** Hechos y esperados de un día entre todos los hábitos (el anillo del día). */
+export function dayProgress(store: HabitStore, iso: string, today?: string): { done: number; total: number } {
+  const expected = expectedHabits(store, iso, today);
   return { done: expected.filter((habit) => isDone(store, habit.id, iso)).length, total: expected.length };
 }
 

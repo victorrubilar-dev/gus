@@ -1,65 +1,49 @@
 import { useEffect, useRef, useState } from "react";
-import { m } from "framer-motion";
-import {
-  CalendarDays,
-  Check,
-  ChevronRight,
-  FileText,
-  Flag,
-  LayoutDashboard,
-  ListTodo,
-  Plus,
-  RefreshCw,
-  Settings,
-  StickyNote,
-} from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import clsx from "clsx";
 import type { NoteFile } from "./FileExplorer";
-import { NEW_TASK_EVENT } from "../lib/newTask";
-import { loadTaskStore, type Task } from "../lib/taskStore";
-import { PRIORITY_CLASS, priorityLabel, priorityRank } from "../lib/taskPriority";
-import { DUE_CLASS, dueKind, shortDate, todayIso } from "../lib/taskDue";
+import { dailyRelativePath } from "../lib/dailyNotes";
+import { greetingFor, mergeRecents, notePreview, splitTodayTasks, type RecentItem } from "../lib/dashboard";
+import { joinPath } from "../lib/fileName";
+import { toggleDay } from "../lib/habits";
 import { useT } from "../lib/i18n";
 import type { MessageKey, TranslateParams } from "../lib/i18n/core";
+import { NEW_TASK_EVENT } from "../lib/newTask";
+import { todayIso } from "../lib/taskDue";
+import { loadTaskStore, type Task } from "../lib/taskStore";
+import DashboardDaily from "./DashboardDaily";
+import DashboardHabits from "./DashboardHabits";
+import DashboardRecent from "./DashboardRecent";
+import DashboardToday from "./DashboardToday";
+import { useHabitStore } from "./useHabitStore";
 
 type Translator = (key: MessageKey, params?: TranslateParams) => string;
 
-export type DashboardTab = "notes" | "tasks" | "calendar" | "settings";
+export type DashboardTab = "notes" | "tasks" | "calendar" | "settings" | "habits" | "boards" | "library";
 
-interface RecentNote {
+interface FileEntry {
   name: string;
   path: string;
   relative: string;
   modified_ms: number | null;
 }
 
+interface BoardEntry {
+  id: string;
+  name: string;
+  modifiedMs: number | null;
+}
+
 export interface DashboardViewProps {
   vaultPath: string;
   vaultName: string;
+  /** Carpeta de las notas diarias (de los ajustes). */
+  dailyNotesFolder: string;
   onNavigate: (tab: DashboardTab) => void;
   onNewTask: () => void;
   onOpenNote: (file: NoteFile) => void;
-}
-
-const ICON_BOX =
-  "flex h-10 w-10 items-center justify-center rounded-xl border border-gus-border bg-gus-card text-gus-muted";
-
-const CARD = "rounded-xl border border-gus-border bg-gus-card";
-
-function dueChip(due: string, t: Translator): { label: string; title: string; className: string } {
-  const kind = dueKind({ completes: false }, due);
-  return {
-    label: kind === "today" ? t("common.today") : shortDate(due),
-    title:
-      kind === "overdue"
-        ? t("tasks.dueOverdue")
-        : kind === "today"
-          ? t("tasks.dueToday")
-          : `${t("tasks.dueLabel")}: ${shortDate(due)}`,
-    className: DUE_CLASS[kind],
-  };
+  onOpenDailyNote: () => void;
 }
 
 function relativeTime(ms: number | null, t: Translator): string {
@@ -76,34 +60,40 @@ function relativeTime(ms: number | null, t: Translator): string {
   return new Date(ms).toLocaleDateString(undefined, { day: "numeric", month: "short" });
 }
 
-function folderOf(relative: string, t: Translator): string {
+function folderOf(relative: string): string {
   const parts = relative.split("/");
   parts.pop();
-  return parts.join("/") || t("welcome.vaultRoot");
+  return parts.join("/");
 }
 
+/**
+ * «Hoy»: lo que hay entre manos de un vistazo. Tareas de hoy y vencidas, hábitos
+ * del día, la nota del día y lo último que se tocó para seguir donde se dejó.
+ */
 export default function DashboardView({
   vaultPath,
   vaultName,
+  dailyNotesFolder,
   onNavigate,
   onNewTask,
   onOpenNote,
+  onOpenDailyNote,
 }: DashboardViewProps) {
   const t = useT();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [tasksStatus, setTasksStatus] = useState<"loading" | "ready" | "error">("loading");
   const [tasksError, setTasksError] = useState<string | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
-
-  const [notes, setNotes] = useState<RecentNote[]>([]);
-  const [notesStatus, setNotesStatus] = useState<"loading" | "ready" | "error">("loading");
-  const [notesError, setNotesError] = useState<string | null>(null);
-
+  const [recents, setRecents] = useState<RecentItem[]>([]);
+  const [recentsStatus, setRecentsStatus] = useState<"loading" | "ready">("loading");
+  /** `null` mientras se mira, `false` si hoy no hay nota. */
+  const [daily, setDaily] = useState<string[] | false | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const habits = useHabitStore(vaultPath);
 
   const tasksRef = useRef<Task[]>([]);
-  /** Cancela cargas de notas obsoletas al cambiar de vault o recargar. */
-  const notesRequestRef = useRef(0);
+  /** Cancela cargas obsoletas al cambiar de vault o recargar. */
+  const requestRef = useRef(0);
   const writeQueueRef = useRef<Promise<unknown>>(Promise.resolve());
 
   useEffect(() => {
@@ -132,23 +122,47 @@ export default function DashboardView({
   }, [vaultPath, reloadKey]);
 
   useEffect(() => {
-    const token = ++notesRequestRef.current;
-    setNotesStatus("loading");
+    const token = ++requestRef.current;
+    const fresh = () => token === requestRef.current;
+    setRecentsStatus("loading");
 
-    invoke<RecentNote[]>("list_recent_notes", { path: vaultPath, limit: 6 })
-      .then((next) => {
-        if (token !== notesRequestRef.current) return;
-        setNotes(next);
-        setNotesError(null);
-        setNotesStatus("ready");
-      })
-      .catch((error: unknown) => {
-        if (token !== notesRequestRef.current) return;
-        setNotes([]);
-        setNotesError(String(error));
-        setNotesStatus("error");
-      });
+    // Cada fuente falla por su cuenta: sin pizarras o sin PDF el resto se enseña igual.
+    const ask = <T,>(command: string, args: Record<string, unknown>) =>
+      invoke<T[]>(command, args).catch((): T[] => []);
+
+    Promise.all([
+      ask<FileEntry>("list_recent_notes", { path: vaultPath, limit: 8 }),
+      ask<BoardEntry>("list_boards", { vaultPath }),
+      ask<FileEntry>("list_vault_pdfs", { path: vaultPath }),
+    ]).then(([notes, boards, pdfs]) => {
+      if (!fresh()) return;
+      setRecents(
+        mergeRecents(
+          [
+            ...notes.map((note): RecentItem => ({ kind: "note", id: note.path, name: note.name.replace(/\.md$/i, ""), detail: folderOf(note.relative), modifiedMs: note.modified_ms })),
+            ...boards.map((board): RecentItem => ({ kind: "board", id: board.id, name: board.name, detail: "", modifiedMs: board.modifiedMs })),
+            ...pdfs.map((pdf): RecentItem => ({ kind: "pdf", id: pdf.path, name: pdf.name, detail: folderOf(pdf.relative), modifiedMs: pdf.modified_ms })),
+          ],
+          6,
+        ),
+      );
+      setRecentsStatus("ready");
+    });
   }, [vaultPath, reloadKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setDaily(null);
+    const path = joinPath(vaultPath, dailyRelativePath(dailyNotesFolder, new Date()));
+
+    invoke<string>("read_vault_file", { path })
+      .then((text) => !cancelled && setDaily(notePreview(text)))
+      .catch(() => !cancelled && setDaily(false));
+
+    return () => {
+      cancelled = true;
+    };
+  }, [vaultPath, dailyNotesFolder, reloadKey]);
 
   useEffect(() => {
     let disposed = false;
@@ -159,8 +173,7 @@ export default function DashboardView({
         if (disposed) fn();
         else unlisten = fn;
       })
-      .catch(() => {
-      });
+      .catch(() => {});
 
     return () => {
       disposed = true;
@@ -168,10 +181,8 @@ export default function DashboardView({
     };
   }, []);
 
-  function toggle(id: string) {
-    const next = tasksRef.current.map((task) =>
-      task.id === id ? { ...task, completes: !task.completes } : task,
-    );
+  function toggleTask(id: string) {
+    const next = tasksRef.current.map((task) => (task.id === id ? { ...task, completes: !task.completes } : task));
     tasksRef.current = next;
     setTasks(next);
     setSyncError(null);
@@ -181,54 +192,25 @@ export default function DashboardView({
       .catch((error: unknown) => setSyncError(String(error)));
   }
 
+  function openRecent(item: RecentItem) {
+    if (item.kind === "board") onNavigate("boards");
+    else onOpenNote({ id: item.id, name: item.kind === "note" ? `${item.name}.md` : item.name, kind: item.kind });
+  }
+
   const today = todayIso();
-  const pending = tasks.filter((task) => !task.completes);
-  const overdue = pending.filter((task) => task.due && task.due < today);
-  const dueToday = pending.filter((task) => task.due === today);
-  const done = tasks.length - pending.length;
-
-  const upcoming = [...pending]
-    .sort(
-      (a, b) =>
-        priorityRank(b.priority) - priorityRank(a.priority) ||
-        (a.due ?? "9999-99-99").localeCompare(b.due ?? "9999-99-99"),
-    )
-    .slice(0, 6);
-
-  const progress = tasks.length === 0 ? 0 : Math.round((done / tasks.length) * 100);
-
-  const stats = [
-    { label: t("dashboard.pending"), value: pending.length, className: "text-gus-text", tab: "tasks" as const },
-    { label: t("calendar.overdue"), value: overdue.length, className: "text-rose-300", tab: "calendar" as const },
-    { label: t("calendar.dueToday"), value: dueToday.length, className: "text-amber-300", tab: "calendar" as const },
-    { label: t("dashboard.done"), value: done, className: "text-emerald-300", tab: "tasks" as const },
-  ];
-
-  const todayLabel = new Date().toLocaleDateString(undefined, {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-  });
+  const now = new Date();
+  const split = splitTodayTasks(tasks, today);
+  const dateLabel = now.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
 
   return (
-    <section
-      data-tour="dashboard"
-      className="gus-scrollbar h-full overflow-y-auto p-6"
-    >
-      <div className="mx-auto flex max-w-6xl flex-col gap-4">
-        <header className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className={ICON_BOX}>
-              <LayoutDashboard className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
-            </div>
-            <div>
-              <h2 className="text-sm font-semibold uppercase tracking-wider text-gus-muted">
-                {t("app.tab.home")}
-              </h2>
-              <p className="text-body text-gus-muted first-letter:uppercase">
-                {vaultName} · {todayLabel}
-              </p>
-            </div>
+    <section data-tour="dashboard" className="gus-scrollbar h-full overflow-y-auto p-6">
+      <div className="mx-auto flex max-w-6xl flex-col gap-5">
+        <header className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-semibold text-gus-text">{t(`dashboard.greeting.${greetingFor(now.getHours())}`)}</h2>
+            <p className="text-body text-gus-muted first-letter:uppercase">
+              {vaultName} · {dateLabel}
+            </p>
           </div>
 
           <button
@@ -242,292 +224,37 @@ export default function DashboardView({
           </button>
         </header>
 
-        {syncError && (
+        {(syncError || habits.error) && (
           <p role="alert" className="rounded-lg border border-rose-400/30 bg-rose-400/10 px-3 py-2 text-body text-rose-300">
-            {syncError}
+            {syncError ?? habits.error}
           </p>
         )}
 
-        <div className="grid grid-cols-2 gap-2 min-[900px]:grid-cols-4">
-          {stats.map(({ label, value, className, tab }, index) => (
-            <m.button
-              key={label}
-              type="button"
-              onClick={() => onNavigate(tab)}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.15, delay: index * 0.04 }}
-              className={clsx(
-                CARD,
-                "group flex items-center justify-between px-3 py-2.5 text-left outline-none transition-colors hover:border-gus-accent/40 focus-visible:ring-2 focus-visible:ring-gus-accent/60",
-              )}
-            >
-              <span>
-                <span className={clsx("block text-lg font-semibold", className)}>{value}</span>
-                <span className="block text-meta uppercase tracking-wide text-gus-muted">
-                  {label}
-                </span>
-              </span>
-              <ChevronRight
-                className="h-4 w-4 shrink-0 text-gus-muted transition-transform group-hover:translate-x-0.5 group-hover:text-gus-accent"
-                aria-hidden="true"
-              />
-            </m.button>
-          ))}
-        </div>
+        <div className="grid gap-4 min-[900px]:grid-cols-[minmax(0,1fr)_340px]">
+          <DashboardToday
+            status={tasksStatus}
+            error={tasksError}
+            tasks={tasks}
+            split={split}
+            onToggle={toggleTask}
+            onRetry={() => setReloadKey((key) => key + 1)}
+            onOpenTasks={() => onNavigate("tasks")}
+            onNewTask={onNewTask}
+          />
 
-        <div className="grid gap-4 min-[900px]:grid-cols-[minmax(0,1fr)_300px]">
           <div className="flex min-w-0 flex-col gap-4">
-            <div className={clsx(CARD, "flex flex-col gap-3 p-4")}>
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <ListTodo className="h-4 w-4 text-gus-muted" strokeWidth={1.75} aria-hidden="true" />
-                  <h3 className="text-sm font-semibold">{t("dashboard.nextTasks")}</h3>
-                  {upcoming.length > 0 && (
-                    <span className="rounded-full border border-gus-border bg-gus-panel px-2 py-0.5 text-meta text-gus-muted">
-                      {upcoming.length}
-                    </span>
-                  )}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => onNavigate("tasks")}
-                  className="gus-btn gus-btn-ghost w-auto px-2 text-body focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
-                >
-                  {t("dashboard.openTasks")}
-                </button>
-              </div>
-
-              {tasksStatus === "loading" && (
-                <p className="py-6 text-center text-body text-gus-muted">{t("dashboard.loadingTasks")}</p>
-              )}
-
-              {tasksStatus === "error" && (
-                <div className="flex flex-col items-center gap-2 py-6 text-center">
-                  <p className="text-body text-gus-muted">{t("calendar.loadError")}</p>
-                  {tasksError && (
-                    <p className="max-w-md break-words text-meta text-rose-400/80">{tasksError}</p>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setReloadKey((key) => key + 1)}
-                    className="rounded-lg border border-gus-border px-3 py-1.5 text-body text-gus-muted transition-colors hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
-                  >
-                    {t("editor.retry")}
-                  </button>
-                </div>
-              )}
-
-              {tasksStatus === "ready" && upcoming.length === 0 && (
-                <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-gus-border py-8 text-center">
-                  <p className="text-body text-gus-muted">
-                    {tasks.length === 0
-                      ? t("dashboard.noTasks")
-                      : t("dashboard.allDone")}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={onNewTask}
-                    className="gus-btn gus-btn-primary"
-                  >
-                    <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-                    {t("dashboard.createTask")}
-                  </button>
-                </div>
-              )}
-
-              {tasksStatus === "ready" && upcoming.length > 0 && (
-                <ul className="flex flex-col gap-2">
-                  {upcoming.map((task) => {
-                    const chip = task.due ? dueChip(task.due, t) : null;
-
-                    return (
-                      <li
-                        key={task.id}
-                        className="flex items-center gap-3 rounded-lg border border-gus-border bg-gus-panel px-3 py-2"
-                      >
-                        <button
-                          type="button"
-                          role="checkbox"
-                          aria-checked={task.completes}
-                          aria-label={t("calendar.markDone", { title: task.title })}
-                          onClick={() => toggle(task.id)}
-                          className="mt-px flex h-4 w-4 shrink-0 items-center justify-center rounded border border-gus-muted/60 text-transparent outline-none transition-colors hover:border-gus-accent focus-visible:ring-2 focus-visible:ring-gus-accent/70"
-                        >
-                          <Check className="h-3 w-3" strokeWidth={3} aria-hidden="true" />
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => onNavigate("tasks")}
-                          title={t("dashboard.seeInTasks")}
-                          className="-my-1 min-w-0 flex-1 truncate py-1 text-left text-sm text-gus-text outline-none transition-colors hover:text-gus-accent focus-visible:ring-2 focus-visible:ring-gus-accent/70"
-                        >
-                          {task.title}
-                        </button>
-
-                        {task.priority && (
-                          <span
-                            title={t("tasks.priorityLabel", { name: priorityLabel(task.priority) })}
-                            className={clsx(
-                              "flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-0.5 text-meta capitalize",
-                              PRIORITY_CLASS[task.priority],
-                            )}
-                          >
-                            <Flag className="h-2.5 w-2.5" aria-hidden="true" />
-                            {priorityLabel(task.priority)}
-                          </span>
-                        )}
-
-                        {chip && (
-                          <span
-                            title={chip.title}
-                            className={clsx(
-                              "shrink-0 rounded-full border px-2 py-0.5 text-meta",
-                              chip.className,
-                            )}
-                          >
-                            {chip.label}
-                          </span>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
-
-            <div className={clsx(CARD, "flex flex-col gap-3 p-4")}>
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <StickyNote className="h-4 w-4 text-gus-muted" strokeWidth={1.75} aria-hidden="true" />
-                  <h3 className="text-sm font-semibold">{t("dashboard.recentNotes")}</h3>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => onNavigate("notes")}
-                  className="gus-btn gus-btn-ghost w-auto px-2 text-body focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
-                >
-                  Ver todas
-                </button>
-              </div>
-
-              {notesStatus === "loading" && (
-                <p className="py-6 text-center text-body text-gus-muted">{t("dashboard.loadingNotes")}</p>
-              )}
-
-              {notesStatus === "error" && (
-                <div className="flex flex-col items-center gap-2 py-6 text-center">
-                  <p className="text-body text-gus-muted">{t("dashboard.notesError")}</p>
-                  {notesError && (
-                    <p className="max-w-md break-words text-meta text-rose-400/80">{notesError}</p>
-                  )}
-                </div>
-              )}
-
-              {notesStatus === "ready" && notes.length === 0 && (
-                <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-gus-border py-8 text-center">
-                  <p className="text-body text-gus-muted">{t("dashboard.emptyVault")}</p>
-                  <button
-                    type="button"
-                    onClick={() => onNavigate("notes")}
-                    className="rounded-lg border border-gus-border px-3 py-1.5 text-body text-gus-muted transition-colors hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none"
-                  >
-                    {t("dashboard.openExplorer")}
-                  </button>
-                </div>
-              )}
-
-              {notesStatus === "ready" && notes.length > 0 && (
-                <ul className="flex flex-col gap-2">
-                  {notes.map((note) => (
-                    <li key={note.path}>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          onOpenNote({ id: note.path, name: note.name, kind: "note" })
-                        }
-                        title={note.relative}
-                        className="flex w-full items-center gap-3 rounded-lg border border-gus-border bg-gus-panel px-3 py-2 text-left outline-none transition-colors hover:border-gus-accent/40 focus-visible:ring-2 focus-visible:ring-gus-accent/70"
-                      >
-                        <FileText
-                          className="h-4 w-4 shrink-0 text-gus-muted"
-                          strokeWidth={1.75}
-                          aria-hidden="true"
-                        />
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm text-gus-text">
-                            {note.name.replace(/\.md$/i, "")}
-                          </span>
-                          <span className="block truncate text-meta text-gus-muted">
-                            {folderOf(note.relative, t)}
-                          </span>
-                        </span>
-                        <span className="shrink-0 text-meta text-gus-muted">
-                          {relativeTime(note.modified_ms, t)}
-                        </span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+            <DashboardHabits
+              store={habits.store}
+              status={habits.status}
+              today={today}
+              onToggle={(habitId) => habits.update(toggleDay(habits.store, habitId, today))}
+              onOpenHabits={() => onNavigate("habits")}
+            />
+            <DashboardDaily note={daily} dateLabel={dateLabel} onOpen={onOpenDailyNote} />
           </div>
-
-          <aside className="flex flex-col gap-4">
-            <div className={clsx(CARD, "p-4")}>
-              <h3 className="text-sm font-semibold">{t("dashboard.progress")}</h3>
-              <p className="mt-1 text-body text-gus-muted">
-                {tasks.length === 0
-                  ? t("dashboard.noTasksRegistered")
-                  : t("tasks.doneCount", { done, total: tasks.length })}
-              </p>
-
-              <div className="mt-3 h-2 overflow-hidden rounded-full bg-gus-panel">
-                <div
-                  className="h-full rounded-full bg-gus-accent transition-[width]"
-                  style={{ width: `${progress}%` }}
-                />
-              </div>
-              <p className="mt-1.5 text-right text-meta text-gus-muted">{progress}%</p>
-            </div>
-
-            <div className={clsx(CARD, "flex flex-col gap-2 p-4")}>
-              <h3 className="text-sm font-semibold">{t("dashboard.quickActions")}</h3>
-
-              <button
-                type="button"
-                onClick={onNewTask}
-                className="mt-1 gus-btn gus-btn-primary w-full"
-              >
-                <Plus className="h-4 w-4" aria-hidden="true" />
-                {t("tasks.new")}
-              </button>
-
-              {(
-                [
-                  { tab: "notes" as const, label: t("app.tab.notes"), Icon: StickyNote },
-                  { tab: "tasks" as const, label: t("dashboard.allTasks"), Icon: ListTodo },
-                  { tab: "calendar" as const, label: t("app.tab.calendar"), Icon: CalendarDays },
-                  { tab: "settings" as const, label: t("app.settings"), Icon: Settings },
-                ]
-              ).map(({ tab, label, Icon }) => (
-                <button
-                  key={tab}
-                  type="button"
-                  onClick={() => onNavigate(tab)}
-                  className="flex items-center gap-2.5 rounded-lg border border-gus-border bg-gus-panel px-3 py-2 text-sm text-gus-muted outline-none transition-colors hover:border-gus-accent/40 hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/70"
-                >
-                  <Icon className="h-4 w-4 shrink-0" strokeWidth={1.75} aria-hidden="true" />
-                  <span className="truncate">{label}</span>
-                  <ChevronRight className="ml-auto h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                </button>
-              ))}
-            </div>
-          </aside>
         </div>
+
+        <DashboardRecent items={recents} status={recentsStatus} relativeTime={(ms) => relativeTime(ms, t)} onOpen={openRecent} />
       </div>
     </section>
   );
