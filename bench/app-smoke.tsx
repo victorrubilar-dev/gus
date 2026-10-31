@@ -153,7 +153,12 @@ const respuestas: Record<string, (args: Record<string, unknown>) => unknown> = {
     settings: { openLastVault: true, ...(tema ? { theme: tema } : {}) },
   }),
   vault_dir_exists: () => true,
-  list_vault_entries: (args) => entradasDe(String(args.path)),
+  list_vault_entries: async (args) => {
+    // Con `__smoke.retardo` (ms) la lista tarda: así se ve lo que la interfaz pinta mientras espera.
+    const retardo = (window as unknown as { __smoke?: { retardo?: number } }).__smoke?.retardo ?? 0;
+    if (retardo > 0) await new Promise((resolver) => setTimeout(resolver, retardo));
+    return entradasDe(String(args.path));
+  },
   read_vault_file: (args) => archivos.get(String(args.path)) ?? "",
   write_vault_file: (args) => {
     archivos.set(String(args.path), String(args.content));

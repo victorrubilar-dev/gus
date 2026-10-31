@@ -42,6 +42,25 @@ await espera();
 const tras = await archivos();
 comprobar(tras.includes("/vault/libros.md") && !tras.includes("/vault/lecturas.md"), "renombrar nota: libros.md existe y lecturas.md no");
 
+console.log("\n--- recargar no parpadea ---");
+await page.evaluate(() => {
+  window.__vioCartel = false;
+  window.__smoke.retardo = 300;
+  new MutationObserver(() => {
+    if (document.body.innerText.includes("Leyendo vault")) window.__vioCartel = true;
+  }).observe(document.body, { childList: true, subtree: true, characterData: true });
+});
+await btn("Nueva carpeta").click();
+await page.waitForTimeout(900);
+await btn("Nueva nota").click();
+await page.waitForTimeout(900);
+comprobar(!(await page.evaluate(() => window.__vioCartel)), "recargar la misma carpeta no enseña «Leyendo vault…»");
+await page.evaluate(() => { window.__smoke.retardo = 0; });
+await fila("/vault/diario").getByRole("button").first().click();
+await page.waitForTimeout(400);
+await btn("Volver a la carpeta anterior").click();
+await page.waitForTimeout(400);
+
 console.log("\n--- carpetas: entrar, atrás, adelante, subir ---");
 await page.getByText("diario", { exact: true }).first().dblclick().catch(() => {});
 await espera();

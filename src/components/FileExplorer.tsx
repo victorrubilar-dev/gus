@@ -208,6 +208,8 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const busy = busyId !== null;
+  /** Carpeta cuya lista ya se pintó: las recargas de la misma no vuelven a mostrar «Leyendo vault…». */
+  const loadedPlaceRef = useRef<string | null>(null);
 
   /** Handler más reciente de Supr: el listener de window se engancha una sola vez. */
   const deleteKeyRef = useRef<(event: KeyboardEvent) => void>(() => {});
@@ -447,11 +449,16 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
     if (staticMode) return;
 
     let cancelled = false;
-    setStatus("loading");
+    // «Leyendo vault…» solo al llegar a una carpeta nueva. Al recargar la misma
+    // (cambios en el vault, el vigilante, otra acción) la lista se queda como
+    // está hasta que llegue la nueva, sin parpadear.
+    const place = `${vaultPath}\u0000${currentDir}`;
+    if (loadedPlaceRef.current !== place) setStatus("loading");
 
     invoke<VaultEntry[]>("list_vault_entries", { path: currentDir })
       .then((entries) => {
         if (cancelled) return;
+        loadedPlaceRef.current = place;
         const nextFolders = entries
           .filter((entry) => entry.is_dir)
           .map((entry) => ({ name: entry.name, path: entry.path }));
@@ -467,6 +474,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
       })
       .catch((error: unknown) => {
         if (cancelled) return;
+        loadedPlaceRef.current = null;
         setFolders([]);
         setItems([]);
         setSelectedId(null);
