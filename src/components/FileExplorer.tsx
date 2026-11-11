@@ -30,6 +30,7 @@ import {
   safeFileName,
 } from "../lib/fileName";
 import { useT } from "../lib/i18n";
+import type { PathMove } from "../lib/wikiRename";
 import {
   comboFor,
   comboLabel,
@@ -73,6 +74,8 @@ export interface FileExplorerProps {
   onFileDeleted?: (path: string) => void;
   width?: number;
   onBeforeFileAction?: (path: string) => void | Promise<void>;
+  /** Se renombró o movió una nota o carpeta: la app actualiza los `[[enlaces]]`. */
+  onEntriesMoved?: (moves: PathMove[]) => void;
   /** Exporta la nota a PDF (la abre en el editor con el diálogo listo). */
   onExportPdf?: (file: NoteFile) => void;
   /** Emoji de cada nota, por ruta. */
@@ -161,6 +164,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
     onOpenSearch,
     onFileDeleted,
     onBeforeFileAction,
+    onEntriesMoved,
     onExportPdf,
     noteIcons,
     onSetIcon,
@@ -646,6 +650,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
         to: target,
       });
       const finalName = baseName(newPath);
+      if (kind === "note") onEntriesMoved?.([{ from: file.id, to: newPath }]);
       closeMenu();
       reload();
 
@@ -672,6 +677,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
         from: folder.path,
         to: joinPath(parentPath(folder.path), name),
       });
+      onEntriesMoved?.([{ from: folder.path, to: newPath }]);
       closeMenu();
       rewriteTrail((prev) =>
         prev.map((step) =>
@@ -718,6 +724,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
         from: file.id,
         toDir: dest.path,
       });
+      if (file.kind !== "image" && file.kind !== "pdf") onEntriesMoved?.([{ from: file.id, to: newPath }]);
       clearDrag();
       closeMenu();
       reload();
@@ -750,6 +757,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
         from: folder.path,
         to: joinPath(dest.path, folder.name),
       });
+      onEntriesMoved?.([{ from: folder.path, to: newPath }]);
 
       if (activeInside) {
         const movedActivePath = rebasePath(activeInside, folder.path, newPath);

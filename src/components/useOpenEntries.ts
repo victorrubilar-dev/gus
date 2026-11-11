@@ -26,13 +26,15 @@ interface OpenEntriesOptions {
   onFilesChanged: () => void;
   /** El editor acaba de guardar la nota (para mantener el índice de búsqueda). */
   onNoteSaved: (draft: EditorDraft) => void;
+  /** El editor renombró la nota abierta al cambiar su título. */
+  onNoteRenamed?: (from: string, to: string) => void;
 }
 
 /**
  * Lo que hay abierto en el panel derecho: una nota (con sus pestañas), una imagen
  * o un PDF. Solo uno a la vez; las peticiones lentas se descartan si llegan tarde.
  */
-export function useOpenEntries({ editorRef, onFilesChanged, onNoteSaved }: OpenEntriesOptions) {
+export function useOpenEntries({ editorRef, onFilesChanged, onNoteSaved, onNoteRenamed }: OpenEntriesOptions) {
   const t = useT();
   const [note, setNote] = useState<OpenNote | null>(null);
   /** Notas abiertas, en el orden en que se abrieron; la visible es `note`. */
@@ -175,12 +177,13 @@ export function useOpenEntries({ editorRef, onFilesChanged, onNoteSaved }: OpenE
   }
 
   function handleAutoSave(draft: EditorDraft) {
-    if (notePathRef.current && notePathRef.current !== draft.path) {
-      const previous = notePathRef.current;
+    const previous = notePathRef.current;
+    if (previous && previous !== draft.path) {
       setTabs((open) => open.map((tab) => (tab.path === previous ? { path: draft.path, title: draft.title } : tab)));
       onFilesChanged();
     }
     notePathRef.current = draft.path;
+    if (previous && previous !== draft.path) onNoteRenamed?.(previous, draft.path);
     setNote((prev) => (prev ? { ...prev, ...draft } : prev));
     onNoteSaved(draft);
   }

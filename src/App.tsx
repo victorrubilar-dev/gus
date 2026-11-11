@@ -62,6 +62,8 @@ import { useSearchIndexSync } from "./components/useSearchIndexSync";
 import { useVaults } from "./components/useVaults";
 import { useAppearance } from "./components/useAppearance";
 import { useLinkGraph } from "./components/useLinkGraph";
+import type { LinkGraph } from "./lib/linkGraph";
+import { planLinkRewrites, rewriteWikiLinks, type PathMove } from "./lib/wikiRename";
 import { useStartupNotifications } from "./components/useStartupNotifications";
 import { DEFAULT_BASE_DIR } from "./lib/vaultConfig";
 import { usePanelWidth } from "./components/usePanelWidth";
@@ -200,6 +202,8 @@ function App({
     editorRef,
     onFilesChanged: () => setVaultRefresh((key) => key + 1),
     onNoteSaved: (draft) => searchIndex.indexSavedNote(draft),
+    // La nota renombrada está abierta y se está editando: no se reescribe ella.
+    onNoteRenamed: (from, to) => void relinkMoved([{ from, to }], to),
   });
   const {
     bootStatus,
@@ -281,6 +285,31 @@ function App({
     await invoke("write_vault_file", { path: task.notePath, content: next });
     if (notePathRef.current === task.notePath) {
       handleSelectNote({ id: task.notePath, name: baseName(task.notePath), kind: "note" });
+    }
+    setVaultRefresh((key) => key + 1);
+  }
+
+  /**
+   * Tras renombrar o mover notas o carpetas, reescribe los `[[enlaces]]` que
+   * dejaron de apuntar a su nota. El grafo se lee ya movido, desde el disco,
+   * para no depender del que refresca `useLinkGraph` con retardo.
+   */
+  async function relinkMoved(moves: PathMove[], skipPath?: string): Promise<void> {
+    if (!currentVault) return;
+    try {
+      const graph = await invoke<LinkGraph>("build_link_graph", { path: currentVault });
+      for (const { path, targets } of planLinkRewrites(graph.nodes, currentVault, moves)) {
+        if (path === skipPath) continue;
+        await handleBeforeFileAction(path);
+        const text = await invoke<string>("read_vault_file", { path });
+        const next = rewriteWikiLinks(text, targets);
+        if (next === text) continue;
+        await invoke("write_vault_file", { path, content: next });
+        if (notePathRef.current === path) handleSelectNote({ id: path, name: baseName(path), kind: "note" });
+      }
+    } catch (error) {
+      // shortcut: el fallo solo va a consola y las notas que faltaban quedan con el enlace viejo; mostrarlo si llega a pasar.
+      console.error("No se pudieron actualizar los enlaces", error);
     }
     setVaultRefresh((key) => key + 1);
   }
@@ -489,6 +518,7 @@ function App({
         onOpenSearch={() => setActiveTab("search")}
         onFileDeleted={handleFileDeleted}
         onBeforeFileAction={handleBeforeFileAction}
+        onEntriesMoved={(moves) => void relinkMoved(moves)}
         onExportPdf={handleExportPdf}
         noteIcons={noteIcons}
         onSetIcon={setNoteIconFor}

@@ -41,6 +41,8 @@ await campo.press("Enter");
 await espera();
 const tras = await archivos();
 comprobar(tras.includes("/vault/libros.md") && !tras.includes("/vault/lecturas.md"), "renombrar nota: libros.md existe y lecturas.md no");
+const texto = (ruta) => page.evaluate((r) => window.__smoke.archivos.get(r) ?? "", ruta);
+comprobar((await texto("/vault/bienvenida.md")).includes("[[libros]]") && !(await texto("/vault/bienvenida.md")).includes("[[lecturas]]"), "renombrar nota: [[lecturas]] pasa a [[libros]] en bienvenida.md");
 
 console.log("\n--- recargar no parpadea ---");
 await page.evaluate(() => {
@@ -82,6 +84,7 @@ await page.getByRole("menuitem", { name: /^Mover/ }).click();
 await page.getByRole("menuitem", { name: /diario/ }).click();
 await espera();
 comprobar((await archivos()).includes("/vault/diario/proyecto-gus.md"), "mover proyecto-gus.md a diario/");
+comprobar((await texto("/vault/libros.md")).includes("[[proyecto-gus]]"), "mover nota: un enlace por nombre que sigue resolviendo no se toca");
 
 console.log("\n--- arrastrar una fila sobre una carpeta ---");
 await page.locator('[data-tour="sidebar"]').getByRole("button", { name: "Resumen", exact: true }).first().click();
@@ -140,6 +143,28 @@ comprobar((await desplegable.count()) === 1, "el «…» abre el desplegable de 
 await page.keyboard.press("Escape");
 await page.waitForTimeout(150);
 comprobar((await desplegable.count()) === 0, "Esc cierra el desplegable");
+
+console.log("\n--- renombrar carpeta actualiza los enlaces con ruta ---");
+await page.evaluate(() => window.__smoke.archivos.set("/vault/indice.md", "Ver [[diario/2026-10-28|el martes]] y `[[diario/2026-10-28]]`."));
+await page.keyboard.press("Escape");
+await page.locator('[data-tour="sidebar"]').getByRole("button", { name: "Resumen", exact: true }).first().click();
+await page.waitForTimeout(300);
+await page.locator('[data-tour="sidebar"]').getByRole("button", { name: "Notas", exact: true }).first().click();
+await page.waitForTimeout(600);
+for (let i = 0; i < 5 && !(await fila("/vault/diario").isVisible().catch(() => false)); i++) {
+  await page.keyboard.press("Alt+ArrowUp");
+  await page.waitForTimeout(300);
+}
+await fila("/vault/diario").click({ button: "right" });
+await page.getByRole("menuitem", { name: "Renombrar" }).click();
+const campoCarpeta = page.getByLabel(/Nuevo nombre para/);
+await campoCarpeta.fill("dias");
+await campoCarpeta.press("Enter");
+await page.waitForTimeout(800);
+comprobar(
+  (await texto("/vault/indice.md")) === "Ver [[2026-10-28|el martes]] y `[[diario/2026-10-28]]`.",
+  "renombrar «diario»: el enlace con ruta se actualiza, el alias se conserva y el código en línea no se toca",
+);
 
 await browser.close();
 console.log(fallos.length === 0 ? "\nTODO EN VERDE" : `\n${fallos.length} comprobación(es) fallaron`);
