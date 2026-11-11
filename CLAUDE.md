@@ -16,12 +16,12 @@ App de escritorio **local-first** para notas Markdown y tareas personales. Tauri
 pnpm install
 pnpm tauri dev            # Vite en :1420 + ventana Tauri
 pnpm build                # tsc + vite build
-pnpm test                 # Vitest: 349 tests en 38 ficheros
+pnpm test                 # Vitest: 367 tests en 42 ficheros
 npx tsc --noEmit
-cd src-tauri && cargo test   # Rust: 83 tests
+cd src-tauri && cargo test   # Rust: 85 tests
 ```
 
-Benchmarks (Playwright, en `bench/`; casi todos necesitan `npx vite --port 5199` en marcha): `pnpm bench`, `bench:menu`, `bench:images`, `bench:explorer`, `bench:app`, `bench:botones`, `bench:medida`, `bench:pestanas`, `bench:foco`, `bench:corrector`, `bench:portapapeles`, `bench:tablas`, `bench:cursor`, `bench:operaciones` (explorador: crear, renombrar, mover, arrastrar, borrar, ruta), `bench:vaults`, `bench:soltar`, `bench:tareas`, `bench:resumen`, `bench:ajustes` (categorías, buscador y «Acerca de»), `bench:pizarras` (miniaturas, menú de cada pizarra, fijar, color, buscar, ordenar, selección múltiple, exportar a SVG/PNG y copiar imagen), `bench:inicio` (primera vez: bienvenida, primer vault y recorrido; usa `?vacio`) (drop nativo de Tauri simulado) y `bench:regresion` (capturas contra `bench/linea-base/`, de esta máquina; `--actualizar` tras un cambio visual aceptado). `pnpm traza` aparte.
+Benchmarks (Playwright, en `bench/`; casi todos necesitan `npx vite --port 5199` en marcha): `pnpm bench`, `bench:menu`, `bench:images`, `bench:explorer`, `bench:app`, `bench:botones`, `bench:medida`, `bench:pestanas`, `bench:foco`, `bench:corrector`, `bench:portapapeles`, `bench:tablas`, `bench:cursor`, `bench:operaciones` (explorador: crear, renombrar, mover, arrastrar, borrar, ruta), `bench:vaults`, `bench:soltar` (drop nativo de Tauri simulado), `bench:tareas`, `bench:resumen`, `bench:ajustes` (categorías, buscador y «Acerca de»), `bench:pizarras` (miniaturas, menú de cada pizarra, fijar, color, buscar, ordenar, selección múltiple, exportar a SVG/PNG y copiar imagen), `bench:inicio` (primera vez: bienvenida, primer vault y recorrido; usa `?vacio`), `bench:galeria` (rejilla, filtros, visor, mover y papelera), `bench:lectura` (editar, dividido con scroll sincronizado, lectura y pantalla completa), `bench:temas` (temas personalizados: vista previa en vivo, guardar, exportar/importar JSON y borrar) y `bench:regresion` (capturas contra `bench/linea-base/`, de esta máquina; `--actualizar` tras un cambio visual aceptado). `pnpm traza` aparte.
 
 ## Arquitectura
 
@@ -36,8 +36,8 @@ Benchmarks (Playwright, en `bench/`; casi todos necesitan `npx vite --port 5199`
 - **IPC**: `invoke("comando", { args })`. Los errores son `Result<T, String>`. Los structs usan `#[serde(rename_all = "camelCase")]`.
 - **Vault**: notas `.md`, tareas `.gus-tasks.json`, índice de búsqueda `.gus-index/`, estanterías de PDF `.gus-library.json`, hábitos `.gus-habits.json` y pizarras `.gus-boards/<id>.json`. El watcher (`vigilancia.rs`) ignora lo oculto salvo `.gus-tasks.json` y descarta las escrituras propias (`note_own_write`): todo comando nuevo que escriba en el vault debe llamarla.
 - **Papelera**: `<vault>/.gus-trash` con manifiesto JSON y TTL de 30 días. `move_to_trash` rechaza lo que esté fuera del vault. La global de versiones anteriores se migra al arrancar (`migrate_legacy_trash`).
-- **Temas**: 7 temas vía variables CSS `--color-gus-*`.
-- **Carga diferida**: `PdfViewer`, `MermaidDiagram` y `LibraryView` se cargan con `React.lazy`.
+- **Temas**: 7 de serie vía variables CSS `--color-gus-*`, más los personalizados (`settings.customThemes`, clave `custom-<id>`; `lib/customThemes.ts`). `resolveTheme` da la paleta de cualquiera de los dos. El emoji de cada nota va en el frontmatter (`icon:`) y llega al frontend por el grafo de enlaces.
+- **Carga diferida**: `PdfViewer`, `MermaidDiagram`, `LibraryView` y `GalleryView` se cargan con `React.lazy`.
 - **Zoom de interfaz**: la app escala con `zoom` CSS en `<html>`, así que las coordenadas de eventos (px de pantalla) no coinciden con las locales de un SVG o un menú. Para eso, `toLocalCoord` o, como en la pizarra, medir la razón rect/ancho de layout.
 
 ## Convenciones
