@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { incomingCountMap, type LinkGraph } from "../lib/linkGraph";
+import { incomingCountMap, noteIconMap, type LinkGraph } from "../lib/linkGraph";
 
 type LoadStatus = "idle" | "loading" | "ready" | "error";
 
@@ -62,5 +62,8 @@ export function useLinkGraph(currentVault: string | null, refreshKey: number, no
   /** Contador por nota para cada enlace [[wiki]] de la vista previa. */
   const linkRefs = useMemo(() => incomingCountMap(linkGraph), [linkGraph]);
 
-  return { linkGraph, linkGraphStatus, linkGraphError, linkRefs };
+  /** Emoji de cada nota, para el explorador, los enlaces y la paleta. */
+  const noteIcons = useMemo(() => noteIconMap(linkGraph), [linkGraph]);
+
+  return { linkGraph, linkGraphStatus, linkGraphError, linkRefs, noteIcons };
 }

@@ -390,6 +390,14 @@ fn frontmatter_tags(text: &str) -> Vec<String> {
         .collect()
 }
 
+/// Emoji de la nota (`icon:` del frontmatter), si tiene uno.
+fn frontmatter_icon(text: &str) -> Option<String> {
+    let body = frontmatter_lines(text)?;
+    let line = body.iter().find_map(|line| line.strip_prefix("icon:"))?;
+    let icon = unquote_yaml(line.trim());
+    (!icon.is_empty()).then_some(icon)
+}
+
 fn split_flow(inner: &str) -> Vec<String> {
     let mut items: Vec<String> = Vec::new();
     let mut current = String::new();

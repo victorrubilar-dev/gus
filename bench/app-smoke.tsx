@@ -305,7 +305,8 @@ const respuestas: Record<string, (args: Record<string, unknown>) => unknown> = {
         const links = [...texto.matchAll(/\[\[([^\]]+)\]\]/g)].map((m) => ({ target: m[1], count: 1 }));
         const tags = [...texto.matchAll(/#([\p{L}]+)/gu)].map((m) => m[1]);
         const relative = path.replace("/vault/", "");
-        return { name: relative.split("/").pop() as string, path, relative, modifiedMs: ahora, tags, links };
+        const icon = /^---\n[\s\S]*?^icon: "(.+)"$/m.exec(texto)?.[1] ?? null;
+        return { name: relative.split("/").pop() as string, path, relative, modifiedMs: ahora, tags, icon, links };
       }),
   }),
   read_legacy_tasks: () => "",

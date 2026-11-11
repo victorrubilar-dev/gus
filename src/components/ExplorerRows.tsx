@@ -151,6 +151,8 @@ export function FolderRow({
 interface FileRowProps extends RowHandlers {
   file: NoteFile;
   isCurrent: boolean;
+  /** Emoji de la nota: ocupa el sitio del icono de documento. */
+  icon?: string;
   onSelect: () => void;
 }
 
@@ -158,6 +160,7 @@ interface FileRowProps extends RowHandlers {
 export function FileRow({
   file,
   isCurrent,
+  icon,
   staticMode,
   isRenaming,
   isDragged,
@@ -247,6 +250,10 @@ export function FileRow({
                   strokeWidth={1.75}
                   aria-hidden="true"
                 />
+              ) : icon ? (
+                <span className="relative w-4 shrink-0 text-center text-body leading-none" aria-hidden="true">
+                  {icon}
+                </span>
               ) : (
                 <FileText
                   className={clsx(

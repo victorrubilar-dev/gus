@@ -21,6 +21,8 @@ pub struct LinkNode {
     pub relative: String,
     pub modified_ms: Option<u64>,
     pub tags: Vec<String>,
+    /// Emoji de la nota (`icon:` del frontmatter).
+    pub icon: Option<String>,
     pub links: Vec<NoteLink>,
 }
 
@@ -185,6 +187,7 @@ pub(crate) fn build_link_graph(path: String) -> Result<LinkGraph, String> {
 
         nodes.push(LinkNode {
             tags: frontmatter_tags(&content),
+            icon: frontmatter_icon(&content),
             links: count_wiki_links(&content),
             name: note.name,
             path: note.path,

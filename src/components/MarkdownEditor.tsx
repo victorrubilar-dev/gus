@@ -76,6 +76,8 @@ export interface MarkdownEditorProps {
    * backend. Cada enlace [[wiki]] de la vista previa enseña su contador.
    */
   linkRefs?: Record<string, number> | null;
+  /** Emoji de cada nota, por ruta: acompaña a su enlace [[wiki]]. */
+  noteIcons?: Record<string, string> | null;
   autoSave?: (draft: EditorDraft) => void;
   debounceMs?: number;
   fontSize?: number;
@@ -116,6 +118,7 @@ export default function MarkdownEditor({
   vaultPath,
   onOpenWikiLink,
   linkRefs,
+  noteIcons,
   autoSave,
   debounceMs = DEFAULT_DEBOUNCE,
   fontSize,
@@ -967,6 +970,7 @@ export default function MarkdownEditor({
     vaultPath,
     wikiNotes,
     linkRefs,
+    noteIcons,
     onOpenWikiLink,
     previewOffset,
     taskCheckedAt,
@@ -1427,6 +1431,7 @@ export default function MarkdownEditor({
           vaultPath={vaultPath}
           wikiNotes={wikiNotes}
           linkRefs={linkRefs}
+          noteIcons={noteIcons}
           onOpenWikiLink={onOpenWikiLink}
           previewOffset={previewOffset}
           taskCheckedAt={taskCheckedAt}

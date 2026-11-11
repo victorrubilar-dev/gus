@@ -101,6 +101,25 @@ await page.getByRole("menuitem", { name: "Mover a la papelera" }).click().catch(
 await espera();
 comprobar(!(await archivos()).includes("/vault/bienvenida.md"), "mover a la papelera quita bienvenida.md");
 
+console.log("\n--- icono de la nota ---");
+await page.locator('[data-tour="sidebar"]').getByRole("button", { name: "Resumen", exact: true }).first().click();
+await page.waitForTimeout(300);
+await page.locator('[data-tour="sidebar"]').getByRole("button", { name: "Notas", exact: true }).first().click();
+await page.waitForTimeout(600);
+await fila("/vault/nueva-nota.md").click({ button: "right" });
+await page.getByRole("menuitem", { name: "Icono…" }).click();
+await page.getByRole("button", { name: "📘", exact: true }).click();
+await page.waitForTimeout(800);
+const conIcono = await page.evaluate(() => window.__smoke.archivos.get("/vault/nueva-nota.md"));
+comprobar(conIcono.includes('icon: "📘"'), "elegir 📘 lo guarda en el frontmatter de la nota");
+comprobar((await fila("/vault/nueva-nota.md").innerText()).includes("📘"), "la fila del explorador enseña el emoji");
+await fila("/vault/nueva-nota.md").click({ button: "right" });
+await page.getByRole("menuitem", { name: "Icono…" }).click();
+await page.getByRole("menuitem", { name: "Quitar icono" }).click();
+await page.waitForTimeout(800);
+const sinIcono = await page.evaluate(() => window.__smoke.archivos.get("/vault/nueva-nota.md"));
+comprobar(!sinIcono.includes("icon:"), "«Quitar icono» borra la línea del frontmatter");
+
 console.log("\n--- ruta larga: tramos ocultos y desplegable «…» ---");
 await page.evaluate(() => window.__smoke.archivos.set("/vault/carpeta-muy-larga-uno/carpeta-muy-larga-dos/carpeta-muy-larga-tres/carpeta-muy-larga-cuatro/x.md", "# x"));
 await page.locator('[data-tour="sidebar"]').getByRole("button", { name: "Resumen", exact: true }).first().click();

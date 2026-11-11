@@ -75,6 +75,10 @@ export interface FileExplorerProps {
   onBeforeFileAction?: (path: string) => void | Promise<void>;
   /** Exporta la nota a PDF (la abre en el editor con el diálogo listo). */
   onExportPdf?: (file: NoteFile) => void;
+  /** Emoji de cada nota, por ruta. */
+  noteIcons?: Record<string, string>;
+  /** Pone o quita (`null`) el emoji de una nota. */
+  onSetIcon?: (file: NoteFile, icon: string | null) => Promise<void>;
   /** Atajos vigentes: solo para los textos de ayuda de la barra de ruta. */
   shortcuts?: ShortcutMap;
 }
@@ -158,6 +162,8 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
     onFileDeleted,
     onBeforeFileAction,
     onExportPdf,
+    noteIcons,
+    onSetIcon,
     width,
     shortcuts,
   },
@@ -204,6 +210,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [movingId, setMovingId] = useState<string | null>(null);
+  const [iconingId, setIconingId] = useState<string | null>(null);
   const [destinations, setDestinations] = useState<FolderEntry[] | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -244,6 +251,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
     setRenamingId(null);
     setConfirmId(null);
     setMovingId(null);
+    setIconingId(null);
     setDestinations(null);
   }
 
@@ -903,6 +911,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
               key={file.id}
               file={file}
               isCurrent={file.id === currentId}
+              icon={noteIcons?.[file.id]}
               staticMode={staticMode}
               isRenaming={renamingId === file.id}
               isDragged={dragEntry?.path === file.id}
@@ -958,6 +967,8 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
           file={menuFile}
           confirmId={confirmId}
           movingId={movingId}
+          iconingId={iconingId}
+          currentIcon={menuFile ? noteIcons?.[menuFile.id] : undefined}
           destinations={destinations}
           busy={busy}
           confirmTrashRef={confirmTrashRef}
@@ -978,6 +989,20 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
             setMovingId(null);
             setDestinations(null);
           }}
+          onStartIcon={setIconingId}
+          onBackFromIcon={() => setIconingId(null)}
+          onSetIcon={
+            onSetIcon && menuFile
+              ? (icon) => {
+                  const file = menuFile;
+                  setBusyId(file.id);
+                  onSetIcon(file, icon)
+                    .then(closeMenu)
+                    .catch((error: unknown) => setActionError(String(error)))
+                    .finally(() => setBusyId(null));
+                }
+              : undefined
+          }
           onExport={(file) => {
             setMenu(null);
             onExportPdf?.(file);

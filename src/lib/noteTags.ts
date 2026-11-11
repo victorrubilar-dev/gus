@@ -77,6 +77,61 @@ export function setNoteTags(content: string, tags: string[] | string): string {
   return `---${newline}${yaml}${newline}---${newline}${rest}`;
 }
 
+const ICON_KEY_RE = /^icon:/;
+
+/** Emoji de la nota (`icon:` del frontmatter), o `null`. */
+export function parseNoteIcon(content: string): string | null {
+  const match = frontmatterMatch(content);
+  const line = match?.[1].split(/\r?\n/).find((entry) => ICON_KEY_RE.test(entry));
+  const icon = line ? unquote(line.slice("icon:".length).trim()) : "";
+  return icon === "" ? null : icon;
+}
+
+/** Emojis que ofrece el selector del explorador. */
+export const NOTE_ICON_CHOICES = [
+  "📝", "📘", "📗", "📕", "📒", "📚", "📌", "⭐",
+  "💡", "✅", "🎯", "🧠", "🧪", "🔬", "💻", "🐛",
+  "📊", "📅", "🗂️", "💼", "🏠", "❤️", "🎵", "🎨",
+  "✈️", "🍳", "🌱", "💰", "🎓", "🚀", "⚠️", "🔒",
+];
+
+/** Un solo carácter visible (el primero): el icono no es un título. */
+export function cleanNoteIcon(value: string): string {
+  const text = value.trim();
+  if (text === "") return "";
+  const first = new Intl.Segmenter().segment(text)[Symbol.iterator]().next();
+  return first.done ? "" : first.value.segment;
+}
+
+/** Pone, cambia o quita (`null`) el emoji de la nota en su frontmatter. */
+export function setNoteIcon(content: string, icon: string | null): string {
+  const clean = cleanNoteIcon(icon ?? "");
+  const newline = content.includes("\r\n") ? "\r\n" : "\n";
+  const match = frontmatterMatch(content);
+  const line = `icon: ${JSON.stringify(clean)}`;
+
+  if (!match) {
+    return clean === "" ? content : `---${newline}${line}${newline}---${newline}${content}`;
+  }
+
+  const lines = match[1].split(/\r?\n/);
+  const keyIndex = lines.findIndex((entry) => ICON_KEY_RE.test(entry));
+  if (clean === "") {
+    if (keyIndex === -1) return content;
+    lines.splice(keyIndex, 1);
+  } else if (keyIndex === -1) {
+    lines.push(line);
+  } else {
+    lines[keyIndex] = line;
+  }
+
+  const rest = content.slice(match[0].length);
+  const yaml = lines.join(newline);
+  // Si el icono era lo único del frontmatter, el bloque desaparece entero.
+  if (!PROPERTY_RE.test(yaml)) return rest;
+  return `---${newline}${yaml}${newline}---${newline}${rest}`;
+}
+
 function findTagsKey(lines: string[]): number {
   return lines.findIndex((line) => TAGS_KEY_RE.test(line));
 }

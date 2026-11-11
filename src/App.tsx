@@ -11,6 +11,7 @@ import { LucideProvider } from "lucide-react";
 import { AnimatePresence, domMax, LazyMotion, m, MotionConfig } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 import { toggleNoteTaskText, type NoteTask } from "./lib/noteTasks";
+import { setNoteIcon } from "./lib/noteTags";
 import clsx from "clsx";
 import CalendarView from "./components/CalendarView";
 import BacklinksPanel from "./components/BacklinksPanel";
@@ -241,7 +242,7 @@ function App({
   });
   useAppearance(settings, vaultConfig !== null);
   useStartupNotifications(bootStatus === "ready", currentVault, settings);
-  const { linkGraph, linkGraphStatus, linkGraphError, linkRefs } = useLinkGraph(
+  const { linkGraph, linkGraphStatus, linkGraphError, linkRefs, noteIcons } = useLinkGraph(
     currentVault,
     vaultRefresh,
     note?.path,
@@ -272,6 +273,16 @@ function App({
     if (notePathRef.current === task.notePath) {
       handleSelectNote({ id: task.notePath, name: baseName(task.notePath), kind: "note" });
     }
+    setVaultRefresh((key) => key + 1);
+  }
+
+  /** Pone o quita el emoji de una nota (menú del explorador), igual que `toggleNoteTask`. */
+  async function setNoteIconFor(file: NoteFile, icon: string | null): Promise<void> {
+    await handleBeforeFileAction(file.id);
+    const text = await invoke<string>("read_vault_file", { path: file.id });
+    const next = setNoteIcon(text, icon);
+    if (next !== text) await invoke("write_vault_file", { path: file.id, content: next });
+    if (notePathRef.current === file.id) handleSelectNote({ id: file.id, name: file.name, kind: "note" });
     setVaultRefresh((key) => key + 1);
   }
 
@@ -470,6 +481,8 @@ function App({
         onFileDeleted={handleFileDeleted}
         onBeforeFileAction={handleBeforeFileAction}
         onExportPdf={handleExportPdf}
+        noteIcons={noteIcons}
+        onSetIcon={setNoteIconFor}
         width={explorerWidth}
         shortcuts={settings.shortcuts}
       />
@@ -552,6 +565,7 @@ function App({
                     vaultPath={currentVault}
                     onOpenWikiLink={handleOpenWikiLink}
                     linkRefs={linkRefs}
+                    noteIcons={noteIcons}
                     autoSave={handleAutoSave}
                     autoSaveEnabled={settings.autoSave}
                     fontSize={settings.editorFontSize}
@@ -777,6 +791,7 @@ function App({
             onOpenChange={setPaletteOpen}
             vaultPath={currentVault}
             onSelectNote={handlePaletteSelectNote}
+            noteIcons={noteIcons}
             onOpenSearch={() => setActiveTab("search")}
             shortcuts={settings.shortcuts}
           />

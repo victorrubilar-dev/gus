@@ -3,6 +3,7 @@ import clsx from "clsx";
 import { Folder } from "lucide-react";
 import { useT } from "../lib/i18n";
 import { isImageName, isPdfName } from "../lib/fileName";
+import { NOTE_ICON_CHOICES } from "../lib/noteTags";
 import type { FolderEntry } from "../lib/explorerTrail";
 import type { NoteFile } from "./FileExplorer";
 
@@ -43,6 +44,10 @@ interface ExplorerContextMenuProps {
   file: NoteFile | undefined;
   confirmId: string | null;
   movingId: string | null;
+  /** Nota cuyo selector de icono está abierto. */
+  iconingId: string | null;
+  /** Emoji actual de la nota del menú. */
+  currentIcon: string | undefined;
   /** Carpetas a las que se puede mover el elemento (`null` mientras carga). */
   destinations: FolderEntry[] | null;
   busy: boolean;
@@ -55,6 +60,10 @@ interface ExplorerContextMenuProps {
   onStartMove: (path: string) => void;
   onMoveTo: (dest: FolderEntry) => void;
   onBackFromMove: () => void;
+  /** Sin `onSetIcon` (modo estático) no se ofrece el icono. */
+  onStartIcon: (id: string) => void;
+  onSetIcon?: (icon: string | null) => void;
+  onBackFromIcon: () => void;
   onExport: (file: NoteFile) => void;
   onNewNote: () => void;
   onNewFolder: () => void;
@@ -148,6 +157,13 @@ export default function ExplorerContextMenu(props: ExplorerContextMenuProps) {
             ← Volver
           </button>
         </div>
+      ) : props.iconingId === menu.id && file && props.onSetIcon ? (
+        <IconPicker
+          current={props.currentIcon}
+          busy={busy}
+          onPick={props.onSetIcon}
+          onBack={props.onBackFromIcon}
+        />
       ) : folder ? (
         <div className="py-1">
           <MenuItem onClick={() => props.onStartRename(menu.id)}>{t("common.rename")}</MenuItem>
@@ -160,6 +176,9 @@ export default function ExplorerContextMenu(props: ExplorerContextMenuProps) {
         <div className="py-1">
           {!isImageName(file.name) && !isPdfName(file.name) && (
             <MenuItem onClick={() => props.onExport(file)}>{t("explorer.export")}</MenuItem>
+          )}
+          {props.onSetIcon && !isImageName(file.name) && !isPdfName(file.name) && (
+            <MenuItem onClick={() => props.onStartIcon(menu.id)}>{t("explorer.icon")}</MenuItem>
           )}
           <MenuItem onClick={() => props.onStartRename(menu.id)}>Renombrar</MenuItem>
           <MenuItem onClick={() => props.onStartMove(file.id)}>Mover a…</MenuItem>
@@ -177,6 +196,82 @@ export default function ExplorerContextMenu(props: ExplorerContextMenuProps) {
           </MenuItem>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/** Rejilla de emojis para la nota, con hueco para escribir cualquier otro. */
+function IconPicker({
+  current,
+  busy,
+  onPick,
+  onBack,
+}: {
+  current: string | undefined;
+  busy: boolean;
+  onPick: (icon: string | null) => void;
+  onBack: () => void;
+}) {
+  const t = useT();
+
+  return (
+    <div>
+      <p className="border-b border-gus-border px-3 py-2 text-meta tracking-wider text-gus-muted uppercase">
+        {t("explorer.iconTitle")}
+      </p>
+      <div role="group" aria-label={t("explorer.iconTitle")} className="grid grid-cols-8 gap-0.5 p-1.5">
+        {NOTE_ICON_CHOICES.map((icon) => (
+          <button
+            key={icon}
+            type="button"
+            onClick={() => onPick(icon)}
+            disabled={busy}
+            aria-pressed={icon === current}
+            aria-label={icon}
+            className={clsx(
+              "flex h-7 w-full items-center justify-center rounded-md text-base transition-colors hover:bg-gus-panel focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:outline-none disabled:opacity-50",
+              icon === current && "bg-gus-accent/15 ring-1 ring-gus-accent/50",
+            )}
+          >
+            {icon}
+          </button>
+        ))}
+      </div>
+      <form
+        className="border-t border-gus-border p-1.5"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const value = new FormData(event.currentTarget).get("icon");
+          if (typeof value === "string" && value.trim() !== "") onPick(value);
+        }}
+      >
+        <input
+          name="icon"
+          autoFocus
+          maxLength={16}
+          placeholder={t("explorer.iconOther")}
+          aria-label={t("explorer.iconOther")}
+          className="w-full rounded-md border border-gus-border bg-gus-bg px-2 py-1 text-body text-gus-text outline-none placeholder:text-gus-muted focus-visible:ring-2 focus-visible:ring-gus-accent/60"
+        />
+      </form>
+      {current && (
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => onPick(null)}
+          disabled={busy}
+          className={clsx(MENU_ITEM_CLASS, NORMAL_ITEM, "border-t border-gus-border disabled:opacity-50")}
+        >
+          {t("explorer.iconRemove")}
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={onBack}
+        className={clsx(MENU_ITEM_CLASS, "w-full border-t border-gus-border text-gus-muted hover:text-gus-text")}
+      >
+        ← Volver
+      </button>
     </div>
   );
 }

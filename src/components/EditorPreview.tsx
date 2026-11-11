@@ -14,6 +14,8 @@ interface PreviewComponentsArgs {
   vaultPath?: string | null;
   wikiNotes: WikiNote[];
   linkRefs?: Record<string, number> | null;
+  /** Emoji de cada nota, por ruta: se pinta delante de su enlace [[wiki]]. */
+  noteIcons?: Record<string, string> | null;
   onOpenWikiLink?: (target: string) => void;
   /** Líneas que ocupa el frontmatter: las casillas se mapean a la fuente sin él. */
   previewOffset: number;
@@ -32,6 +34,7 @@ export function usePreviewComponents({
   vaultPath,
   wikiNotes,
   linkRefs,
+  noteIcons,
   onOpenWikiLink,
   previewOffset,
   taskCheckedAt,
@@ -75,6 +78,7 @@ export function usePreviewComponents({
         const known = match !== null;
         // Contador de referencias: cuántas notas del vault enlazan aquí.
         const refs = match ? linkRefs?.[match.path] : undefined;
+        const icon = match ? noteIcons?.[match.path] : undefined;
         const openLabel = known
           ? t("editor.wikiOpen", { name: wikiTarget })
           : t("editor.wikiCreate", { name: wikiTarget });
@@ -95,6 +99,7 @@ export function usePreviewComponents({
                 : "text-gus-muted underline decoration-dashed decoration-gus-muted/60 hover:text-gus-text",
             )}
           >
+            {icon && <span className="mr-1 no-underline" aria-hidden="true">{icon}</span>}
             {children}
             {refs !== undefined && refs > 0 && (
               <sup

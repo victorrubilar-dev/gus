@@ -15,6 +15,8 @@ export interface LinkNode {
   relative: string;
   modifiedMs?: number | null;
   tags: string[];
+  /** Emoji de la nota (`icon:` del frontmatter). */
+  icon?: string | null;
   links: NoteLink[];
 }
 
@@ -115,6 +117,15 @@ export function outgoingFrom(graph: LinkGraph | null, path: string): OutgoingEnt
  * «Ruta de nota → cuántas veces se la enlaza». Es lo que pinta el contador de
  * cada enlace `[[wiki]]` en la vista previa del editor.
  */
+/** Emoji de cada nota que tiene uno, por ruta absoluta. */
+export function noteIconMap(graph: LinkGraph | null): Record<string, string> {
+  const icons: Record<string, string> = {};
+  for (const node of graph?.nodes ?? []) {
+    if (node.icon) icons[node.path] = node.icon;
+  }
+  return icons;
+}
+
 export function incomingCountMap(graph: LinkGraph | null): Record<string, number> {
   if (!graph) return {};
 

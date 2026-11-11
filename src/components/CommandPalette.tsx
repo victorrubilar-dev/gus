@@ -22,6 +22,8 @@ export interface CommandPaletteProps {
   onOpenSearch: () => void;
   /** Atajos vigentes: la pista de abajo enseña el que se ha configurado. */
   shortcuts?: ShortcutMap;
+  /** Emoji de cada nota, por ruta: se ve en la lista y escribirlo filtra. */
+  noteIcons?: Record<string, string>;
 }
 
 const GROUP_CLASS =
@@ -47,6 +49,7 @@ export default function CommandPalette({
   onSelectNote,
   onOpenSearch,
   shortcuts,
+  noteIcons,
 }: CommandPaletteProps) {
   const t = useT();
   const paletteCombo = comboFor(shortcuts, "commandPalette");
@@ -148,24 +151,31 @@ export default function CommandPalette({
                       heading={t("app.tab.notes")}
                       className={GROUP_CLASS}
                     >
-                      {notes.map((note) => (
+                      {notes.map((note) => {
+                        const icon = noteIcons?.[note.path];
+                        return (
                         <Command.Item
                           key={note.path}
                           value={note.relative}
-                          keywords={[note.name, note.relative]}
+                          keywords={icon ? [note.name, note.relative, icon] : [note.name, note.relative]}
                           onSelect={() => {
                             onOpenChange(false);
                             onSelectNote(note);
                           }}
                           className={ITEM_CLASS}
                         >
-                          <FileText className="h-4 w-4 shrink-0" aria-hidden="true" />
+                          {icon ? (
+                            <span className="w-4 shrink-0 text-center leading-none" aria-hidden="true">{icon}</span>
+                          ) : (
+                            <FileText className="h-4 w-4 shrink-0" aria-hidden="true" />
+                          )}
                           <span className="min-w-0 truncate">{titleOf(note)}</span>
                           <span className="ml-auto shrink-0 truncate pl-2 text-body text-gus-muted">
                             {folderOf(note)}
                           </span>
                         </Command.Item>
-                      ))}
+                        );
+                      })}
                     </Command.Group>
 
                     {/* Después de las notas: Enter abre la primera nota, como antes. */}

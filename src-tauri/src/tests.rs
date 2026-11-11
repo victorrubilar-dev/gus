@@ -229,6 +229,14 @@ fn list_vault_notes_devuelve_todas_las_notas_ordenadas() {
 }
 
 #[test]
+fn frontmatter_icon_lee_el_emoji() {
+    assert_eq!(frontmatter_icon("---\nicon: 📘\n---\nX"), Some("📘".to_string()));
+    assert_eq!(frontmatter_icon("---\ntags: [a]\nicon: \"🧪\"\n---\nX"), Some("🧪".to_string()));
+    assert_eq!(frontmatter_icon("---\nicon:\n---\nX"), None);
+    assert_eq!(frontmatter_icon("icon: 📘\nTexto"), None);
+}
+
+#[test]
 fn frontmatter_tags_lee_flujo_bloque_y_comillas() {
     assert_eq!(
         frontmatter_tags("---\ntags: [casa, \"a: b\"]\n---\nTexto"),
