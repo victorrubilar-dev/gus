@@ -4,6 +4,7 @@ import clsx from "clsx";
 import {
   CalendarDays,
   Flame,
+  Images,
   LayoutDashboard,
   Library,
   ListTodo,
@@ -28,6 +29,7 @@ export type TabId =
   | "calendar"
   | "graph"
   | "library"
+  | "gallery"
   | "habits"
   | "boards"
   | "search"
@@ -41,6 +43,7 @@ const TABS: { id: TabId; labelKey: MessageKey; Icon: LucideIcon }[] = [
   { id: "calendar", labelKey: "app.tab.calendar", Icon: CalendarDays },
   { id: "graph", labelKey: "app.tab.graph", Icon: Network },
   { id: "library", labelKey: "app.tab.library", Icon: Library },
+  { id: "gallery", labelKey: "app.tab.gallery", Icon: Images },
   { id: "habits", labelKey: "app.tab.habits", Icon: Flame },
   { id: "boards", labelKey: "app.tab.boards", Icon: PenTool },
 ];

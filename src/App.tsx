@@ -108,6 +108,7 @@ function clampExplorerWidth(width: number): number {
 
 // Visor de PDF: carga pdf.js solo cuando se abre el primer documento.
 const LibraryView = lazy(() => import("./components/LibraryView"));
+const GalleryView = lazy(() => import("./components/GalleryView"));
 
 /**
  * Raíz de la app: solo monta el proveedor de idioma con lo que hay en
@@ -736,6 +737,15 @@ function App({
                           setActiveTab("notes");
                           handleSelectNote({ id: pdf.path, name: pdf.name, kind: "pdf" });
                         }}
+                      />
+                    </Suspense>
+                  ) : activeTab === "gallery" ? (
+                    <Suspense fallback={<p className="p-6 text-sm text-gus-muted">{t("app.loadingViewer")}</p>}>
+                      <GalleryView
+                        vaultPath={currentVault}
+                        refreshKey={vaultRefresh}
+                        onFilesChanged={() => setVaultRefresh((key) => key + 1)}
+                        onFileGone={handleFileDeleted}
                       />
                     </Suspense>
                   ) : activeTab === "graph" ? (
