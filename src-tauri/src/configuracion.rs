@@ -16,6 +16,12 @@ pub struct AppSettings {
     pub open_last_vault: bool,
     pub animations: bool,
     pub accent: String,
+    /// Tema activo: uno de los de serie o `custom-…`. El frontend lo valida
+    /// contra su lista y `custom_themes`.
+    pub theme: String,
+    /// Temas hechos por la persona. Se guardan tal cual: el frontend los
+    /// valida al leerlos (colores, nombre, esquema).
+    pub custom_themes: Vec<serde_json::Value>,
     pub editor_font_size: u8,
     pub ui_zoom: u16,
     pub auto_save: bool,
@@ -42,6 +48,8 @@ impl Default for AppSettings {
             open_last_vault: true,
             animations: true,
             accent: "terracota".into(),
+            theme: "gus-oscuro".into(),
+            custom_themes: Vec::new(),
             editor_font_size: 14,
             ui_zoom: 100,
             auto_save: true,
@@ -82,7 +90,11 @@ pub(crate) fn sanitize_folder_segment(raw: &str) -> String {
 
 impl AppSettings {
     /// Colores de acento aceptados (deben coincidir con los del frontend).
-    pub(crate) const ACCENTS: [&'static str; 4] = ["terracota", "menta", "marfil", "cielo"];
+    /// «tema» es el acento propio del tema activo.
+    pub(crate) const ACCENTS: [&'static str; 5] = ["tema", "terracota", "menta", "marfil", "cielo"];
+
+    /// Tope de temas personalizados: un `config.json` escrito a mano no crece sin fin.
+    pub(crate) const MAX_CUSTOM_THEMES: usize = 50;
 
     /// Diccionarios aceptados (deben coincidir con los del frontend). Se
     /// pueden activar varios a la vez; sin ninguno el corrector se apaga.
@@ -103,6 +115,15 @@ impl AppSettings {
         if !Self::ACCENTS.contains(&self.accent.as_str()) {
             self.accent = Self::default().accent;
         }
+
+        let theme_ok = !self.theme.is_empty()
+            && self.theme.len() <= 64
+            && self.theme.chars().all(|c| c.is_ascii_alphanumeric() || c == '-');
+        if !theme_ok {
+            self.theme = Self::default().theme;
+        }
+        self.custom_themes.retain(|theme| theme.is_object());
+        self.custom_themes.truncate(Self::MAX_CUSTOM_THEMES);
 
         // Diccionarios: se quitan los que no existan y las repeticiones, en el
         // orden elegido. Una lista vacía es válida (corrector apagado).

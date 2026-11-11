@@ -30,7 +30,9 @@ import {
   type SettingDefinition,
   type SettingsCategoryId,
 } from "../lib/settings";
-import { THEME_LIST } from "../lib/themes";
+import { resolveTheme, THEME_LIST } from "../lib/themes";
+import type { CustomTheme } from "../lib/customThemes";
+import CustomThemesEditor from "./CustomThemesEditor";
 import { LANGUAGE_LIST, useT } from "../lib/i18n";
 import { APP_VERSION, GITHUB_REPO, RELEASES_URL } from "../lib/version";
 import { openExternal } from "../lib/externalLink";
@@ -74,6 +76,8 @@ export interface SettingsPanelProps {
   onCheckUpdate: () => void;
   /** Resultado de la última comprobación de actualizaciones. */
   updateState: UpdateUiState;
+  /** Tema personalizado en edición: la app se pinta con él mientras dura. */
+  onThemePreview: (theme: CustomTheme | null) => void;
 }
 
 function Toggle({
@@ -451,6 +455,7 @@ export default function SettingsPanel({
   onStartTour,
   onCheckUpdate,
   updateState,
+  onThemePreview,
 }: SettingsPanelProps) {
   const t = useT();
   const [activeCategory, setActiveCategory] = useState<SettingsCategoryId>("general");
@@ -784,15 +789,18 @@ export default function SettingsPanel({
 
     if (definition.kind === "theme") {
       return (
-        <div className="grid w-full grid-cols-[repeat(auto-fit,minmax(7.5rem,1fr))] gap-2">
-          {THEME_LIST.map((entry) => (
-            <ThemeCard
-              key={entry.key}
-              theme={entry.key}
-              selected={settings.theme === entry.key}
-              onSelect={() => update("theme", entry.key)}
-            />
-          ))}
+        <div className="w-full">
+          <div className="grid w-full grid-cols-[repeat(auto-fit,minmax(7.5rem,1fr))] gap-2">
+            {THEME_LIST.map((entry) => (
+              <ThemeCard
+                key={entry.key}
+                theme={entry.key}
+                selected={settings.theme === entry.key}
+                onSelect={() => update("theme", entry.key)}
+              />
+            ))}
+          </div>
+          <CustomThemesEditor settings={settings} onChange={onChange} onPreview={onThemePreview} />
         </div>
       );
     }
@@ -801,7 +809,7 @@ export default function SettingsPanel({
       {
         key: "tema",
         label: t("settings.accentFromTheme"),
-        hex: accentHex("tema", settings.theme),
+        hex: accentHex("tema", resolveTheme(settings.theme, settings.customThemes)),
       },
       ...(Object.keys(ACCENTS) as AccentKey[]).map((key) => ({
         key: key as AccentChoice,
@@ -881,7 +889,8 @@ export default function SettingsPanel({
 
           <button
             type="button"
-            onClick={() => onChange({ ...DEFAULT_SETTINGS })}
+            // Los temas personalizados son obra de la persona, no un ajuste: se quedan.
+            onClick={() => onChange({ ...DEFAULT_SETTINGS, customThemes: settings.customThemes })}
             title={t("settings.resetTitle")}
             className={clsx(
               INPUT_CLASS,

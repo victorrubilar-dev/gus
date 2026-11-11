@@ -1,10 +1,10 @@
 import { useEffect } from "react";
 import { setPersonalWords } from "../lib/spellCheck";
 import type { AppSettings } from "../lib/settings";
-import { applyTheme } from "../lib/themes";
+import { applyTheme, type ThemePalette } from "../lib/themes";
 
 /** Efectos globales de los ajustes: diccionario personal, zoom de la interfaz y tema. */
-export function useAppearance(settings: AppSettings, hasConfig: boolean) {
+export function useAppearance(settings: AppSettings, hasConfig: boolean, palette: ThemePalette) {
   useEffect(() => {
     setPersonalWords(settings.spellWords);
   }, [settings.spellWords]);
@@ -23,6 +23,6 @@ export function useAppearance(settings: AppSettings, hasConfig: boolean) {
   useEffect(() => {
     // Sin configuración leída aún se respeta el tema de main.tsx (sesión anterior).
     if (!hasConfig) return;
-    applyTheme(settings.theme);
-  }, [settings.theme, hasConfig]);
+    applyTheme(palette);
+  }, [palette, hasConfig]);
 }

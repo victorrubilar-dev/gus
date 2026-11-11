@@ -37,6 +37,7 @@
     "bench:ajustes": "node bench/prueba-ajustes.mjs",
     "bench:galeria": "node bench/prueba-galeria.mjs",
     "bench:lectura": "node bench/prueba-lectura.mjs",
+    "bench:temas": "node bench/prueba-temas.mjs",
     "bench:medida": "node bench/prueba-medida.mjs",
     "bench:pestanas": "node bench/prueba-pestanas.mjs",
     "bench:capturas": "node bench/capturas.mjs",

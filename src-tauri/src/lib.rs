@@ -494,6 +494,7 @@ pub fn run() {
             archivos::read_vault_file,
             archivos::write_vault_file,
             medios::write_pdf_file,
+            medios::write_json_file,
             medios::write_image_file,
             archivos::rename_vault_file,
             listados::list_vault_entries,

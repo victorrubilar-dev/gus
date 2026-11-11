@@ -3,6 +3,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -37,7 +38,8 @@ import { baseName, joinPath } from "./lib/fileName";
 import { dailyNoteDateFor, dailyRelativePath, renderDailyTemplate } from "./lib/dailyNotes";
 import { findWikiNote, wikiTargetToPath, type WikiNote } from "./lib/wikiLink";
 import { accentHex, DEFAULT_SETTINGS, type AppSettings } from "./lib/settings";
-import { themeDefinition, type ThemeScheme } from "./lib/themes";
+import { customPalette, resolveTheme, type ThemeScheme } from "./lib/themes";
+import type { CustomTheme } from "./lib/customThemes";
 import { APP_VERSION } from "./lib/version";
 import { useAppUpdates } from "./components/useAppUpdates";
 import {
@@ -241,7 +243,13 @@ function App({
     explorerRef,
     onFilesChanged: () => setVaultRefresh((key) => key + 1),
   });
-  useAppearance(settings, vaultConfig !== null);
+  /** Tema personalizado que se está editando en Ajustes: manda sobre el guardado mientras dura. */
+  const [themePreview, setThemePreview] = useState<CustomTheme | null>(null);
+  const palette = useMemo(
+    () => (themePreview ? customPalette(themePreview) : resolveTheme(settings.theme, settings.customThemes)),
+    [themePreview, settings.theme, settings.customThemes],
+  );
+  useAppearance(settings, vaultConfig !== null, palette);
   useStartupNotifications(bootStatus === "ready", currentVault, settings);
   const { linkGraph, linkGraphStatus, linkGraphError, linkRefs, noteIcons } = useLinkGraph(
     currentVault,
@@ -428,7 +436,7 @@ function App({
   }
 
   /** Estilo actual, para marcar la tarjeta elegida en la bienvenida. */
-  const scheme: ThemeScheme = themeDefinition(settings.theme).scheme;
+  const scheme: ThemeScheme = palette.scheme;
 
   /** La bienvenida deja el tour pendiente: se lanza al abrir el primer vault. */
   function markTourPending() {
@@ -628,7 +636,7 @@ function App({
             !settings.animations && "gus-no-motion",
           )}
           style={
-            { "--color-gus-accent": accentHex(settings.accent, settings.theme) } as CSSProperties
+            { "--color-gus-accent": themePreview ? themePreview.accent : accentHex(settings.accent, palette) } as CSSProperties
           }
         >
           {showSidebar && (
@@ -789,6 +797,7 @@ function App({
                       onStartTour={() => setTourOpen(true)}
                       onCheckUpdate={() => void checkNow()}
                       updateState={updateState}
+                      onThemePreview={setThemePreview}
                     />
                   )}
                 </m.section>

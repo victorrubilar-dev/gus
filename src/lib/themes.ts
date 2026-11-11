@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 import type { MessageKey } from "./i18n/core";
+import { CUSTOM_THEME_PREFIX, customThemeKey, type CustomTheme } from "./customThemes.ts";
 
 export type ThemeKey =
   | "gus-oscuro"
@@ -12,7 +13,16 @@ export type ThemeKey =
 
 export type ThemeScheme = "dark" | "light";
 
-export interface ThemeDefinition {
+/** Lo que hace falta para pintar un tema, sea de serie o personalizado. */
+export interface ThemePalette {
+  /** Clave de `settings.theme`: la de serie o `custom-<id>`. */
+  key: string;
+  scheme: ThemeScheme;
+  accent: string;
+  vars: Record<string, string>;
+}
+
+export interface ThemeDefinition extends ThemePalette {
   key: ThemeKey;
   labelKey: MessageKey;
   hintKey: MessageKey;
@@ -110,6 +120,8 @@ const BY_KEY = Object.fromEntries(
 ) as Record<ThemeKey, ThemeDefinition>;
 
 const STORAGE_KEY = "gus-theme";
+/** Paleta del tema personalizado activo: al arrancar todavía no se han leído los ajustes. */
+const CUSTOM_STORAGE_KEY = "gus-theme-custom";
 
 export function themeDefinition(theme: ThemeKey): ThemeDefinition {
   return BY_KEY[theme] ?? BY_KEY[DEFAULT_THEME];
@@ -119,18 +131,36 @@ export function isThemeKey(value: unknown): value is ThemeKey {
   return typeof value === "string" && Object.prototype.hasOwnProperty.call(BY_KEY, value);
 }
 
+/** Paleta de un tema personalizado, con las mismas variables que uno de serie. */
+export function customPalette(theme: CustomTheme): ThemePalette {
+  const { bg, panel, card, border, text, muted, eyes } = theme.colors;
+  return {
+    key: customThemeKey(theme),
+    scheme: theme.scheme,
+    accent: theme.accent,
+    vars: colors(bg, panel, card, border, text, muted, eyes),
+  };
+}
+
+/** Paleta de `settings.theme`: un tema de serie o uno de `customs`; si no existe, el de por defecto. */
+export function resolveTheme(key: string, customs: readonly CustomTheme[]): ThemePalette {
+  if (key.startsWith(CUSTOM_THEME_PREFIX)) {
+    const custom = customs.find((theme) => customThemeKey(theme) === key);
+    if (custom) return customPalette(custom);
+  }
+  return themeDefinition(isThemeKey(key) ? key : DEFAULT_THEME);
+}
+
 /**
  * Variables del tema (incluido su acento) para previsualizarlo dentro de un
  * contenedor: las clases gus-* del interior pintan esa paleta y no la actual.
  */
-export function themePreviewStyle(theme: ThemeKey): CSSProperties {
-  const definition = themeDefinition(theme);
-  return { ...definition.vars, "--color-gus-accent": definition.accent } as CSSProperties;
+export function themePreviewStyle(theme: ThemePalette): CSSProperties {
+  return { ...theme.vars, "--color-gus-accent": theme.accent } as CSSProperties;
 }
 
 /** Pinta el tema en el documento y lo recuerda para el próximo arranque. */
-export function applyTheme(theme: ThemeKey): void {
-  const definition = themeDefinition(theme);
+export function applyTheme(definition: ThemePalette): void {
   const root = document.documentElement;
 
   root.dataset.theme = definition.key;
@@ -142,17 +172,29 @@ export function applyTheme(theme: ThemeKey): void {
 
   try {
     window.localStorage.setItem(STORAGE_KEY, definition.key);
+    if (definition.key.startsWith(CUSTOM_THEME_PREFIX)) {
+      window.localStorage.setItem(CUSTOM_STORAGE_KEY, JSON.stringify(definition));
+    } else {
+      window.localStorage.removeItem(CUSTOM_STORAGE_KEY);
+    }
   } catch {
     // Sin almacenamiento no hay memoria entre sesiones; seguimos con el tema actual.
   }
 }
 
 /** Tema de la sesión anterior, para pintarlo antes de leer los ajustes. */
-export function storedTheme(): ThemeKey {
+export function storedTheme(): ThemePalette {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    return isThemeKey(raw) ? raw : DEFAULT_THEME;
+    if (raw?.startsWith(CUSTOM_THEME_PREFIX)) {
+      const saved = JSON.parse(window.localStorage.getItem(CUSTOM_STORAGE_KEY) ?? "null") as ThemePalette | null;
+      // Solo se fía de lo que tenga forma de paleta: lo demás espera a los ajustes.
+      if (saved?.key === raw && (saved.scheme === "dark" || saved.scheme === "light") && typeof saved.vars === "object") {
+        return saved;
+      }
+    }
+    return themeDefinition(isThemeKey(raw) ? raw : DEFAULT_THEME);
   } catch {
-    return DEFAULT_THEME;
+    return themeDefinition(DEFAULT_THEME);
   }
 }

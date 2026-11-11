@@ -262,6 +262,10 @@ const respuestas: Record<string, (args: Record<string, unknown>) => unknown> = {
     portapapeles.push({ bytes: Array.isArray(args.image) ? args.image.length : Object.keys((args.image as object) ?? {}).length });
     return null;
   },
+  write_json_file: (args) => {
+    exportados.push({ path: String(args.path), data: String(args.content), format: "json" });
+    return String(args.path);
+  },
   write_image_file: (args) => {
     exportados.push({ path: String(args.path), data: String(args.data), format: String(args.format), unique: args.unique === true });
     return args.path;

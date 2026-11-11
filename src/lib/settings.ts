@@ -13,7 +13,8 @@ import {
   type SpellLang,
 } from "./spellCheck";
 import { DEFAULT_SHORTCUTS, normalizeShortcuts, type ShortcutMap } from "./shortcuts";
-import { DEFAULT_THEME, isThemeKey, themeDefinition, type ThemeKey } from "./themes";
+import { DEFAULT_THEME, isThemeKey, type ThemePalette } from "./themes";
+import { customThemeKey, normalizeCustomThemes, type CustomTheme } from "./customThemes";
 
 export type AccentKey = "terracota" | "menta" | "marfil" | "cielo";
 
@@ -24,7 +25,10 @@ export interface AppSettings {
   openLastVault: boolean;
   animations: boolean;
   accent: AccentChoice;
-  theme: ThemeKey;
+  /** Un tema de serie (`ThemeKey`) o uno personalizado (`custom-<id>`). */
+  theme: string;
+  /** Temas hechos por la persona (Ajustes → Apariencia). */
+  customThemes: CustomTheme[];
   editorFontSize: number;
   uiZoom: number;
   autoSave: boolean;
@@ -80,6 +84,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   animations: true,
   accent: "tema",
   theme: DEFAULT_THEME,
+  customThemes: [],
   editorFontSize: 14,
   uiZoom: 100,
   autoSave: true,
@@ -106,6 +111,10 @@ export function normalizeSettings(raw: unknown): AppSettings {
 
   const accent = data.accent;
   const fontSize = data.editorFontSize;
+  const customThemes = normalizeCustomThemes(data.customThemes);
+  const theme = data.theme;
+  const themeOk =
+    isThemeKey(theme) || customThemes.some((custom) => customThemeKey(custom) === theme);
 
   return {
     openLastVault: asBool(data.openLastVault, DEFAULT_SETTINGS.openLastVault),
@@ -114,7 +123,8 @@ export function normalizeSettings(raw: unknown): AppSettings {
       accent === "tema" || (typeof accent === "string" && accent in ACCENTS)
         ? (accent as AccentChoice)
         : DEFAULT_SETTINGS.accent,
-    theme: isThemeKey(data.theme) ? data.theme : DEFAULT_SETTINGS.theme,
+    theme: themeOk ? (theme as string) : DEFAULT_SETTINGS.theme,
+    customThemes,
     editorFontSize:
       typeof fontSize === "number" && Number.isFinite(fontSize)
         ? Math.min(22, Math.max(12, Math.round(fontSize)))
@@ -168,8 +178,8 @@ function normalizeSpellWords(raw: unknown): string[] {
   return words;
 }
 
-export function accentHex(accent: AccentChoice, theme: ThemeKey): string {
-  if (accent === "tema") return themeDefinition(theme).accent;
+export function accentHex(accent: AccentChoice, theme: ThemePalette): string {
+  if (accent === "tema") return theme.accent;
   return ACCENTS[accent]?.hex ?? ACCENTS.terracota.hex;
 }
 

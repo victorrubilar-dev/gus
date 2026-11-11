@@ -1403,7 +1403,9 @@ fn app_settings_se_normalizan_al_cargar() {
         settings: AppSettings {
             open_last_vault: false,
             animations: false,
-            accent: "menta".into(),
+            accent: "tema".into(),
+            theme: "custom-abc123".into(),
+            custom_themes: vec![serde_json::json!({ "id": "abc123", "name": "Mío" })],
             editor_font_size: 18,
             auto_save: false,
             hide_completed_tasks: true,
@@ -1423,6 +1425,7 @@ fn app_settings_se_normalizan_al_cargar() {
           "vaults": [],
           "lastVault": null,
           "settings": { "accent": "neon", "editorFontSize": 240,
+                         "theme": "../../etc", "customThemes": [1, {"id": "x"}],
                          "spellLangs": ["de", "xx", "de", "off"],
                          "spellWords": ["  Gus  ", "", "Gus", "Tauri"] }
         }"#,
@@ -1430,6 +1433,8 @@ fn app_settings_se_normalizan_al_cargar() {
     .expect("raw");
     let saned = load_config_from(&path);
     assert_eq!(saned.settings.accent, "terracota");
+    assert_eq!(saned.settings.theme, "gus-oscuro");
+    assert_eq!(saned.settings.custom_themes, vec![serde_json::json!({ "id": "x" })]);
     assert_eq!(saned.settings.editor_font_size, 22);
     // Los diccionarios que no existen y las repeticiones se descartan; la
     // lista vacía sí es válida (corrector apagado).
@@ -2056,6 +2061,19 @@ fn las_relaciones_invalidas_se_rechazan_y_no_tocan_el_archivo() {
         assert!(save_tasks(vault.clone(), caso).is_err());
     }
     assert!(!dir.join(TASK_STORE_FILE).exists(), "ningún rechazo escribe el archivo");
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn write_json_file_exige_json_y_pone_la_extension() {
+    let dir = temp_vault("json-export");
+    let base = dir.join("mi-tema").to_string_lossy().into_owned();
+
+    let saved = write_json_file(base.clone(), "{\"name\": \"Mío\"}".into()).expect("guarda");
+    assert!(saved.ends_with("mi-tema.json"));
+    assert_eq!(std::fs::read_to_string(&saved).expect("lee"), "{\"name\": \"Mío\"}");
+    assert!(write_json_file(base, "no es json".into()).is_err());
 
     std::fs::remove_dir_all(&dir).ok();
 }

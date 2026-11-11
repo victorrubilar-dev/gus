@@ -1,10 +1,12 @@
 import clsx from "clsx";
 import { Check } from "lucide-react";
-import { themeDefinition, themePreviewStyle, type ThemeKey } from "../lib/themes";
+import { customPalette, themeDefinition, themePreviewStyle, type ThemeKey } from "../lib/themes";
+import type { CustomTheme } from "../lib/customThemes";
 import { useT } from "../lib/i18n";
 
 export interface ThemeCardProps {
-  theme: ThemeKey;
+  /** Un tema de serie o uno personalizado. */
+  theme: ThemeKey | CustomTheme;
   selected: boolean;
   onSelect: () => void;
   /** Muestra el detalle corto del tema debajo del nombre. */
@@ -18,14 +20,16 @@ export interface ThemeCardProps {
  */
 export default function ThemeCard({ theme, selected, onSelect, withHint }: ThemeCardProps) {
   const t = useT();
-  const definition = themeDefinition(theme);
+  const builtin = typeof theme === "string" ? themeDefinition(theme) : null;
+  const palette = builtin ?? customPalette(theme as CustomTheme);
+  const label = builtin ? t(builtin.labelKey) : (theme as CustomTheme).name;
 
   return (
     <button
       type="button"
       onClick={onSelect}
       aria-pressed={selected}
-      title={t(definition.labelKey)}
+      title={label}
       className={clsx(
         "flex flex-col gap-1.5 rounded-xl border p-2.5 text-left outline-none transition-colors",
         "focus-visible:ring-2 focus-visible:ring-gus-accent/70",
@@ -36,7 +40,7 @@ export default function ThemeCard({ theme, selected, onSelect, withHint }: Theme
     >
       <span
         aria-hidden="true"
-        style={themePreviewStyle(theme)}
+        style={themePreviewStyle(palette)}
         className="flex h-14 shrink-0 flex-col gap-1 rounded-lg border border-gus-border/70 bg-gus-bg p-1.5"
       >
         <span className="flex items-center gap-1">
@@ -50,7 +54,7 @@ export default function ThemeCard({ theme, selected, onSelect, withHint }: Theme
       </span>
 
       <span className="flex items-center justify-between gap-1">
-        <span className="truncate text-body font-medium text-gus-text">{t(definition.labelKey)}</span>
+        <span className="truncate text-body font-medium text-gus-text">{label}</span>
         {selected && (
           <Check
             className="h-3.5 w-3.5 shrink-0 text-gus-accent"
@@ -60,8 +64,8 @@ export default function ThemeCard({ theme, selected, onSelect, withHint }: Theme
         )}
       </span>
 
-      {withHint && (
-        <span className="text-meta leading-tight text-gus-muted">{t(definition.hintKey)}</span>
+      {withHint && builtin && (
+        <span className="text-meta leading-tight text-gus-muted">{t(builtin.hintKey)}</span>
       )}
     </button>
   );

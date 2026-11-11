@@ -142,6 +142,23 @@ pub(crate) fn write_image_file(
     Ok(target.to_string_lossy().into_owned())
 }
 
+/// Guarda un tema exportado (JSON) en la ruta que haya elegido el usuario.
+/// Solo escribe JSON válido y siempre con extensión `.json`.
+#[tauri::command]
+pub(crate) fn write_json_file(path: String, content: String) -> Result<String, String> {
+    let path = expand_home(&path);
+    let path = if path.to_lowercase().ends_with(".json") {
+        path
+    } else {
+        format!("{path}.json")
+    };
+    serde_json::from_str::<serde_json::Value>(&content)
+        .map_err(|err| format!("El contenido no es JSON: {err}"))?;
+    write_atomic(std::path::Path::new(&path), content)
+        .map_err(|err| format!("No se pudo escribir «{path}»: {err}"))?;
+    Ok(path)
+}
+
 /// Escribe el PDF exportado en la ruta que haya elegido el usuario.
 #[tauri::command]
 pub(crate) fn write_pdf_file(path: String, data: String) -> Result<(), String> {
