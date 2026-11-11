@@ -367,7 +367,7 @@ export function useEditorKeyboard(deps: EditorKeyboardDeps) {
     }
     if (isShortcut(event, "toggleView")) {
       event.preventDefault();
-      setViewMode(viewMode === "edit" ? "preview" : "edit");
+      setViewMode(viewMode === "preview" ? "edit" : "preview");
       return;
     }
 

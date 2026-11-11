@@ -67,7 +67,7 @@ await page.waitForFunction(
   () => ok(false, "el corrector no llegó a cargar su .wasm"),
 );
 
-await page.locator('button[aria-label="Previsualizar la nota"]').click();
+await page.getByRole("tab", { name: "Lectura" }).click();
 await page.locator("svg[aria-roledescription]").first().waitFor({ timeout: 15000 });
 ok(true, "el bloque mermaid se dibuja en la vista previa (bajo la CSP)");
 

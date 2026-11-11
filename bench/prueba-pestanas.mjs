@@ -14,8 +14,10 @@ const comprobar = (ok, texto) => {
 };
 
 await page.goto("http://localhost:5199/bench/app-smoke.html?semilla", { waitUntil: "networkidle" });
-const pestanas = () => page.getByRole("tab");
-const activa = () => page.locator('[role="tab"][aria-selected="true"]').innerText().catch(() => null);
+// Solo la barra de notas abiertas: el selector Editar/Dividido/Lectura también son pestañas.
+const barra = () => page.getByRole("tablist", { name: "Notas abiertas" });
+const pestanas = () => barra().getByRole("tab");
+const activa = () => barra().locator('[role="tab"][aria-selected="true"]').innerText().catch(() => null);
 
 // La app arranca en el Resumen: se pasa a Notas.
 await page.locator('[data-tour="sidebar"]').getByRole("button", { name: "Notas", exact: true }).first().click();
@@ -26,7 +28,7 @@ await page.waitForTimeout(500);
 comprobar((await pestanas().count()) === 3, "abrir tres notas deja tres pestañas");
 comprobar((await activa()) === "lecturas", "la última abierta es la activa");
 
-await page.getByRole("tab", { name: "bienvenida" }).click();
+await barra().getByRole("tab", { name: "bienvenida" }).click();
 await page.waitForTimeout(500);
 comprobar((await activa()) === "bienvenida", "pulsar una pestaña cambia de nota");
 
@@ -35,7 +37,7 @@ const area = page.locator('textarea[data-drop-editor="nota"]');
 await area.click();
 await page.keyboard.press("Control+End");
 await page.keyboard.type("\nlinea pendiente");
-await page.getByRole("tab", { name: "lecturas" }).click();
+await barra().getByRole("tab", { name: "lecturas" }).click();
 await page.waitForTimeout(800);
 const guardado = await page.evaluate(() => window.__smoke.archivos.get("/vault/bienvenida.md"));
 comprobar(guardado.includes("linea pendiente"), "cambiar de pestaña guarda lo pendiente");

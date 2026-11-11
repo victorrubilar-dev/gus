@@ -1,4 +1,4 @@
-import { Suspense, type KeyboardEvent } from "react";
+import { Suspense, type KeyboardEvent, type Ref } from "react";
 import type { Components } from "react-markdown";
 import clsx from "clsx";
 import { Check } from "lucide-react";
@@ -26,6 +26,9 @@ interface PreviewComponentsArgs {
 interface EditorPreviewProps extends PreviewComponentsArgs {
   body: string;
   onKeyDown: (event: KeyboardEvent<HTMLElement>) => void;
+  /** Contenedor con scroll: la vista dividida lo mueve junto al editor. */
+  scrollRef?: Ref<HTMLDivElement>;
+  onScroll?: () => void;
 }
 
 /** Componentes con los que se pinta el Markdown de la nota (vista previa y exportación a PDF). */
@@ -260,16 +263,18 @@ export function usePreviewComponents({
 }
 
 /** Vista de lectura de la nota: Markdown renderizado, con enlaces [[wiki]] y casillas vivas. */
-export default function EditorPreview({ body, onKeyDown, ...args }: EditorPreviewProps) {
+export default function EditorPreview({ body, onKeyDown, scrollRef, onScroll, ...args }: EditorPreviewProps) {
   const t = useT();
   const previewComponents = usePreviewComponents(args);
 
   return (
     <div
+      ref={scrollRef}
       tabIndex={0}
       onKeyDown={onKeyDown}
+      onScroll={onScroll}
       aria-label={t("editor.previewPane")}
-      className="gus-scrollbar min-h-0 flex-1 overflow-y-auto bg-gus-bg px-6 py-5 focus:outline-none"
+      className="gus-scrollbar min-h-0 min-w-0 flex-1 overflow-y-auto bg-gus-bg px-6 py-5 focus:outline-none"
     >
       {body.trim() === "" ? (
         <p className="text-sm text-gus-muted">{t("editor.emptyNoteHint")}</p>

@@ -32,7 +32,8 @@ export interface ImageResizeDrag {
 
 export type SaveState = "idle" | "dirty" | "saved" | "error";
 
-export type ViewMode = "edit" | "preview";
+/** «split»: editor y lectura uno al lado del otro; cuenta como edición. */
+export type ViewMode = "edit" | "preview" | "split";
 
 export interface EditorMenu {
   kind: "wiki" | "slash" | "images";

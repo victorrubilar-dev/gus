@@ -635,14 +635,14 @@ await page.waitForTimeout(500);
 console.log("· vista de lectura");
 const lectura = await page.evaluate(() =>
   [...document.querySelectorAll("button")].some((b) =>
-    (b.getAttribute("aria-label") ?? "").toLowerCase().includes("previsualizar"),
+    b.getAttribute("role") === "tab" && b.textContent.trim() === "Lectura",
   ),
 );
 chequeo("hay botón de vista de lectura", lectura);
 if (lectura) {
   await page.evaluate(() => {
     const btn = [...document.querySelectorAll("button")].find((b) =>
-      (b.getAttribute("aria-label") ?? "").toLowerCase().includes("previsualizar"),
+      b.getAttribute("role") === "tab" && b.textContent.trim() === "Lectura",
     );
     btn.click();
   });

@@ -1,14 +1,19 @@
 import type { RefObject } from "react";
 import clsx from "clsx";
-import { Ellipsis, Eye, FileDown, Pencil } from "lucide-react";
+import { Columns2, Ellipsis, Eye, FileDown, Maximize2, Minimize2, Pencil } from "lucide-react";
 import { useT } from "../lib/i18n";
 import NoteTagBar from "./NoteTagBar";
+import SegmentedControl from "./SegmentedControl";
+import type { ViewMode } from "./markdownEditorTypes";
 
 interface EditorHeaderProps {
   title: string;
   onTitleChange: (title: string) => void;
-  viewMode: "edit" | "preview";
-  onToggleView: () => void;
+  viewMode: ViewMode;
+  onViewModeChange: (mode: ViewMode) => void;
+  /** Lectura a pantalla completa. */
+  fullscreen: boolean;
+  onFullscreenChange: (on: boolean) => void;
   /** Menú «⋯» de la cabecera (exportar a PDF). */
   menuOpen: boolean;
   onMenuOpenChange: (open: boolean) => void;
@@ -29,7 +34,9 @@ export default function EditorHeader({
   title,
   onTitleChange,
   viewMode,
-  onToggleView,
+  onViewModeChange,
+  fullscreen,
+  onFullscreenChange,
   menuOpen,
   onMenuOpenChange,
   menuRef,
@@ -74,23 +81,28 @@ export default function EditorHeader({
         className="min-w-0 flex-1 bg-transparent text-xl font-semibold text-gus-text outline-none placeholder:text-gus-muted"
       />
 
+      <SegmentedControl
+        ariaLabel={t("editor.viewMode")}
+        value={viewMode}
+        onChange={onViewModeChange}
+        options={[
+          { value: "edit", label: t("editor.edit"), icon: Pencil },
+          { value: "split", label: t("editor.split"), icon: Columns2 },
+          { value: "preview", label: t("editor.read"), icon: Eye },
+        ]}
+      />
+
       <button
         type="button"
-        onClick={onToggleView}
-        aria-label={t(viewMode === "edit" ? "editor.previewAria" : "editor.editAria")}
-        title={t(viewMode === "edit" ? "editor.preview" : "editor.edit")}
-        className="gus-btn gus-btn-secondary shrink-0"
+        onClick={() => onFullscreenChange(!fullscreen)}
+        aria-label={t(fullscreen ? "editor.exitFullscreen" : "editor.fullscreen")}
+        title={t(fullscreen ? "editor.exitFullscreen" : "editor.fullscreen")}
+        className="gus-btn gus-btn-icon shrink-0"
       >
-        {viewMode === "edit" ? (
-          <>
-            <Eye className="h-4 w-4" aria-hidden="true" />
-            {t("editor.preview")}
-          </>
+        {fullscreen ? (
+          <Minimize2 className="h-4 w-4" aria-hidden="true" />
         ) : (
-          <>
-            <Pencil className="h-4 w-4" aria-hidden="true" />
-            {t("editor.edit")}
-          </>
+          <Maximize2 className="h-4 w-4" aria-hidden="true" />
         )}
       </button>
 

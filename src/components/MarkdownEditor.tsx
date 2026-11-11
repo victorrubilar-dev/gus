@@ -40,6 +40,8 @@ import { countWords } from "../lib/editorText";
 import { measureRowPitch, measureTableCols } from "../lib/editorMeasure";
 import { MarkdownBody } from "./markdownPreview";
 import EditorPreview, { usePreviewComponents } from "./EditorPreview";
+import { followScrollTop } from "../lib/scrollSync";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 export interface EditorDraft {
   path: string;
@@ -137,6 +139,11 @@ export default function MarkdownEditor({
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("edit");
+  /** Lectura a pantalla completa: la nota tapa la app y la ventana pasa a pantalla completa. */
+  const [fullscreen, setFullscreen] = useState(false);
+  const previewScrollRef = useRef<HTMLDivElement | null>(null);
+  /** Panel cuyo próximo `scroll` lo provocó el otro panel: ese no se reenvía. */
+  const followingRef = useRef<HTMLElement | null>(null);
   // Botones «copiar» de los bloques de código en modo edición: qué bloque
   // tiene el cursor encima (resaltado) y cuál se acaba de copiar (✔ 1 s).
   const [copyHover, setCopyHover] = useState<number | null>(null);
@@ -406,7 +413,7 @@ export default function MarkdownEditor({
   const wikiRequestRef = useRef(0);
 
   useEffect(() => {
-    if (viewMode === "preview") loadWikiNotes();
+    if (viewMode !== "edit") loadWikiNotes();
   }, [viewMode, vaultPath, path]);
 
   /**
@@ -453,6 +460,26 @@ export default function MarkdownEditor({
     const area = textareaRef.current;
     if (area) syncLineHint(area.value, area.selectionStart);
   }, [viewMode, content]);
+
+  // Pantalla completa solo para leer: volver a editar la apaga. Esc también sale.
+  useEffect(() => {
+    if (viewMode !== "preview") setFullscreen(false);
+  }, [viewMode]);
+
+  useEffect(() => {
+    if (!fullscreen) return;
+    const win = getCurrentWindow();
+    // Sin Tauri (benches) no hay ventana que cambiar: la nota tapa la app igual.
+    win.setFullscreen(true).catch(() => {});
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setFullscreen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      win.setFullscreen(false).catch(() => {});
+    };
+  }, [fullscreen]);
 
   // Usar el menú «/» una vez desactiva la pista para siempre.
   useEffect(() => {
@@ -674,7 +701,7 @@ export default function MarkdownEditor({
   // contenedor (ventana, barra lateral, scrollbars). El textarea se desmonta
   // en modo vista previa, por eso se reobserva al volver a editar.
   useEffect(() => {
-    if (viewMode !== "edit") return;
+    if (viewMode === "preview") return;
     const area = textareaRef.current;
     if (!area) return;
     const update = () => {
@@ -837,6 +864,18 @@ export default function MarkdownEditor({
     if (menu) setMenu({ ...menu, anchor: caretAnchor(area, area.selectionStart) });
     if (spellPopup) scheduleSpellPopup(0);
     syncOverlayGeometry();
+
+    // Vista dividida: la lectura acompaña al texto. Si el scroll lo puso el otro panel, no se devuelve.
+    const pane = previewScrollRef.current;
+    if (viewMode !== "split" || !pane) return;
+    if (followingRef.current === area) {
+      followingRef.current = null;
+      return;
+    }
+    const top = followScrollTop(area, pane);
+    if (Math.abs(pane.scrollTop - top) < 1) return;
+    followingRef.current = pane;
+    pane.scrollTop = top;
   }
 
   function replaceRange(
@@ -977,7 +1016,7 @@ export default function MarkdownEditor({
     toggleTaskAt,
   });
   const words = countWords(body);
-  const inlineActive = viewMode === "edit" && sourceInfo.length <= MAX_DECORATED_LINES;
+  const inlineActive = viewMode !== "preview" && sourceInfo.length <= MAX_DECORATED_LINES;
   const { refreshCaretLine } = useCaretTracking({
     textareaRef,
     tableAnchorRef,
@@ -996,7 +1035,7 @@ export default function MarkdownEditor({
     selectionCellRect,
   });
   const spellOverlay =
-    spell !== null && viewMode === "edit" && sourceInfo.length <= MAX_DECORATED_LINES;
+    spell !== null && viewMode !== "preview" && sourceInfo.length <= MAX_DECORATED_LINES;
 
   // Primera línea de cada bloque de código: es la clave del botón «copiar»
   // que pinta el overlay, y por ella se sabe qué contenido llevarse.
@@ -1177,14 +1216,23 @@ export default function MarkdownEditor({
 
 
   return (
-    <div data-tour="editor" className={clsx("flex h-full min-h-0 flex-col bg-gus-bg", className)}>
+    <div
+      data-tour="editor"
+      className={clsx("flex h-full min-h-0 flex-col bg-gus-bg", fullscreen ? "fixed inset-0 z-50" : className)}
+    >
       <EditorHeader
         title={title}
         onTitleChange={editTitle}
         viewMode={viewMode}
-        onToggleView={() => {
+        onViewModeChange={(mode) => {
           setMenu(null);
-          setViewMode(viewMode === "edit" ? "preview" : "edit");
+          setViewMode(mode);
+        }}
+        fullscreen={fullscreen}
+        onFullscreenChange={(on) => {
+          setMenu(null);
+          if (on) setViewMode("preview");
+          setFullscreen(on);
         }}
         menuOpen={headerMenu}
         onMenuOpenChange={setHeaderMenu}
@@ -1203,8 +1251,9 @@ export default function MarkdownEditor({
         saveCombo={saveCombo}
       />
 
-      {viewMode === "edit" ? (
-        <div className="relative min-h-0 w-full flex-1 bg-gus-bg">
+      <div className="flex min-h-0 flex-1">
+      {viewMode !== "preview" && (
+        <div className={clsx("relative min-h-0 w-full min-w-0 flex-1 bg-gus-bg", viewMode === "split" && "border-r border-gus-border")}>
           {(inlineActive || spellOverlay) && (
             <InlinePreview
               lines={sourceInfo}
@@ -1424,8 +1473,23 @@ export default function MarkdownEditor({
             />
           )}
         </div>
-      ) : (
+      )}
+      {viewMode !== "edit" && (
         <EditorPreview
+          scrollRef={previewScrollRef}
+          onScroll={() => {
+            const pane = previewScrollRef.current;
+            const area = textareaRef.current;
+            if (!pane || !area || viewMode !== "split") return;
+            if (followingRef.current === pane) {
+              followingRef.current = null;
+              return;
+            }
+            const top = followScrollTop(pane, area);
+            if (Math.abs(area.scrollTop - top) < 1) return;
+            followingRef.current = area;
+            area.scrollTop = top;
+          }}
           body={body}
           path={path}
           vaultPath={vaultPath}
@@ -1439,6 +1503,7 @@ export default function MarkdownEditor({
           onKeyDown={handleKeyDown}
         />
       )}
+      </div>
 
       {exportOpen && (
         <PdfExportDialog title={title} onClose={() => setExportOpen(false)}>
