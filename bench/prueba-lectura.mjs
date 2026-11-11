@@ -59,6 +59,28 @@ await page.getByRole("tab", { name: "Editar" }).click();
 await page.waitForTimeout(200);
 comprobar((await area.isVisible()) && !(await panelLectura.isVisible()), "«Editar» vuelve al editor solo");
 
+console.log("\n--- versiones anteriores ---");
+await area.click();
+await page.keyboard.press("Control+End");
+await page.keyboard.type("\nCambio nuevo");
+await page.waitForTimeout(2500);
+const enDisco = () => page.evaluate(() => window.__smoke.archivos.get("/vault/larga.md"));
+comprobar((await enDisco()).includes("Cambio nuevo"), "el autoguardado escribe el cambio");
+await page.getByRole("button", { name: /Más opciones/ }).first().click();
+await page.getByRole("menuitem", { name: "Versiones anteriores" }).click();
+const dialogo = page.getByRole("dialog", { name: "Versiones anteriores" });
+await dialogo.waitFor({ timeout: 3000 });
+await page.waitForTimeout(300);
+comprobar((await dialogo.getByRole("list").getByRole("button").count()) === 1, "hay una versión: la de antes del primer guardado");
+const vista = await dialogo.locator("pre").innerText();
+comprobar(vista.includes("Párrafo 120") && !vista.includes("Cambio nuevo"), "la vista previa enseña el texto anterior al cambio");
+await dialogo.getByRole("button", { name: "Restaurar" }).click();
+await page.waitForTimeout(2500);
+comprobar((await dialogo.count()) === 0, "«Restaurar» cierra el diálogo");
+comprobar(!(await area.inputValue()).includes("Cambio nuevo") && !(await enDisco()).includes("Cambio nuevo"), "restaurar devuelve el texto anterior al editor y al disco");
+const guardadas = await page.evaluate(() => window.__smoke.versiones.get("/vault/larga.md").map((v) => v.texto));
+comprobar(guardadas.length === 2 && guardadas[0].includes("Cambio nuevo"), "lo que había antes de restaurar queda como versión nueva");
+
 await browser.close();
 console.log(fallos.length === 0 ? "\nTODO EN VERDE" : `\n${fallos.length} comprobación(es) fallaron`);
 process.exit(fallos.length === 0 ? 0 : 1);

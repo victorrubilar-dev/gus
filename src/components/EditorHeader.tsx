@@ -1,6 +1,6 @@
 import type { RefObject } from "react";
 import clsx from "clsx";
-import { Columns2, Ellipsis, Eye, FileDown, Maximize2, Minimize2, Pencil } from "lucide-react";
+import { Columns2, Ellipsis, Eye, FileDown, History, Maximize2, Minimize2, Pencil } from "lucide-react";
 import { useT } from "../lib/i18n";
 import NoteTagBar from "./NoteTagBar";
 import SegmentedControl from "./SegmentedControl";
@@ -19,6 +19,8 @@ interface EditorHeaderProps {
   onMenuOpenChange: (open: boolean) => void;
   menuRef: RefObject<HTMLDivElement | null>;
   onExport: () => void;
+  /** Abre «Versiones anteriores». Sin vault no hay historial y no se muestra. */
+  onVersions?: () => void;
   content: string;
   vaultPath?: string | null;
   onContentChange: (content: string) => void;
@@ -41,6 +43,7 @@ export default function EditorHeader({
   onMenuOpenChange,
   menuRef,
   onExport,
+  onVersions,
   content,
   vaultPath,
   onContentChange,
@@ -133,6 +136,17 @@ export default function EditorHeader({
               <FileDown className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
               {t("editor.exportPdf")}
             </button>
+            {onVersions && (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={onVersions}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-body text-gus-muted transition-colors hover:bg-gus-panel hover:text-gus-text focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-gus-accent/60 focus-visible:outline-none"
+              >
+                <History className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                {t("editor.versions")}
+              </button>
+            )}
           </div>
         )}
       </div>

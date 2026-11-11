@@ -28,6 +28,7 @@ import { useTableActions } from "./useTableActions";
 import { useBlockDrift } from "./useBlockDrift";
 import InlinePreview, { classifySource, type TableBarHover, type TableResizeHover, type TableSelection } from "./InlinePreview";
 import EditorContextMenu from "./EditorContextMenu";
+import NoteVersionsDialog from "./NoteVersionsDialog";
 import PdfExportDialog from "./PdfExportDialog";
 import { useTableKeyboard } from "./useTableKeyboard";
 import { useTableResize } from "./useTableResize";
@@ -154,6 +155,7 @@ export default function MarkdownEditor({
   // Si el explorador pidió exportar esta nota antes de que el editor montara,
   // el diálogo ya arranca abierto (la prop se consume aquí, no en un efecto).
   const [exportOpen, setExportOpen] = useState(() => autoExportPath === path);
+  const [versionsOpen, setVersionsOpen] = useState(false);
   // Línea donde está el cursor. La overlay la pinta en crudo solo mientras el
   // textarea tiene foco: al abrir, WebKit dispara «select» con el cursor en la
   // línea 0 y el primer título se quedaría con su «#» sin que nadie haya
@@ -508,6 +510,7 @@ export default function MarkdownEditor({
 
   const { dirtyRef, persistRef, flush } = useNotePersistence({
     path,
+    vaultPath,
     title,
     content,
     saveState,
@@ -1241,6 +1244,14 @@ export default function MarkdownEditor({
           setHeaderMenu(false);
           setExportOpen(true);
         }}
+        onVersions={
+          vaultPath
+            ? () => {
+                setHeaderMenu(false);
+                setVersionsOpen(true);
+              }
+            : undefined
+        }
         content={content}
         vaultPath={vaultPath}
         onContentChange={editContent}
@@ -1509,6 +1520,21 @@ export default function MarkdownEditor({
         <PdfExportDialog title={title} onClose={() => setExportOpen(false)}>
           <MarkdownBody components={previewComponents}>{body}</MarkdownBody>
         </PdfExportDialog>
+      )}
+
+      {versionsOpen && vaultPath && (
+        <NoteVersionsDialog
+          vaultPath={vaultPath}
+          path={path}
+          title={title}
+          onRestore={async (text) => {
+            // Lo de ahora pasa antes al historial: restaurar también se puede deshacer.
+            if (!(await flush())) throw new Error(saveError ?? t("app.saveBeforeAction"));
+            await invoke("snapshot_note", { vault: vaultPath, path, force: true });
+            editContent(text);
+          }}
+          onClose={() => setVersionsOpen(false)}
+        />
       )}
 
       {imageNotice && (

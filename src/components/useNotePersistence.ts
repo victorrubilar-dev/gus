@@ -6,6 +6,8 @@ import type { SaveState } from "./markdownEditorTypes";
 
 interface NotePersistenceDeps {
   path: string;
+  /** Vault de la nota: antes de sobrescribirla se guarda una versión en su historial. */
+  vaultPath?: string | null;
   title: string;
   content: string;
   saveState: SaveState;
@@ -23,6 +25,7 @@ interface NotePersistenceDeps {
  */
 export function useNotePersistence({
   path,
+  vaultPath,
   title,
   content,
   saveState,
@@ -53,6 +56,10 @@ export function useNotePersistence({
       const wanted = pathWithTitle(from, title);
       if (wanted !== from) {
         target = await invoke<string>("rename_vault_file", { from, to: wanted });
+      }
+      if (vaultPath) {
+        // Sin copia se guarda igual: el historial no puede impedir guardar.
+        await invoke("snapshot_note", { vault: vaultPath, path: target, force: false }).catch(() => {});
       }
       await invoke("write_vault_file", { path: target, content });
     } catch (error) {

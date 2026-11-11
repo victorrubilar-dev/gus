@@ -23,6 +23,8 @@ const archivos = new Map<string, string>([
   ["/vault/bienvenida.md", "# Bienvenida\n"],
   ["/vault/manual.pdf", ""],
 ]);
+/** Historial de versiones por nota, de la más nueva a la más vieja. */
+const versiones = new Map<string, { savedMs: number; texto: string }[]>();
 /** Sin `?semilla`: una nota con un checkbox para el smoke test de la lista de tareas. */
 if (!location.search.includes("semilla")) {
   archivos.set("/vault/pendientes.md", "# Pendientes\n\n- [ ] comprar pan\n");
@@ -196,6 +198,20 @@ const respuestas: Record<string, (args: Record<string, unknown>) => unknown> = {
     return entradasDe(String(args.path));
   },
   read_vault_file: (args) => archivos.get(String(args.path)) ?? "",
+  // Historial (`historial.rs`): misma pausa de 10 minutos y sin repetir la última.
+  snapshot_note: (args) => {
+    const texto = archivos.get(String(args.path));
+    if (texto === undefined) return false;
+    const lista = versiones.get(String(args.path)) ?? [];
+    const ultima = lista[0];
+    if (ultima && ((!args.force && Date.now() - ultima.savedMs < 600000) || ultima.texto === texto)) return false;
+    lista.unshift({ savedMs: Math.max(Date.now(), (ultima?.savedMs ?? 0) + 1), texto });
+    versiones.set(String(args.path), lista);
+    return true;
+  },
+  list_note_versions: (args) =>
+    (versiones.get(String(args.path)) ?? []).map(({ savedMs, texto }) => ({ savedMs, size: texto.length })),
+  read_note_version: (args) => versiones.get(String(args.path))?.find((v) => v.savedMs === args.savedMs)?.texto ?? "",
   write_vault_file: (args) => {
     archivos.set(String(args.path), String(args.content));
     return null;
@@ -329,7 +345,7 @@ const respuestas: Record<string, (args: Record<string, unknown>) => unknown> = {
   },
 };
 
-(window as unknown as { __smoke: unknown }).__smoke = { pizarras, portapapeles, exportados, emitir: (evento: string, payload: unknown) => callbacks.get(oyentes.get(evento) ?? -1)?.({ event: evento, id: 0, payload }), configGuardada, archivos, llamadas, tareas, pizarras, terminarDescarga: () => terminarDescarga() };
+(window as unknown as { __smoke: unknown }).__smoke = { versiones, pizarras, portapapeles, exportados, emitir: (evento: string, payload: unknown) => callbacks.get(oyentes.get(evento) ?? -1)?.({ event: evento, id: 0, payload }), configGuardada, archivos, llamadas, tareas, pizarras, terminarDescarga: () => terminarDescarga() };
 (window as unknown as { __TAURI_EVENT_PLUGIN_INTERNALS__: unknown }).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
   unregisterListener: () => {},
 };

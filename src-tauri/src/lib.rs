@@ -8,6 +8,7 @@ mod archivos;
 mod configuracion;
 mod enlaces;
 mod habitos;
+mod historial;
 mod importar;
 mod listados;
 mod menu;
@@ -503,6 +504,9 @@ pub fn run() {
             archivos::create_vault_dir,
             importar::import_files_to_vault,
             archivos::delete_vault_file,
+            historial::snapshot_note,
+            historial::list_note_versions,
+            historial::read_note_version,
             papelera::move_to_trash,
             papelera::list_trash,
             papelera::restore_from_trash,
