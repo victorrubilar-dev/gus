@@ -3,6 +3,9 @@
  * «Acerca de» y cambio de idioma. Requiere `vite --port 5199`.
  */
 import { chromium } from "playwright-core";
+import { readFileSync } from "node:fs";
+
+const VERSION = `Gus ${JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version}`;
 
 const browser = await chromium.launch({ args: ["--no-sandbox"] });
 const page = await (await browser.newContext({ viewport: { width: 1366, height: 768 }, locale: "es-ES" })).newPage();
@@ -41,7 +44,7 @@ await abrir("Tareas y avisos");
 comprobar(await visible("Mostrar completadas en el calendario"), "Tareas y avisos: incluye lo del calendario");
 comprobar(await page.getByText(/avisos|notificaciones/i).first().isVisible(), "Tareas y avisos: incluye los avisos del sistema");
 await abrir("Acerca de");
-comprobar(await page.getByText("Gus 0.3.0").isVisible(), "Acerca de: enseña la versión");
+comprobar(await page.getByText(VERSION).isVisible(), "Acerca de: enseña la versión");
 comprobar((await visible("Comprobar actualizaciones")) && (await visible("Volver a recorrer Gus")), "Acerca de: actualizaciones y recorrido");
 comprobar(await page.getByRole("button", { name: "Código en GitHub" }).isVisible(), "Acerca de: enlaces al código y a los problemas");
 
@@ -51,7 +54,7 @@ await page.waitForTimeout(300);
 comprobar(await visible("Idioma de la aplicación"), "buscar «idioma» encuentra el ajuste donde esté");
 await page.getByPlaceholder("Buscar configuración…").fill("privacidad");
 await page.waitForTimeout(300);
-comprobar(await page.getByText("Gus 0.3.0").isVisible(), "buscar «privacidad» encuentra Acerca de");
+comprobar(await page.getByText(VERSION).isVisible(), "buscar «privacidad» encuentra Acerca de");
 await page.getByPlaceholder("Buscar configuración…").fill("");
 
 console.log("\n--- recorrido desde Acerca de ---");
