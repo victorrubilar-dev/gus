@@ -1,12 +1,12 @@
 import clsx from "clsx";
 import { Check } from "lucide-react";
-import { customPalette, themeDefinition, themePreviewStyle, type ThemeKey } from "../lib/themes";
+import { AUTO_THEME, customPalette, resolveTheme, themeDefinition, themePreviewStyle, type ThemeKey } from "../lib/themes";
 import type { CustomTheme } from "../lib/customThemes";
 import { useT } from "../lib/i18n";
 
 export interface ThemeCardProps {
-  /** Un tema de serie o uno personalizado. */
-  theme: ThemeKey | CustomTheme;
+  /** Un tema de serie, uno personalizado o el automático (según el sistema). */
+  theme: ThemeKey | CustomTheme | typeof AUTO_THEME;
   selected: boolean;
   onSelect: () => void;
   /** Muestra el detalle corto del tema debajo del nombre. */
@@ -20,9 +20,10 @@ export interface ThemeCardProps {
  */
 export default function ThemeCard({ theme, selected, onSelect, withHint }: ThemeCardProps) {
   const t = useT();
-  const builtin = typeof theme === "string" ? themeDefinition(theme) : null;
-  const palette = builtin ?? customPalette(theme as CustomTheme);
-  const label = builtin ? t(builtin.labelKey) : (theme as CustomTheme).name;
+  const auto = theme === AUTO_THEME;
+  const builtin = typeof theme === "string" && !auto ? themeDefinition(theme as ThemeKey) : null;
+  const palette = auto ? resolveTheme(AUTO_THEME, []) : (builtin ?? customPalette(theme as CustomTheme));
+  const label = auto ? t("theme.auto") : builtin ? t(builtin.labelKey) : (theme as CustomTheme).name;
 
   return (
     <button
@@ -64,6 +65,7 @@ export default function ThemeCard({ theme, selected, onSelect, withHint }: Theme
         )}
       </span>
 
+      {withHint && auto && <span className="text-meta leading-tight text-gus-muted">{t("theme.autoHint")}</span>}
       {withHint && builtin && (
         <span className="text-meta leading-tight text-gus-muted">{t(builtin.hintKey)}</span>
       )}

@@ -61,7 +61,7 @@ import { useExternalChanges } from "./components/useExternalChanges";
 import { useOpenEntries } from "./components/useOpenEntries";
 import { useSearchIndexSync } from "./components/useSearchIndexSync";
 import { useVaults } from "./components/useVaults";
-import { useAppearance } from "./components/useAppearance";
+import { useAppearance, useSystemScheme } from "./components/useAppearance";
 import { useLinkGraph } from "./components/useLinkGraph";
 import type { LinkGraph } from "./lib/linkGraph";
 import { planLinkRewrites, rewriteWikiLinks, type PathMove } from "./lib/wikiRename";
@@ -250,9 +250,10 @@ function App({
   });
   /** Tema personalizado que se está editando en Ajustes: manda sobre el guardado mientras dura. */
   const [themePreview, setThemePreview] = useState<CustomTheme | null>(null);
+  const systemMode = useSystemScheme();
   const palette = useMemo(
-    () => (themePreview ? customPalette(themePreview) : resolveTheme(settings.theme, settings.customThemes)),
-    [themePreview, settings.theme, settings.customThemes],
+    () => (themePreview ? customPalette(themePreview) : resolveTheme(settings.theme, settings.customThemes, systemMode)),
+    [themePreview, settings.theme, settings.customThemes, systemMode],
   );
   useAppearance(settings, vaultConfig !== null, palette);
   useStartupNotifications(bootStatus === "ready", currentVault, settings);

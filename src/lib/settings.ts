@@ -13,13 +13,15 @@ import {
   type SpellLang,
 } from "./spellCheck";
 import { DEFAULT_SHORTCUTS, normalizeShortcuts, type ShortcutMap } from "./shortcuts";
-import { DEFAULT_THEME, isThemeKey, type ThemePalette } from "./themes";
+import { AUTO_THEME, DEFAULT_THEME, isThemeKey, type ThemePalette } from "./themes";
 import { customThemeKey, normalizeCustomThemes, type CustomTheme } from "./customThemes";
 
 export type AccentKey = "terracota" | "menta" | "marfil" | "cielo";
 
-/** Color de acento: uno fijo o el que traiga el tema activo. */
-export type AccentChoice = AccentKey | "tema";
+/** Color de acento: uno fijo, el que traiga el tema activo o uno libre (`#rrggbb`). */
+export type AccentChoice = AccentKey | "tema" | `#${string}`;
+
+const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 
 export interface AppSettings {
   openLastVault: boolean;
@@ -114,13 +116,13 @@ export function normalizeSettings(raw: unknown): AppSettings {
   const customThemes = normalizeCustomThemes(data.customThemes);
   const theme = data.theme;
   const themeOk =
-    isThemeKey(theme) || customThemes.some((custom) => customThemeKey(custom) === theme);
+    theme === AUTO_THEME || isThemeKey(theme) || customThemes.some((custom) => customThemeKey(custom) === theme);
 
   return {
     openLastVault: asBool(data.openLastVault, DEFAULT_SETTINGS.openLastVault),
     animations: asBool(data.animations, DEFAULT_SETTINGS.animations),
     accent:
-      accent === "tema" || (typeof accent === "string" && accent in ACCENTS)
+      accent === "tema" || (typeof accent === "string" && (accent in ACCENTS || HEX_COLOR.test(accent)))
         ? (accent as AccentChoice)
         : DEFAULT_SETTINGS.accent,
     theme: themeOk ? (theme as string) : DEFAULT_SETTINGS.theme,
@@ -180,7 +182,8 @@ function normalizeSpellWords(raw: unknown): string[] {
 
 export function accentHex(accent: AccentChoice, theme: ThemePalette): string {
   if (accent === "tema") return theme.accent;
-  return ACCENTS[accent]?.hex ?? ACCENTS.terracota.hex;
+  if (accent.startsWith("#")) return HEX_COLOR.test(accent) ? accent : ACCENTS.terracota.hex;
+  return ACCENTS[accent as AccentKey]?.hex ?? ACCENTS.terracota.hex;
 }
 
 export type SettingsCategoryId = "general" | "appearance" | "notes" | "tasks" | "shortcuts" | "about";
@@ -298,7 +301,7 @@ export const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     labelKey: "settings.theme",
     descriptionKey: "settings.theme.desc",
     keywords:
-      "tema estilo apariencia oscuro claro oled dracula nord solarized modo paleta colores theme style dark light palette",
+      "tema estilo apariencia oscuro claro oled dracula nord solarized modo paleta colores theme style dark light palette automático sistema auto system",
   },
   {
     kind: "accent",
@@ -306,7 +309,7 @@ export const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     key: "accent",
     labelKey: "settings.accent",
     descriptionKey: "settings.accent.desc",
-    keywords: "color tema paleta terracota menta marfil cielo acento colour accent",
+    keywords: "color tema paleta terracota menta marfil cielo acento colour accent propio libre personalizado custom picker",
   },
   {
     kind: "toggle",

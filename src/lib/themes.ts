@@ -114,6 +114,17 @@ export const THEME_LIST: ThemeDefinition[] = [
 ];
 
 export const DEFAULT_THEME: ThemeKey = "gus-oscuro";
+/** `settings.theme` que sigue el modo claro/oscuro del sistema con los dos temas Gus. */
+export const AUTO_THEME = "auto";
+
+/** Modo que pide el sistema (Ajustes del escritorio). Sin `matchMedia`, oscuro. */
+export function systemScheme(): ThemeScheme {
+  try {
+    return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+  } catch {
+    return "dark";
+  }
+}
 
 const BY_KEY = Object.fromEntries(
   THEME_LIST.map((theme) => [theme.key, theme]),
@@ -142,8 +153,16 @@ export function customPalette(theme: CustomTheme): ThemePalette {
   };
 }
 
-/** Paleta de `settings.theme`: un tema de serie o uno de `customs`; si no existe, el de por defecto. */
-export function resolveTheme(key: string, customs: readonly CustomTheme[]): ThemePalette {
+/**
+ * Paleta de `settings.theme`: un tema de serie, uno de `customs` o el automático
+ * (Gus Claro u Oscuro según `scheme`); si no existe, el de por defecto.
+ */
+export function resolveTheme(
+  key: string,
+  customs: readonly CustomTheme[],
+  scheme: ThemeScheme = systemScheme(),
+): ThemePalette {
+  if (key === AUTO_THEME) return themeDefinition(scheme === "light" ? "gus-claro" : "gus-oscuro");
   if (key.startsWith(CUSTOM_THEME_PREFIX)) {
     const custom = customs.find((theme) => customThemeKey(theme) === key);
     if (custom) return customPalette(custom);

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_SPELL_LANGS, isSpellLang, normalizeSpellLangs } from "./spellCheck";
-import { normalizeSettings, DEFAULT_SETTINGS } from "./settings";
+import { accentHex, normalizeSettings, DEFAULT_SETTINGS } from "./settings";
+import { resolveTheme } from "./themes";
 
 describe("diccionarios del corrector", () => {
   it("reconoce los idiomas válidos y rechaza lo que no existe", () => {
@@ -34,6 +35,19 @@ describe("diccionarios del corrector", () => {
 });
 
 describe("ajustes", () => {
+  it("el tema automático sigue al sistema con los dos temas Gus", () => {
+    expect(normalizeSettings({ theme: "auto" }).theme).toBe("auto");
+    expect(resolveTheme("auto", [], "light").key).toBe("gus-claro");
+    expect(resolveTheme("auto", [], "dark").key).toBe("gus-oscuro");
+  });
+
+  it("acepta un acento libre #rrggbb y descarta lo que no es un color", () => {
+    expect(normalizeSettings({ accent: "#12aBef" }).accent).toBe("#12aBef");
+    expect(normalizeSettings({ accent: "#12ab" }).accent).toBe(DEFAULT_SETTINGS.accent);
+    expect(normalizeSettings({ accent: "red" }).accent).toBe(DEFAULT_SETTINGS.accent);
+    expect(accentHex("#12abef", resolveTheme("gus-oscuro", []))).toBe("#12abef");
+  });
+
   it("viene con el autoguardado activado", () => {
     expect(DEFAULT_SETTINGS.autoSave).toBe(true);
   });

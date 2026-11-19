@@ -30,7 +30,7 @@ import {
   type SettingDefinition,
   type SettingsCategoryId,
 } from "../lib/settings";
-import { resolveTheme, THEME_LIST } from "../lib/themes";
+import { AUTO_THEME, resolveTheme, THEME_LIST } from "../lib/themes";
 import type { CustomTheme } from "../lib/customThemes";
 import CustomThemesEditor from "./CustomThemesEditor";
 import { LANGUAGE_LIST, useT } from "../lib/i18n";
@@ -791,6 +791,11 @@ export default function SettingsPanel({
       return (
         <div className="w-full">
           <div className="grid w-full grid-cols-[repeat(auto-fit,minmax(7.5rem,1fr))] gap-2">
+            <ThemeCard
+              theme={AUTO_THEME}
+              selected={settings.theme === AUTO_THEME}
+              onSelect={() => update("theme", AUTO_THEME)}
+            />
             {THEME_LIST.map((entry) => (
               <ThemeCard
                 key={entry.key}
@@ -845,6 +850,11 @@ export default function SettingsPanel({
             </button>
           );
         })}
+        <CustomAccentInput
+          value={accentHex(selected, resolveTheme(settings.theme, settings.customThemes))}
+          selected={selected.startsWith("#")}
+          onChange={(hex) => update("accent", hex as AccentChoice)}
+        />
       </div>
     );
   }
@@ -1011,5 +1021,35 @@ export default function SettingsPanel({
         </div>
       </div>
     </section>
+  );
+}
+
+/** Acento libre: un círculo con el selector de color del sistema dentro. */
+function CustomAccentInput({ value, selected, onChange }: { value: string; selected: boolean; onChange: (hex: string) => void }) {
+  const t = useT();
+  return (
+    <label
+      title={t("settings.accentCustom")}
+      className={clsx(
+        "relative flex h-8 w-8 cursor-pointer items-center justify-center rounded-full outline-none transition focus-within:ring-2 focus-within:ring-gus-accent/70",
+        selected
+          ? "ring-2 ring-gus-accent ring-offset-2 ring-offset-gus-card"
+          : "ring-1 ring-gus-border hover:ring-gus-muted",
+      )}
+      style={{ background: selected ? value : "conic-gradient(#e07a5f, #f2cc8f, #81b29a, #89b4fa, #b18cf2, #e07a5f)" }}
+    >
+      {selected ? (
+        <Check className="h-4 w-4 text-gus-bg" strokeWidth={3} aria-hidden="true" />
+      ) : (
+        <Plus className="h-4 w-4 text-gus-bg" strokeWidth={3} aria-hidden="true" />
+      )}
+      <input
+        type="color"
+        value={value}
+        aria-label={t("settings.accentCustom")}
+        onChange={(event) => onChange(event.target.value)}
+        className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+      />
+    </label>
   );
 }

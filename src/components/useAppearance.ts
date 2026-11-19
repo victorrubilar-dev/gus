@@ -1,7 +1,7 @@
-import { useEffect } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { setPersonalWords } from "../lib/spellCheck";
 import type { AppSettings } from "../lib/settings";
-import { applyTheme, type ThemePalette } from "../lib/themes";
+import { applyTheme, systemScheme, type ThemePalette, type ThemeScheme } from "../lib/themes";
 
 /** Efectos globales de los ajustes: diccionario personal, zoom de la interfaz y tema. */
 export function useAppearance(settings: AppSettings, hasConfig: boolean, palette: ThemePalette) {
@@ -25,4 +25,17 @@ export function useAppearance(settings: AppSettings, hasConfig: boolean, palette
     if (!hasConfig) return;
     applyTheme(palette);
   }, [palette, hasConfig]);
+}
+
+/** Modo claro/oscuro del sistema, al día si se cambia con la app abierta (tema «Automático»). */
+export function useSystemScheme(): ThemeScheme {
+  return useSyncExternalStore((onChange) => {
+    try {
+      const query = window.matchMedia("(prefers-color-scheme: light)");
+      query.addEventListener("change", onChange);
+      return () => query.removeEventListener("change", onChange);
+    } catch {
+      return () => {};
+    }
+  }, systemScheme);
 }

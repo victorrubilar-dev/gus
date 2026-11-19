@@ -69,6 +69,18 @@ await page.getByRole("button", { name: /Restablecer/ }).first().click();
 await page.waitForTimeout(300);
 comprobar((await ultimaConfig()).settings.customThemes.length === 1, "restablecer los ajustes no borra tus temas");
 
+console.log("\n--- tema automático y acento libre ---");
+await page.emulateMedia({ colorScheme: "light" });
+await page.getByRole("button", { name: "Automático", exact: true }).click();
+await page.waitForTimeout(300);
+comprobar((await ultimaConfig()).settings.theme === "auto" && (await fondo()) === "#f8f8f8", "«Automático» con el sistema en claro pinta Gus Claro");
+await page.emulateMedia({ colorScheme: "dark" });
+await page.waitForTimeout(300);
+comprobar((await fondo()) === "#141414", "si el sistema pasa a oscuro, la app cambia sola");
+await page.getByLabel("Color propio").fill("#12abef");
+await page.waitForTimeout(300);
+comprobar((await ultimaConfig()).settings.accent === "#12abef", "el color propio se guarda como acento");
+
 await browser.close();
 console.log(fallos.length === 0 ? "\nTODO EN VERDE" : `\n${fallos.length} comprobación(es) fallaron`);
 process.exit(fallos.length === 0 ? 0 : 1);
