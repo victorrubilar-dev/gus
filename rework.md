@@ -78,11 +78,11 @@ Formato: `[ ]` pendiente · `[x]` hecho. IDs estables (`R-`, `D-`, `C-`, `T-`, `
 
 - [x] **P-01 Estado desactualizado.** *REQ-12 marcado (recordatorios y antelación; falta el aviso de la nota del día). `interfaz.md` REQ-06: marcados ajuste de ancho y texto en los botones; botón de contraer/expandir añadido (REQ-06 completo).* `task/features.md` REQ-12 (notificaciones) sigue sin marcar, pero ya está en `0.1.3` (commit `80c888f`). REQ-05 a REQ-08 están marcados como hechos, y el commit `53ad5a8` de búsqueda los confirma.
 - [ ] **P-02 Conflicto de principios. En pausa (decidido: no avanzar de momento).** `task/features.md` REQ-01 (Google Calendar y Drive) choca con "sin nube, sin cuentas, sin telemetría" de `AGENTS.md` y `PRIVACY.md`. Decidir antes de diseñar nada: cambiar el principio de forma explícita o descartar la integración.
-- [ ] **P-03 Solapamiento.** REQ-10 (carpeta compartida) y REQ-13 (watcher de archivos externos) necesitan el mismo watcher de `notify`. Implementarlos juntos.
-- [ ] **P-04 Solapamiento en tareas.** REQ-09 (checkboxes en notas sincronizados con `.gus-tasks.json`) y REQ-11 (subtareas y dependencias) tocan el mismo modelo de tarea. Definir el modelo una sola vez.
-- [ ] **P-05 Galería y biblioteca PDF.** `interfaz.md` REQ-02 y `features.md` REQ-02 pintan miniaturas de imágenes y portadas de PDF. Ver Q-06.
-- [ ] **P-06 Actualizar desde la app (`task/mejoras.md`).** Ver C-06 y C-07.
-- [ ] **P-07 Requisitos grandes sin desglosar.** Pizarra (`features.md` REQ-03), hábitos (REQ-04), modo presentación (`interfaz.md` REQ-01) y temas personalizados (`interfaz.md` REQ-03) son proyectos de varias semanas. Cada uno necesita un alcance mínimo antes de programarse.
+- [x] **P-03 Solapamiento.** *REQ-13 hecho (`vigilancia.rs`); REQ-10 descartado por ahora.* REQ-10 (carpeta compartida) y REQ-13 (watcher de archivos externos) necesitan el mismo watcher de `notify`. Implementarlos juntos.
+- [x] **P-04 Solapamiento en tareas.** *Hecho: REQ-09 y REQ-11 comparten modelo (la nota es la fuente; `taskTree`).* REQ-09 (checkboxes en notas sincronizados con `.gus-tasks.json`) y REQ-11 (subtareas y dependencias) tocan el mismo modelo de tarea. Definir el modelo una sola vez.
+- [x] **P-05 Galería y biblioteca PDF.** *Hechas (`GalleryView`, `LibraryView`).* `interfaz.md` REQ-02 y `features.md` REQ-02 pintan miniaturas de imágenes y portadas de PDF. Ver Q-06.
+- [x] **P-06 Actualizar desde la app (`task/mejoras.md`).** *Hecho: descarga firmada y «Reiniciar y actualizar» (`selfUpdate.ts`); `.deb`/`.rpm` con descarga asistida.* Ver C-06 y C-07.
+- [x] **P-07 Requisitos grandes sin desglosar.** *Hechos pizarra, hábitos y temas; el modo presentación se descartó.* Pizarra (`features.md` REQ-03), hábitos (REQ-04), modo presentación (`interfaz.md` REQ-01) y temas personalizados (`interfaz.md` REQ-03) son proyectos de varias semanas. Cada uno necesita un alcance mínimo antes de programarse.
 - [ ] **P-08 `task/fix-fedora.md`: FIX-01 aparece como hecho.** El primer bug (escalado de interfaz) está marcado `[X]`, pero la captura que lo ilustra no se ha revisado y la ruta está rota (D-10). Confirmar en la app si el escalado sigue fallando en Fedora.
 
 ## Orden sugerido
