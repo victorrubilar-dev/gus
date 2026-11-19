@@ -771,9 +771,9 @@ export default {
   "trash.fromVault": "Raíz del vault",
 
   /* ---------------- paleta de comandos ---------------- */
-  "palette.placeholder": "Buscar notas…",
+  "palette.placeholder": "Buscar notas o acciones…",
   "palette.label": "Paleta de comandos",
-  "palette.empty": "No hay notas que coincidan.",
+  "palette.empty": "Nada coincide.",
   "palette.hint": "↑↓ para moverse · Intro para abrir · Esc para cerrar",
 
   /* ---------------- PDF ---------------- */
@@ -995,6 +995,11 @@ export default {
   "palette.hintNavigate": "navegar",
   "palette.searchVault": "Buscar en el vault",
   "palette.actions": "Acciones",
+  "palette.goTo": "Ir a {name}",
+  "palette.theme": "Tema: {name}",
+  "palette.viewMode": "Modo del editor: {name}",
+  "palette.newTask": "Nueva tarea",
+  "palette.dailyNote": "Abrir la nota de hoy",
   "palette.hintOpen": "abrir",
   "explorer.readError": "error al leer",
   "explorer.hiddenFolders": "Mostrar las {count} carpetas ocultas de la ruta",

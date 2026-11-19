@@ -20,6 +20,7 @@ import BacklinksPanel from "./components/BacklinksPanel";
 import GraphView from "./components/GraphView";
 import SearchView from "./components/SearchView";
 import CommandPalette from "./components/CommandPalette";
+import { usePaletteActions } from "./components/usePaletteActions";
 import NewTaskDialog from "./components/NewTaskDialog";
 import DashboardView from "./components/DashboardView";
 import FileExplorer, { type FileExplorerHandle, type NoteFile } from "./components/FileExplorer";
@@ -331,6 +332,17 @@ function App({
     if (notePathRef.current === file.id) handleSelectNote({ id: file.id, name: file.name, kind: "note" });
     setVaultRefresh((key) => key + 1);
   }
+
+  const paletteActions = usePaletteActions({
+    settings,
+    changeSettings: handleSettingsChange,
+    selectTab: setActiveTab,
+    explorerRef,
+    editorRef,
+    noteOpen: note !== null,
+    openNewTask,
+    openDailyNote: () => void openDailyNote(),
+  });
 
   useGlobalShortcuts(settings, currentVault, language, {
     changeSettings: handleSettingsChange,
@@ -853,6 +865,7 @@ function App({
             noteIcons={noteIcons}
             onOpenSearch={() => setActiveTab("search")}
             shortcuts={settings.shortcuts}
+            actions={paletteActions}
           />
 
           <NewTaskDialog

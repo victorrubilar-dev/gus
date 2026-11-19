@@ -66,6 +66,8 @@ export interface MarkdownEditorHandle {
     sources: string[],
     point?: { x: number; y: number },
   ) => Promise<ImageInsertResult>;
+  /** Editar, dividido o lectura (paleta de comandos). */
+  setViewMode: (mode: ViewMode) => void;
 }
 
 export interface MarkdownEditorProps {
@@ -594,6 +596,7 @@ export default function MarkdownEditor({
       // que el handle se quede con la ruta de la primera que se montó.
       insertImages: (sources: string[], point?: { x: number; y: number }) =>
         insertImagesRef.current(sources, point),
+      setViewMode,
     }),
     [flush],
   );

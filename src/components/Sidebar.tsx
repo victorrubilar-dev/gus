@@ -36,7 +36,7 @@ export type TabId =
   | "settings"
   | "trash";
 
-const TABS: { id: TabId; labelKey: MessageKey; Icon: LucideIcon }[] = [
+export const SIDEBAR_TABS: { id: TabId; labelKey: MessageKey; Icon: LucideIcon }[] = [
   { id: "home", labelKey: "app.tab.home", Icon: LayoutDashboard },
   { id: "notes", labelKey: "app.tab.notes", Icon: StickyNote },
   { id: "tasks", labelKey: "app.tab.tasks", Icon: ListTodo },
@@ -150,7 +150,7 @@ export default function Sidebar({ sidebar, activeTab, onSelectTab, onLeaveVault 
 
       <div aria-hidden="true" className="my-1 h-px w-8 bg-gus-border" />
 
-      {TABS.map(({ id, labelKey, Icon }) => (
+      {SIDEBAR_TABS.map(({ id, labelKey, Icon }) => (
         <SectionButton
           key={id}
           label={t(labelKey)}

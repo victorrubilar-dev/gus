@@ -774,9 +774,9 @@ const en: Record<keyof typeof es, string> = {
   "trash.fromVault": "Vault root",
 
   /* ---------------- command palette ---------------- */
-  "palette.placeholder": "Search notes…",
+  "palette.placeholder": "Search notes or actions…",
   "palette.label": "Command palette",
-  "palette.empty": "No notes match.",
+  "palette.empty": "Nothing matches.",
   "palette.hint": "↑↓ to move · Enter to open · Esc to close",
 
   /* ---------------- PDF ---------------- */
@@ -997,6 +997,11 @@ const en: Record<keyof typeof es, string> = {
   "palette.loadError": "The notes could not be loaded",
   "palette.hintNavigate": "to move",
   "palette.searchVault": "Search the vault",
+  "palette.goTo": "Go to {name}",
+  "palette.theme": "Theme: {name}",
+  "palette.viewMode": "Editor mode: {name}",
+  "palette.newTask": "New task",
+  "palette.dailyNote": "Open today’s note",
   "palette.actions": "Actions",
   "palette.hintOpen": "to open",
   "explorer.readError": "read error",

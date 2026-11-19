@@ -4,13 +4,22 @@ import { Command } from "cmdk";
 import { useT } from "../lib/i18n";
 import { comboFor, comboLabel, type ShortcutMap } from "../lib/shortcuts";
 import { invoke } from "@tauri-apps/api/core";
-import { FileText, Loader2, Search, TextSearch } from "lucide-react";
+import { FileText, Loader2, Search, TextSearch, type LucideIcon } from "lucide-react";
 
 export interface VaultNote {
   name: string;
   path: string;
   relative: string;
   modified_ms?: number | null;
+}
+
+/** Acción de la paleta (ir a una vista, cambiar de tema…): la construye App. */
+export interface PaletteAction {
+  id: string;
+  label: string;
+  keywords: string[];
+  Icon: LucideIcon;
+  run: () => void;
 }
 
 export interface CommandPaletteProps {
@@ -24,6 +33,8 @@ export interface CommandPaletteProps {
   shortcuts?: ShortcutMap;
   /** Emoji de cada nota, por ruta: se ve en la lista y escribirlo filtra. */
   noteIcons?: Record<string, string>;
+  /** Acciones de la app, debajo de «Buscar en el vault». */
+  actions?: readonly PaletteAction[];
 }
 
 const GROUP_CLASS =
@@ -50,6 +61,7 @@ export default function CommandPalette({
   onOpenSearch,
   shortcuts,
   noteIcons,
+  actions = [],
 }: CommandPaletteProps) {
   const t = useT();
   const paletteCombo = comboFor(shortcuts, "commandPalette");
@@ -195,6 +207,21 @@ export default function CommandPalette({
                         <TextSearch className="h-4 w-4 shrink-0" aria-hidden="true" />
                         <span className="min-w-0 truncate">{t("palette.searchVault")}</span>
                       </Command.Item>
+                      {actions.map(({ id, label, keywords, Icon, run }) => (
+                        <Command.Item
+                          key={id}
+                          value={label}
+                          keywords={keywords}
+                          onSelect={() => {
+                            onOpenChange(false);
+                            run();
+                          }}
+                          className={ITEM_CLASS}
+                        >
+                          <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                          <span className="min-w-0 truncate">{label}</span>
+                        </Command.Item>
+                      ))}
                     </Command.Group>
 
                     {/* Solo con la lista cargada: durante la carga cmdk contaría «sin coincidencias». */}

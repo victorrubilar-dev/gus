@@ -192,6 +192,35 @@ await page.waitForTimeout(400);
 const creada = await page.evaluate(() => [...window.__smoke.archivos].find(([ruta]) => ruta.includes("nueva-nota"))?.[1] ?? "");
 comprobar(/^# Reunión \d{4}-\d{2}-\d{2}\n\n- Asistentes:/.test(creada), "la nota nueva copia la plantilla con la fecha rellenada");
 
+console.log("\n--- paleta de comandos: acciones ---");
+const paleta = page.getByRole("dialog", { name: "Paleta de comandos" });
+const accion = async (texto) => {
+  await page.keyboard.press("Control+k");
+  await paleta.waitFor({ timeout: 3000 });
+  await page.keyboard.type(texto);
+  await page.waitForTimeout(200);
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(500);
+};
+await accion("Ir a Calendario");
+comprobar(await page.getByText("Resumen de vencimientos de tus tareas").isVisible(), "«Ir a Calendario» cambia de vista");
+await accion("Tema: Gus Claro");
+comprobar((await page.evaluate(() => window.__smoke.configGuardada.at(-1)?.settings.theme)) === "gus-claro", "«Tema: Gus Claro» cambia y guarda el tema");
+await accion("Ir a Notas");
+await fila("/vault/indice.md").click();
+await page.waitForTimeout(400);
+await accion("Modo del editor: Lectura");
+comprobar((await page.getByRole("tab", { name: "Lectura" }).first().getAttribute("aria-selected")) === "true", "«Modo del editor: Lectura» cambia el modo de la nota abierta");
+
+await accion("Ir a Calendario");
+await page.keyboard.press("Control+k");
+await paleta.waitFor({ timeout: 3000 });
+await page.keyboard.type("Nueva nota");
+await paleta.getByRole("option", { name: "Nueva nota", exact: true }).click();
+await page.waitForTimeout(600);
+comprobar(await page.getByRole("menu", { name: "Nueva nota desde plantilla" }).isVisible(), "«Nueva nota» desde otra vista abre Notas y el menú de plantillas");
+await page.keyboard.press("Escape");
+
 await browser.close();
 console.log(fallos.length === 0 ? "\nTODO EN VERDE" : `\n${fallos.length} comprobación(es) fallaron`);
 process.exit(fallos.length === 0 ? 0 : 1);
