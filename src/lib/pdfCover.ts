@@ -36,10 +36,7 @@ async function renderCover(path: string): Promise<string> {
 /**
  * Portada (primera página) de un PDF como data URL, o `null` si no se pudo
  * generar (PDF dañado, cifrado, demasiado grande…). Se recuerda por ruta y
- * fecha de modificación, así que un PDF editado regenera la suya.
- *
- * shortcut: las portadas viejas de PDF modificados quedan en localStorage;
- * limpiarlas si algún día pesan.
+ * fecha de modificación, así que un PDF editado regenera la suya (y borra la vieja).
  */
 export function pdfCover(path: string, modifiedMs: number | null): Promise<string | null> {
   const key = storageKey(path, modifiedMs);
@@ -61,6 +58,10 @@ export function pdfCover(path: string, modifiedMs: number | null): Promise<strin
       const cover = await renderCover(path);
       memory.set(key, cover);
       try {
+        const stale = `${STORAGE_PREFIX}${path}@`;
+        for (const old of Object.keys(window.localStorage)) {
+          if (old.startsWith(stale) && old !== key) window.localStorage.removeItem(old);
+        }
         window.localStorage.setItem(key, cover);
       } catch {
         // Cuota llena: la portada vive en memoria esta sesión.
