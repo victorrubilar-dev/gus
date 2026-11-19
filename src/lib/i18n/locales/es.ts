@@ -995,6 +995,7 @@ export default {
   "palette.hintNavigate": "navegar",
   "palette.searchVault": "Buscar en el vault",
   "palette.actions": "Acciones",
+  "editor.outline": "Índice",
   "palette.goTo": "Ir a {name}",
   "palette.theme": "Tema: {name}",
   "palette.viewMode": "Modo del editor: {name}",

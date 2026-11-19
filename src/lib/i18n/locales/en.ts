@@ -1002,6 +1002,7 @@ const en: Record<keyof typeof es, string> = {
   "palette.viewMode": "Editor mode: {name}",
   "palette.newTask": "New task",
   "palette.dailyNote": "Open today’s note",
+  "editor.outline": "Outline",
   "palette.actions": "Actions",
   "palette.hintOpen": "to open",
   "explorer.readError": "read error",

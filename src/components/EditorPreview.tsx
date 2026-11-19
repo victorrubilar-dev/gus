@@ -8,6 +8,7 @@ import CopyCodeButton from "./CopyCodeButton";
 import MermaidDiagram from "./MermaidDiagram";
 import { MarkdownBody, PreviewImage, PRE_CLASS, applyPreviewMerges, readCodeBlock } from "./markdownPreview";
 import { useT } from "../lib/i18n";
+import NoteOutline from "./NoteOutline";
 
 interface PreviewComponentsArgs {
   path: string;
@@ -46,29 +47,29 @@ export function usePreviewComponents({
   const t = useT();
 
   return {
-    h1: ({ children }) => (
-      <h1 className="mt-7 mb-3 text-3xl font-bold tracking-tight text-gus-text first:mt-0">
+    h1: ({ node, children }) => (
+      <h1 data-line={node?.position?.start.line} className="mt-7 mb-3 text-3xl font-bold tracking-tight text-gus-text first:mt-0">
         {children}
       </h1>
     ),
-    h2: ({ children }) => (
-      <h2 className="mt-6 mb-3 text-2xl font-bold tracking-tight text-gus-text first:mt-0">
+    h2: ({ node, children }) => (
+      <h2 data-line={node?.position?.start.line} className="mt-6 mb-3 text-2xl font-bold tracking-tight text-gus-text first:mt-0">
         {children}
       </h2>
     ),
-    h3: ({ children }) => (
-      <h3 className="mt-5 mb-2 text-xl font-semibold text-gus-text first:mt-0">{children}</h3>
+    h3: ({ node, children }) => (
+      <h3 data-line={node?.position?.start.line} className="mt-5 mb-2 text-xl font-semibold text-gus-text first:mt-0">{children}</h3>
     ),
-    h4: ({ children }) => (
-      <h4 className="mt-4 mb-2 text-lg font-semibold text-gus-text first:mt-0">{children}</h4>
+    h4: ({ node, children }) => (
+      <h4 data-line={node?.position?.start.line} className="mt-4 mb-2 text-lg font-semibold text-gus-text first:mt-0">{children}</h4>
     ),
-    h5: ({ children }) => (
-      <h5 className="mt-4 mb-2 text-body font-semibold tracking-wider text-gus-muted uppercase first:mt-0">
+    h5: ({ node, children }) => (
+      <h5 data-line={node?.position?.start.line} className="mt-4 mb-2 text-body font-semibold tracking-wider text-gus-muted uppercase first:mt-0">
         {children}
       </h5>
     ),
-    h6: ({ children }) => (
-      <h6 className="mt-4 mb-2 text-body font-semibold tracking-wider text-gus-muted/80 uppercase first:mt-0">
+    h6: ({ node, children }) => (
+      <h6 data-line={node?.position?.start.line} className="mt-4 mb-2 text-body font-semibold tracking-wider text-gus-muted/80 uppercase first:mt-0">
         {children}
       </h6>
     ),
@@ -274,8 +275,10 @@ export default function EditorPreview({ body, onKeyDown, scrollRef, onScroll, ..
       onKeyDown={onKeyDown}
       onScroll={onScroll}
       aria-label={t("editor.previewPane")}
+      data-preview-scroll
       className="gus-scrollbar min-h-0 min-w-0 flex-1 overflow-y-auto bg-gus-bg px-6 py-5 focus:outline-none"
     >
+      <NoteOutline body={body} />
       {body.trim() === "" ? (
         <p className="text-sm text-gus-muted">{t("editor.emptyNoteHint")}</p>
       ) : (

@@ -15,7 +15,9 @@ const comprobar = (ok, texto) => {
 page.on("pageerror", (e) => console.log("  [excepción]", String(e).slice(0, 300)));
 
 await page.goto("http://localhost:5199/bench/app-smoke.html?semilla", { waitUntil: "networkidle" });
-const largo = "# Larga\n\n" + Array.from({ length: 120 }, (_, i) => `Párrafo ${i + 1} con algo de texto.\n`).join("\n");
+const largo =
+  "# Larga\n\n" +
+  Array.from({ length: 120 }, (_, i) => `${i === 60 ? "## Mitad\n\n" : i === 110 ? "## Final del texto\n\n" : ""}Párrafo ${i + 1} con algo de texto.\n`).join("\n");
 await page.evaluate((texto) => window.__smoke.archivos.set("/vault/larga.md", texto), largo);
 await page.locator('[data-tour="sidebar"]').getByRole("button", { name: "Notas", exact: true }).first().click();
 await page.getByText("larga.md").first().click();
@@ -46,6 +48,19 @@ comprobar((await panelLectura.innerText()).includes("Añadido"), "lo que se escr
 await page.getByRole("tab", { name: "Lectura" }).click();
 await page.waitForTimeout(200);
 comprobar(!(await area.isVisible()) && (await panelLectura.isVisible()), "«Lectura» deja solo la nota renderizada");
+
+const indice = page.getByRole("navigation", { name: "Índice" });
+await indice.getByRole("button", { name: "Índice" }).click();
+comprobar((await indice.getByRole("button").allInnerTexts()).slice(1).join("|") === "Larga|Mitad|Final del texto", "el índice lista los títulos de la nota");
+await indice.getByRole("button", { name: "Final del texto" }).click();
+await page.waitForTimeout(900);
+const finalArriba = await page.evaluate(() => {
+  const panel = document.querySelector("[data-preview-scroll]");
+  const titulo = [...panel.querySelectorAll("h2")].find((h) => h.textContent === "Final del texto");
+  return titulo.getBoundingClientRect().top - panel.getBoundingClientRect().top;
+});
+comprobar(finalArriba >= 0 && finalArriba < 80, "pulsar un título lleva la lectura hasta él");
+comprobar(!(await indice.getByRole("button", { name: "Mitad" }).isVisible()), "y el índice se cierra");
 
 await page.getByRole("button", { name: "Leer a pantalla completa" }).click();
 await page.waitForTimeout(200);
