@@ -303,7 +303,7 @@ pnpm build
 pnpm tauri build
 
 # Tests
-pnpm test              # Todos los tests Vitest (375 tests en 43 ficheros)
+pnpm test              # Todos los tests Vitest (383 tests en 45 ficheros)
 pnpm test:watch        # Modo watch
 
 # Type checking

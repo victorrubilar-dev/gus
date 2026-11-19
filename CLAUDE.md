@@ -16,7 +16,7 @@ App de escritorio **local-first** para notas Markdown y tareas personales. Tauri
 pnpm install
 pnpm tauri dev            # Vite en :1420 + ventana Tauri
 pnpm build                # tsc + vite build
-pnpm test                 # Vitest: 375 tests en 43 ficheros
+pnpm test                 # Vitest: 383 tests en 45 ficheros
 npx tsc --noEmit
 cd src-tauri && cargo test   # Rust: 89 tests
 ```
