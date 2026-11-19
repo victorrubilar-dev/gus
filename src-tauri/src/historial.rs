@@ -20,7 +20,7 @@ pub struct NoteVersion {
 }
 
 /// Carpeta del historial de una nota. La nota tiene que ser `.md` y colgar del vault.
-// shortcut: el historial va por ruta, así que al renombrar o mover la nota se queda con el nombre viejo; moverlo en `rename_vault_*` si se echa de menos.
+/// El historial va por ruta: al renombrar o mover, `move_note_history` lo lleva detrás.
 fn history_dir(vault: &str, path: &str) -> Result<std::path::PathBuf, String> {
     let path = expand_home(path);
     archivos::ensure_md(&path)?;
@@ -114,6 +114,63 @@ pub(crate) fn read_note_version(vault: String, path: String, saved_ms: u64) -> R
     std::fs::read_to_string(&file).map_err(|err| format!("No se pudo leer la versión: {err}"))
 }
 
+/// Ruta de `path` relativa al vault, sin `..` ni nada raro. `path` puede no
+/// existir ya (el origen de un movimiento), así que se prueba con la ruta tal
+/// cual y con la de su carpeta padre canonicalizada.
+fn vault_relative(vault: &str, path: &str) -> Result<std::path::PathBuf, String> {
+    let raw_vault = std::path::PathBuf::from(expand_home(vault));
+    let path = std::path::PathBuf::from(expand_home(path));
+    let relative = path.strip_prefix(&raw_vault).map(|r| r.to_path_buf()).or_else(|_| {
+        let parent = path.parent().ok_or(())?;
+        let real_parent = std::fs::canonicalize(parent).map_err(|_| ())?;
+        let rest = real_parent.strip_prefix(canonical_vault(vault).map_err(|_| ())?).map_err(|_| ())?;
+        Ok::<_, ()>(rest.join(path.file_name().ok_or(())?))
+    });
+    match relative {
+        Ok(rel) if !rel.as_os_str().is_empty()
+            && rel.components().all(|c| matches!(c, std::path::Component::Normal(_))) => Ok(rel),
+        _ => Err(format!("«{}» está fuera del vault", path.display())),
+    }
+}
+
+/// Mueve `from` dentro de `to`. Si ya hay algo con el mismo nombre se mezcla
+/// (carpetas) o se conserva lo que había (ficheros).
+fn merge_dir(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
+    if !to.exists() {
+        if let Some(parent) = to.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        return std::fs::rename(from, to);
+    }
+    if from.is_dir() && to.is_dir() {
+        for entry in std::fs::read_dir(from)? {
+            let entry = entry?;
+            merge_dir(&entry.path(), &to.join(entry.file_name()))?;
+        }
+        let _ = std::fs::remove_dir(from);
+    }
+    Ok(())
+}
+
+/// Tras renombrar o mover una nota o carpeta, lleva su historial a la ruta nueva.
+#[tauri::command]
+pub(crate) fn move_note_history(vault: String, from: String, to: String) -> Result<(), String> {
+    let mut old = vault_relative(&vault, &from)?;
+    let mut new = vault_relative(&vault, &to)?;
+    // Una nota guarda su historial en `<carpeta>/<nombre sin .md>`; una carpeta, en su misma ruta.
+    if std::path::Path::new(&expand_home(&to)).is_file() {
+        archivos::ensure_md(&to)?;
+        old.set_extension("");
+        new.set_extension("");
+    }
+    let root = canonical_vault(&vault)?.join(".gus-history");
+    let source = root.join(old);
+    if !source.is_dir() {
+        return Ok(());
+    }
+    merge_dir(&source, &root.join(new)).map_err(|err| format!("No se pudo mover el historial: {err}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -166,6 +223,30 @@ mod tests {
         let fuera = vault.join("otra.md").display().to_string();
         assert!(list_note_versions(v.clone(), fuera).is_err());
         assert!(list_note_versions(v, vault.join("sub/a.txt").display().to_string()).is_err());
+        let _ = std::fs::remove_dir_all(&vault);
+    }
+
+    #[test]
+    fn el_historial_sigue_a_la_nota_y_a_la_carpeta() {
+        let vault = vault_temporal("mover");
+        let v = vault.display().to_string();
+        let ruta = |rel: &str| vault.join(rel).display().to_string();
+
+        std::fs::write(vault.join("sub/nota.md"), "uno").unwrap();
+        snapshot_note(v.clone(), ruta("sub/nota.md"), true).unwrap();
+
+        std::fs::rename(vault.join("sub/nota.md"), vault.join("sub/otra.md")).unwrap();
+        move_note_history(v.clone(), ruta("sub/nota.md"), ruta("sub/otra.md")).unwrap();
+        assert_eq!(list_note_versions(v.clone(), ruta("sub/otra.md")).unwrap().len(), 1);
+
+        std::fs::rename(vault.join("sub"), vault.join("dir")).unwrap();
+        move_note_history(v.clone(), ruta("sub"), ruta("dir")).unwrap();
+        assert_eq!(list_note_versions(v.clone(), ruta("dir/otra.md")).unwrap().len(), 1);
+
+        // Sin historial no hace nada, y lo de fuera del vault se rechaza.
+        move_note_history(v.clone(), ruta("dir/x.md"), ruta("dir/otra.md")).unwrap();
+        assert!(move_note_history(v.clone(), ruta("../fuera"), ruta("dir")).is_err());
+        assert!(move_note_history(v, "/tmp/otra".into(), ruta("dir")).is_err());
         let _ = std::fs::remove_dir_all(&vault);
     }
 }

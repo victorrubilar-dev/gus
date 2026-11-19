@@ -211,6 +211,15 @@ const respuestas: Record<string, (args: Record<string, unknown>) => unknown> = {
   },
   list_note_versions: (args) =>
     (versiones.get(String(args.path)) ?? []).map(({ savedMs, texto }) => ({ savedMs, size: texto.length })),
+  move_note_history: (args) => {
+    const [desde, hasta] = [String(args.from), String(args.to)];
+    for (const [ruta, lista] of [...versiones]) {
+      if (ruta !== desde && !ruta.startsWith(`${desde}/`)) continue;
+      versiones.delete(ruta);
+      versiones.set(hasta + ruta.slice(desde.length), lista);
+    }
+    return null;
+  },
   read_note_version: (args) => versiones.get(String(args.path))?.find((v) => v.savedMs === args.savedMs)?.texto ?? "",
   write_vault_file: (args) => {
     archivos.set(String(args.path), String(args.content));
@@ -274,6 +283,7 @@ const respuestas: Record<string, (args: Record<string, unknown>) => unknown> = {
       })),
   "plugin:dialog|save": (args) => `/tmp/${String((args.options as { defaultPath?: string })?.defaultPath ?? "pizarra.svg")}`,
   "plugin:dialog|open": () => "/tmp/exportadas",
+  "plugin:dialog|message": () => "Ok",
   "plugin:clipboard-manager|write_image": (args) => {
     portapapeles.push({ bytes: Array.isArray(args.image) ? args.image.length : Object.keys((args.image as object) ?? {}).length });
     return null;

@@ -242,6 +242,7 @@ const en: Record<keyof typeof es, string> = {
   "app.externalConflict": "“{title}” changed outside Gus and you have unsaved changes.",
   "app.externalReload": "Reload from disk",
   "app.externalKeep": "Keep mine",
+  "app.relinkFailed": "It was moved, but not every [[link]] or the version history could be updated. Some notes may still point to the old name.\n\n{error}",
   "app.vaultNotFound": "The folder “{path}” does not exist",
   "app.vaultNeedsName": "Give the vault a name.",
 

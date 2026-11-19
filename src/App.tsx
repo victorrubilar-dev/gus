@@ -11,6 +11,7 @@ import {
 import { LucideProvider } from "lucide-react";
 import { AnimatePresence, domMax, LazyMotion, m, MotionConfig } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
+import { message } from "@tauri-apps/plugin-dialog";
 import { toggleNoteTaskText, type NoteTask } from "./lib/noteTasks";
 import { setNoteIcon } from "./lib/noteTags";
 import clsx from "clsx";
@@ -296,6 +297,10 @@ function App({
    */
   async function relinkMoved(moves: PathMove[], skipPath?: string): Promise<void> {
     if (!currentVault) return;
+    const failures: unknown[] = [];
+    for (const { from, to } of moves) {
+      await invoke("move_note_history", { vault: currentVault, from, to }).catch((error) => failures.push(error));
+    }
     try {
       const graph = await invoke<LinkGraph>("build_link_graph", { path: currentVault });
       for (const { path, targets } of planLinkRewrites(graph.nodes, currentVault, moves)) {
@@ -308,10 +313,12 @@ function App({
         if (notePathRef.current === path) handleSelectNote({ id: path, name: baseName(path), kind: "note" });
       }
     } catch (error) {
-      // shortcut: el fallo solo va a consola y las notas que faltaban quedan con el enlace viejo; mostrarlo si llega a pasar.
-      console.error("No se pudieron actualizar los enlaces", error);
+      failures.push(error);
     }
     setVaultRefresh((key) => key + 1);
+    if (failures.length > 0) {
+      await message(t("app.relinkFailed", { error: failures.map(String).join("\n") }), { kind: "warning" });
+    }
   }
 
   /** Pone o quita el emoji de una nota (menú del explorador), igual que `toggleNoteTask`. */

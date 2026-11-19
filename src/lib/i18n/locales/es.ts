@@ -240,6 +240,7 @@ export default {
   "app.externalConflict": "«{title}» cambió fuera de Gus y tienes cambios sin guardar.",
   "app.externalReload": "Recargar del disco",
   "app.externalKeep": "Mantener la mía",
+  "app.relinkFailed": "Se movió, pero no se pudieron actualizar todos los [[enlaces]] o el historial de versiones. Puede que alguna nota siga apuntando al nombre anterior.\n\n{error}",
   "app.vaultNotFound": "No existe la carpeta «{path}»",
   "app.vaultNeedsName": "Ponle un nombre al vault.",
 

@@ -33,6 +33,7 @@ await espera();
 comprobar(await page.getByText("nueva-carpeta").first().isVisible(), "«Nueva carpeta» aparece en la lista");
 
 console.log("\n--- renombrar ---");
+await page.evaluate(() => window.__smoke.versiones.set("/vault/lecturas.md", [{ savedMs: 1, texto: "antes" }]));
 await fila("/vault/lecturas.md").click({ button: "right" });
 await page.getByRole("menuitem", { name: "Renombrar" }).click();
 const campo = page.getByLabel(/Nuevo nombre para/);
@@ -43,6 +44,7 @@ const tras = await archivos();
 comprobar(tras.includes("/vault/libros.md") && !tras.includes("/vault/lecturas.md"), "renombrar nota: libros.md existe y lecturas.md no");
 const texto = (ruta) => page.evaluate((r) => window.__smoke.archivos.get(r) ?? "", ruta);
 comprobar((await texto("/vault/bienvenida.md")).includes("[[libros]]") && !(await texto("/vault/bienvenida.md")).includes("[[lecturas]]"), "renombrar nota: [[lecturas]] pasa a [[libros]] en bienvenida.md");
+comprobar(await page.evaluate(() => window.__smoke.versiones.has("/vault/libros.md") && !window.__smoke.versiones.has("/vault/lecturas.md")), "renombrar nota: el historial de versiones la sigue");
 
 console.log("\n--- recargar no parpadea ---");
 await page.evaluate(() => {

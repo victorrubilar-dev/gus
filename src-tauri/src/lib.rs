@@ -507,6 +507,7 @@ pub fn run() {
             historial::snapshot_note,
             historial::list_note_versions,
             historial::read_note_version,
+            historial::move_note_history,
             papelera::move_to_trash,
             papelera::list_trash,
             papelera::restore_from_trash,
