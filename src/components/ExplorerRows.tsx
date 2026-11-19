@@ -153,6 +153,8 @@ interface FileRowProps extends RowHandlers {
   isCurrent: boolean;
   /** Emoji de la nota: ocupa el sitio del icono de documento. */
   icon?: string;
+  /** Cambió fuera de la app y aún no se ha abierto. */
+  changedOutside?: boolean;
   onSelect: () => void;
 }
 
@@ -161,6 +163,7 @@ export function FileRow({
   file,
   isCurrent,
   icon,
+  changedOutside = false,
   staticMode,
   isRenaming,
   isDragged,
@@ -265,7 +268,17 @@ export function FileRow({
                 />
               )}
               <span className="relative min-w-0 flex-1">
-                <span className="block truncate font-mono text-body">{file.name}</span>
+                <span className="flex items-center gap-1.5">
+                  <span className="block min-w-0 truncate font-mono text-body">{file.name}</span>
+                  {changedOutside && (
+                    <span
+                      className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400"
+                      title={t("explorer.changedOutside")}
+                      role="img"
+                      aria-label={t("explorer.changedOutside")}
+                    />
+                  )}
+                </span>
                 <span className="block truncate text-meta text-gus-muted">
                   {file.kind === "image"
                     ? "imagen"

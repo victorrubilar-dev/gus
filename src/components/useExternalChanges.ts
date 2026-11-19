@@ -34,6 +34,19 @@ export function useExternalChanges({
     kind: "reloaded" | "conflict";
   } | null>(null);
   const externalNoticeTimerRef = useRef<number | null>(null);
+  /** Notas cambiadas fuera de la app que aún no se han abierto: el explorador las marca. */
+  const [changedOutside, setChangedOutside] = useState<ReadonlySet<string>>(() => new Set());
+
+  const openPath = note?.path ?? null;
+  useEffect(() => {
+    if (!openPath) return;
+    setChangedOutside((paths) => {
+      if (!paths.has(openPath)) return paths;
+      const next = new Set(paths);
+      next.delete(openPath);
+      return next;
+    });
+  }, [openPath]);
 
   /**
    * Cambios hechos fuera de la app (REQ-13): el backend vigila el vault y avisa
@@ -43,6 +56,9 @@ export function useExternalChanges({
     onFilesChanged();
 
     const open = notePathRef.current;
+    const others = paths.filter((path) => path !== open && path.endsWith(".md"));
+    if (others.length > 0) setChangedOutside((prev) => new Set([...prev, ...others]));
+
     if (!open || !note || !paths.includes(open)) return;
 
     let disk: string;
@@ -67,6 +83,7 @@ export function useExternalChanges({
   });
 
   useEffect(() => {
+    setChangedOutside(new Set());
     if (!ready || currentVault === null) return;
 
     const unlisten = listen<string[]>("vault-changed", (event) => {
@@ -89,5 +106,5 @@ export function useExternalChanges({
     [],
   );
 
-  return { externalNotice, setExternalNotice };
+  return { externalNotice, setExternalNotice, changedOutside };
 }

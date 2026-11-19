@@ -1012,6 +1012,7 @@ export default {
   "explorer.deleteEllipsis": "Eliminar…",
   "explorer.addFromPc": "Añadir archivos del PC…",
   "explorer.renameField": "Nuevo nombre para {name}",
+  "explorer.changedOutside": "Cambió fuera de Gus",
   "explorer.folderHint": "{path}\nArrastra para mover\nClic derecho: opciones",
   "explorer.trailDropHint": "{path}\nTambién puedes soltar aquí para mover",
   "explorer.emptyHintBefore": "Carpeta vacía. Crea una nota con",

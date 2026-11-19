@@ -80,6 +80,8 @@ export interface FileExplorerProps {
   onExportPdf?: (file: NoteFile) => void;
   /** Emoji de cada nota, por ruta. */
   noteIcons?: Record<string, string>;
+  /** Notas cambiadas fuera de la app desde la última vez que se abrieron (REQ-13). */
+  changedOutside?: ReadonlySet<string>;
   /** Pone o quita (`null`) el emoji de una nota. */
   onSetIcon?: (file: NoteFile, icon: string | null) => Promise<void>;
   /** Atajos vigentes: solo para los textos de ayuda de la barra de ruta. */
@@ -167,6 +169,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
     onEntriesMoved,
     onExportPdf,
     noteIcons,
+    changedOutside,
     onSetIcon,
     width,
     shortcuts,
@@ -920,6 +923,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
               file={file}
               isCurrent={file.id === currentId}
               icon={noteIcons?.[file.id]}
+              changedOutside={changedOutside?.has(file.id) ?? false}
               staticMode={staticMode}
               isRenaming={renamingId === file.id}
               isDragged={dragEntry?.path === file.id}

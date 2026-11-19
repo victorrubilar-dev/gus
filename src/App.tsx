@@ -223,7 +223,7 @@ function App({
     handleSelectBaseDir,
   } = useVaults({ onVaultSwitch: closeOpenNote });
 
-  const { externalNotice, setExternalNotice } = useExternalChanges({
+  const { externalNotice, setExternalNotice, changedOutside } = useExternalChanges({
     ready: bootStatus === "ready",
     currentVault,
     note,
@@ -526,6 +526,7 @@ function App({
         onFileDeleted={handleFileDeleted}
         onBeforeFileAction={handleBeforeFileAction}
         onEntriesMoved={(moves) => void relinkMoved(moves)}
+        changedOutside={changedOutside}
         onExportPdf={handleExportPdf}
         noteIcons={noteIcons}
         onSetIcon={setNoteIconFor}

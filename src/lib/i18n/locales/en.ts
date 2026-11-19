@@ -1014,6 +1014,7 @@ const en: Record<keyof typeof es, string> = {
   "explorer.moveFileTo": "Move file to…",
   "explorer.deleteEllipsis": "Delete…",
   "explorer.addFromPc": "Add files from your computer…",
+  "explorer.changedOutside": "Changed outside Gus",
   "explorer.renameField": "New name for {name}",
   "explorer.folderHint": "{path}\nDrag to move\nRight click: options",
   "explorer.trailDropHint": "{path}\nYou can also drop here to move",

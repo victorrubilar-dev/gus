@@ -168,6 +168,15 @@ comprobar(
   "renombrar «diario»: el enlace con ruta se actualiza, el alias se conserva y el código en línea no se toca",
 );
 
+console.log("\n--- cambio externo: punto en el explorador hasta abrir la nota ---");
+await page.evaluate(() => window.__smoke.emitir("vault-changed", ["/vault/indice.md"]));
+await page.waitForTimeout(400);
+const punto = fila("/vault/indice.md").getByRole("img", { name: "Cambió fuera de Gus" });
+comprobar(await punto.isVisible(), "una nota cambiada fuera de la app lleva el punto");
+await fila("/vault/indice.md").click();
+await page.waitForTimeout(400);
+comprobar((await punto.count()) === 0, "al abrirla el punto desaparece");
+
 await browser.close();
 console.log(fallos.length === 0 ? "\nTODO EN VERDE" : `\n${fallos.length} comprobación(es) fallaron`);
 process.exit(fallos.length === 0 ? 0 : 1);
