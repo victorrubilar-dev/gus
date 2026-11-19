@@ -528,6 +528,7 @@ function App({
         onBeforeFileAction={handleBeforeFileAction}
         onEntriesMoved={(moves) => void relinkMoved(moves)}
         changedOutside={changedOutside}
+        templatesFolder={settings.templatesFolder}
         onExportPdf={handleExportPdf}
         noteIcons={noteIcons}
         onSetIcon={setNoteIconFor}

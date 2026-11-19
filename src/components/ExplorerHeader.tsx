@@ -59,6 +59,7 @@ export default function ExplorerHeader({
       )}
       <button
         type="button"
+        data-new-note
         onClick={() => void onNewNote()}
         disabled={busy}
         title={t("explorer.newNote")}

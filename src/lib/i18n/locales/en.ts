@@ -345,6 +345,12 @@ const en: Record<keyof typeof es, string> = {
   "settings.dailyNotesTemplate.hint":
     "Available placeholders: {title} (long date), {date} (2026-10-09), {weekday}, {month} and {year}.",
   "settings.dailyNotesFolderPlaceholder": "Diary",
+  "settings.templatesFolder": "Templates folder",
+  "settings.templatesFolder.desc":
+    "Notes in this folder show up as templates when you press “New note”. They accept the same placeholders as the daily note: {title}, {date}, {weekday}, {month} and {year}.",
+  "settings.templatesFolderPlaceholder": "Templates",
+  "explorer.newFromTemplate": "New note from template",
+  "explorer.blankNote": "Blank note",
   "settings.hideCompletedTasks": "Hide completed",
   "settings.hideCompletedTasks.desc": "The task list only shows the pending ones.",
   "settings.calendarShowCompleted": "Show completed in the calendar",

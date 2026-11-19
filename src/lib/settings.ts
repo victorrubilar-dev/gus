@@ -15,6 +15,7 @@ import {
 import { DEFAULT_SHORTCUTS, normalizeShortcuts, type ShortcutMap } from "./shortcuts";
 import { AUTO_THEME, DEFAULT_THEME, isThemeKey, type ThemePalette } from "./themes";
 import { customThemeKey, normalizeCustomThemes, type CustomTheme } from "./customThemes";
+import { TEMPLATES_DEFAULT_FOLDER } from "./noteTemplates";
 
 export type AccentKey = "terracota" | "menta" | "marfil" | "cielo";
 
@@ -45,6 +46,8 @@ export interface AppSettings {
   dailyNotesFolder: string;
   /** Plantilla con la que se crea la nota de un día nuevo. */
   dailyNotesTemplate: string;
+  /** Carpeta del vault con las plantillas que ofrece «Nueva nota». */
+  templatesFolder: string;
   /** Avisos del sistema (vencimientos y nota del día). Opt-in. */
   notificationsEnabled: boolean;
   /** Días de antelación con los que se avisa del vencimiento de una tarea. */
@@ -97,6 +100,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   shortcuts: { ...DEFAULT_SHORTCUTS },
   dailyNotesFolder: DAILY_DEFAULT_FOLDER,
   dailyNotesTemplate: DAILY_DEFAULT_TEMPLATE,
+  templatesFolder: TEMPLATES_DEFAULT_FOLDER,
   // Opt-in: los avisos del sistema piden permiso al SO, así que están
   // apagados hasta que alguien los enciende.
   notificationsEnabled: false,
@@ -146,6 +150,7 @@ export function normalizeSettings(raw: unknown): AppSettings {
     shortcuts: normalizeShortcuts(data.shortcuts),
     dailyNotesFolder: sanitizeDailyFolder(data.dailyNotesFolder),
     dailyNotesTemplate: normalizeDailyTemplate(data.dailyNotesTemplate),
+    templatesFolder: sanitizeDailyFolder(data.templatesFolder, TEMPLATES_DEFAULT_FOLDER),
     notificationsEnabled: asBool(
       data.notificationsEnabled,
       DEFAULT_SETTINGS.notificationsEnabled,
@@ -262,7 +267,7 @@ export type SettingDefinition = DefinitionBase &
     | { kind: "theme"; key: "theme" }
     | { kind: "shortcuts"; key: "shortcuts" }
     /** Campo de una línea (p. ej. la carpeta de las notas diarias). */
-    | { kind: "text"; key: "dailyNotesFolder"; maxLength: number; placeholderKey: MessageKey }
+    | { kind: "text"; key: "dailyNotesFolder" | "templatesFolder"; maxLength: number; placeholderKey: MessageKey }
     /** Campo de varias líneas (p. ej. la plantilla de las notas diarias). */
     | {
         kind: "textarea";
@@ -376,6 +381,16 @@ export const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     hintKey: "settings.dailyNotesTemplate.hint",
     keywords:
       "plantilla template diario daily estructura scaffold plantilla diaria",
+  },
+  {
+    kind: "text",
+    category: "notes",
+    key: "templatesFolder",
+    labelKey: "settings.templatesFolder",
+    descriptionKey: "settings.templatesFolder.desc",
+    maxLength: 64,
+    placeholderKey: "settings.templatesFolderPlaceholder",
+    keywords: "plantilla plantillas template templates nueva nota carpeta folder modelo",
   },
   {
     kind: "toggle",

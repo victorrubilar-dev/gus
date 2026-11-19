@@ -177,6 +177,21 @@ await fila("/vault/indice.md").click();
 await page.waitForTimeout(400);
 comprobar((await punto.count()) === 0, "al abrirla el punto desaparece");
 
+console.log("\n--- nueva nota desde plantilla ---");
+await page.evaluate(() => {
+  for (const ruta of [...window.__smoke.archivos.keys()]) if (ruta.includes("nueva-nota")) window.__smoke.archivos.delete(ruta);
+  window.__smoke.archivos.set("/vault/Plantillas/reunion.md", "# Reunión {date}\n\n- Asistentes:\n");
+});
+await btn("Nueva nota").click();
+const menuPlantillas = page.getByRole("menu", { name: "Nueva nota desde plantilla" });
+await menuPlantillas.waitFor({ timeout: 3000 }).catch(() => {});
+comprobar(await menuPlantillas.getByRole("menuitem", { name: "reunion" }).isVisible(), "con plantillas, «Nueva nota» ofrece elegir una");
+comprobar(await menuPlantillas.getByRole("menuitem", { name: "Nota en blanco" }).evaluate((el) => el === document.activeElement), "el foco va a la primera opción");
+await menuPlantillas.getByRole("menuitem", { name: "reunion" }).click();
+await page.waitForTimeout(400);
+const creada = await page.evaluate(() => [...window.__smoke.archivos].find(([ruta]) => ruta.includes("nueva-nota"))?.[1] ?? "");
+comprobar(/^# Reunión \d{4}-\d{2}-\d{2}\n\n- Asistentes:/.test(creada), "la nota nueva copia la plantilla con la fecha rellenada");
+
 await browser.close();
 console.log(fallos.length === 0 ? "\nTODO EN VERDE" : `\n${fallos.length} comprobación(es) fallaron`);
 process.exit(fallos.length === 0 ? 0 : 1);

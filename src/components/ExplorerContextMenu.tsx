@@ -11,7 +11,7 @@ import type { NoteFile } from "./FileExplorer";
 export interface MenuState {
   /** `""` cuando el menú es el de la lista (no apunta a ninguna entrada). */
   id: string;
-  kind: "file" | "folder" | "panel";
+  kind: "file" | "folder" | "panel" | "templates";
   x: number;
   y: number;
 }
@@ -66,6 +66,10 @@ interface ExplorerContextMenuProps {
   onBackFromIcon: () => void;
   onExport: (file: NoteFile) => void;
   onNewNote: () => void;
+  /** Plantillas del menú de «Nueva nota». */
+  templates: readonly { path: string; name: string }[];
+  /** `null`: nota en blanco. */
+  onNewFromTemplate: (path: string | null) => void;
   onNewFolder: () => void;
   onImport: () => void;
   onRefresh: () => void;
@@ -80,9 +84,13 @@ export default function ExplorerContextMenu(props: ExplorerContextMenuProps) {
   return (
     <div
       role="menu"
-      aria-label={t(menu.kind === "panel" ? "explorer.panelOptions" : "explorer.itemOptions", {
-        name: target?.name ?? "",
-      })}
+      aria-label={
+        menu.kind === "templates"
+          ? t("explorer.newFromTemplate")
+          : t(menu.kind === "panel" ? "explorer.panelOptions" : "explorer.itemOptions", {
+              name: target?.name ?? "",
+            })
+      }
       className="fixed z-30 w-52 overflow-hidden rounded-lg border border-gus-border bg-gus-card shadow-xl shadow-black/40"
       style={{ left: menu.x, top: menu.y }}
     >
@@ -185,6 +193,19 @@ export default function ExplorerContextMenu(props: ExplorerContextMenuProps) {
           <MenuItem onClick={() => props.onAskDelete(menu.id)} tone={DANGER_ITEM}>
             Eliminar…
           </MenuItem>
+        </div>
+      ) : menu.kind === "templates" ? (
+        <div className="max-h-72 overflow-y-auto py-1">
+          <MenuItem onClick={() => props.onNewFromTemplate(null)}>{t("explorer.blankNote")}</MenuItem>
+          {props.templates.map((template, index) => (
+            <MenuItem
+              key={template.path}
+              onClick={() => props.onNewFromTemplate(template.path)}
+              tone={clsx(index === 0 && "border-t border-gus-border", NORMAL_ITEM)}
+            >
+              {template.name.replace(/\.md$/i, "")}
+            </MenuItem>
+          ))}
         </div>
       ) : menu.kind === "panel" ? (
         <div className="py-1">

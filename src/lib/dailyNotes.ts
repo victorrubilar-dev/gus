@@ -48,8 +48,8 @@ export function dailyRelativePath(folder: string, date: Date): string {
  * prohibidos en nombres de archivo, y con un tope de profundidad. Lo que
  * quede vacío cae a la carpeta por defecto.
  */
-export function sanitizeDailyFolder(raw: unknown): string {
-  if (typeof raw !== "string") return DAILY_DEFAULT_FOLDER;
+export function sanitizeDailyFolder(raw: unknown, fallback: string = DAILY_DEFAULT_FOLDER): string {
+  if (typeof raw !== "string") return fallback;
 
   const segments = raw
     .trim()
@@ -60,7 +60,7 @@ export function sanitizeDailyFolder(raw: unknown): string {
     .map((segment) => safeFileName(segment))
     .slice(0, MAX_FOLDER_DEPTH);
 
-  return segments.join("/") || DAILY_DEFAULT_FOLDER;
+  return segments.join("/") || fallback;
 }
 
 /**

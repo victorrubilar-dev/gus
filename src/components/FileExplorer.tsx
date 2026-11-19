@@ -30,6 +30,8 @@ import {
   safeFileName,
 } from "../lib/fileName";
 import { useT } from "../lib/i18n";
+import { templatesIn } from "../lib/noteTemplates";
+import { renderDailyTemplate } from "../lib/dailyNotes";
 import type { PathMove } from "../lib/wikiRename";
 import {
   comboFor,
@@ -82,6 +84,8 @@ export interface FileExplorerProps {
   noteIcons?: Record<string, string>;
   /** Notas cambiadas fuera de la app desde la última vez que se abrieron (REQ-13). */
   changedOutside?: ReadonlySet<string>;
+  /** Carpeta del vault (relativa) con las plantillas de «Nueva nota». */
+  templatesFolder?: string;
   /** Pone o quita (`null`) el emoji de una nota. */
   onSetIcon?: (file: NoteFile, icon: string | null) => Promise<void>;
   /** Atajos vigentes: solo para los textos de ayuda de la barra de ruta. */
@@ -170,6 +174,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
     onExportPdf,
     noteIcons,
     changedOutside,
+    templatesFolder,
     onSetIcon,
     width,
     shortcuts,
@@ -213,6 +218,8 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
   const [reloadKey, setReloadKey] = useState(0);
 
   const [menu, setMenu] = useState<MenuState | null>(null);
+  /** Plantillas que ofrece el menú de «Nueva nota» (se leen al pulsarlo). */
+  const [templates, setTemplates] = useState<{ path: string; name: string }[]>([]);
   const [trailMenuOpen, setTrailMenuOpen] = useState(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
@@ -316,6 +323,11 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
     setDestinations(null);
     setRenamingId(id);
   }
+
+  // Abierto con el teclado (Ctrl+N), el menú de plantillas recibe el foco.
+  useEffect(() => {
+    if (menu?.kind === "templates") document.querySelector<HTMLElement>('[role="menu"] [role="menuitem"]')?.focus();
+  }, [menu]);
 
   useEffect(() => {
     if (!menu && !trailMenuOpen) return;
@@ -585,7 +597,11 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
     }
   }
 
-  async function handleNewNote() {
+  /**
+   * Sin argumento, si la carpeta de plantillas tiene notas abre el menú para
+   * elegir; `null` es nota en blanco y una ruta, la plantilla a copiar.
+   */
+  async function handleNewNote(template?: string | null) {
     if (staticMode) {
       const file: NoteFile = { id: createId(), name: nextName(items), kind: "note" };
       const next = [file, ...items];
@@ -596,12 +612,28 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
       return;
     }
 
+    if (template === undefined && templatesFolder) {
+      const notes = await invoke<{ path: string; name: string; relative: string }[]>("list_vault_notes", {
+        path: vaultPath,
+      }).catch(() => []);
+      const found = templatesIn(notes, templatesFolder);
+      if (found.length > 0) {
+        setTemplates(found);
+        const anchor = document.querySelector("[data-new-note]")?.getBoundingClientRect();
+        openMenu("", "templates", anchor?.left ?? window.innerWidth / 3, (anchor?.bottom ?? 120) + 4);
+        return;
+      }
+    }
+
     setActionError(null);
     setBusyId("__new__");
     try {
+      const content = template
+        ? renderDailyTemplate(await invoke<string>("read_vault_file", { path: template }), new Date())
+        : "# Nueva nota\n\n";
       const path = await invoke<string>("create_vault_file", {
         path: joinPath(currentDir, "nueva-nota.md"),
-        content: "# Nueva nota\n\n",
+        content,
       });
       const file: NoteFile = {
         id: path,
@@ -972,7 +1004,7 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
         )}
       </ul>
 
-      {menu && (menuTarget || menu.kind === "panel") && (
+      {menu && (menuTarget || menu.kind === "panel" || menu.kind === "templates") && (
         <ExplorerContextMenu
           menu={menu}
           folder={menuFolder}
@@ -1022,6 +1054,11 @@ const FileExplorer = forwardRef<FileExplorerHandle, FileExplorerProps>(function 
           onNewNote={() => {
             setMenu(null);
             void handleNewNote();
+          }}
+          templates={templates}
+          onNewFromTemplate={(path) => {
+            setMenu(null);
+            void handleNewNote(path);
           }}
           onNewFolder={() => {
             setMenu(null);

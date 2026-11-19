@@ -225,6 +225,11 @@ const respuestas: Record<string, (args: Record<string, unknown>) => unknown> = {
     archivos.set(String(args.path), String(args.content));
     return null;
   },
+  list_vault_notes: () =>
+    [...archivos.keys()]
+      .filter((ruta) => ruta.endsWith(".md"))
+      .sort()
+      .map((ruta) => ({ name: ruta.split("/").pop() as string, path: ruta, relative: ruta.replace("/vault/", ""), modifiedMs: null })),
   create_vault_file: (args) => {
     archivos.set(String(args.path), String(args.content));
     return args.path;

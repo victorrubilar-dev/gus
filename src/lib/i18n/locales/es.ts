@@ -343,6 +343,12 @@ export default {
   "settings.dailyNotesTemplate.hint":
     "Huecos disponibles: {title} (fecha larga), {date} (2026-10-09), {weekday}, {month} y {year}.",
   "settings.dailyNotesFolderPlaceholder": "Diario",
+  "settings.templatesFolder": "Carpeta de plantillas",
+  "settings.templatesFolder.desc":
+    "Las notas de esta carpeta aparecen como plantillas al pulsar «Nueva nota». Admiten los mismos huecos que la nota diaria: {title}, {date}, {weekday}, {month} y {year}.",
+  "settings.templatesFolderPlaceholder": "Plantillas",
+  "explorer.newFromTemplate": "Nueva nota desde plantilla",
+  "explorer.blankNote": "Nota en blanco",
   "settings.hideCompletedTasks": "Ocultar completadas",
   "settings.hideCompletedTasks.desc": "La lista de tareas solo muestra las pendientes.",
   "settings.calendarShowCompleted": "Mostrar completadas en el calendario",
