@@ -13,10 +13,13 @@ const browser = await chromium.launch({ args: ["--no-sandbox"] });
 const contexto = await browser.newContext({ viewport: { width: 1280, height: 800 }, locale: "es-ES" });
 const page = await contexto.newPage();
 // Fecha fija: la semilla y el calendario dependen de «hoy» y la línea base no debe caducar cada día.
-await page.clock.setFixedTime(new Date(2026, 9, 30, 12, 0, 0));
+// Con `setFixedTime` el reloj de Framer Motion se congela y las vistas se quedan a medio aparecer:
+// se instala el reloj en esa fecha y se deja correr (`resume`) tras cargar.
+await page.clock.install({ time: new Date(2026, 9, 30, 12, 0, 0) });
 page.on("pageerror", (e) => console.log("  [excepción]", String(e).slice(0, 300)));
 
 await page.goto(`http://localhost:${puerto}/bench/app-smoke.html?semilla&tema=${tema}`, { waitUntil: "networkidle" });
+await page.clock.resume();
 await page.getByRole("button", { name: "Notas", exact: true }).first().waitFor({ timeout: 15000 });
 
 const barra = (n) => page.locator('[data-tour="sidebar"]').getByRole("button", { name: n, exact: true }).first();
@@ -26,6 +29,8 @@ const foto = async (nombre) => {
 };
 
 await barra("Notas").click();
+// Con Vite en frío la primera vista tarda más que los 700 ms de `foto`.
+await page.locator("[data-entry-id]").first().waitFor({ timeout: 15000 });
 await foto("1-notas-lista");
 await page.getByText("bienvenida.md").first().click();
 await foto("2-notas-editor");
