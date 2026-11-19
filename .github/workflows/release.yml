@@ -13,36 +13,17 @@ env:
 
 jobs:
   # ─────────────────────────────────────────────────────────────
-  # 0) Tests: si fallan, no se compila ni se publica nada
+  # 0) Tests, benchmarks y chequeos: si fallan, no se compila nada
   # ─────────────────────────────────────────────────────────────
+  # Tests y benchmarks: los mismos de cada push a develop (ci.yml).
+  ci:
+    uses: ./.github/workflows/ci.yml
+
   test:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install Linux dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
-            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
-
-      - name: Setup PNPM
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install JS dependencies
-        run: pnpm install --frozen-lockfile
 
       # La app trae un actualizador que verifica una firma: sin la clave privada
       # no se pueden firmar los instaladores y la build fallaría a mitad de camino.
@@ -65,20 +46,11 @@ jobs:
             exit 1
           fi
 
-      - name: TypeScript and frontend tests
-        run: |
-          pnpm exec tsc --noEmit
-          pnpm test
-
-      - name: Rust tests
-        working-directory: src-tauri
-        run: cargo test
-
   # ─────────────────────────────────────────────────────────────
   # 1) Compila en las 3 plataformas y sube los bundles como artifacts
   # ─────────────────────────────────────────────────────────────
   build:
-    needs: test
+    needs: [ci, test]
     strategy:
       fail-fast: false
       matrix:

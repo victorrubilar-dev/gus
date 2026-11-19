@@ -1,0 +1,96 @@
+name: CI
+
+# Tests y benchmarks en cada push a develop y en cada PR. `release.yml` lo
+# reutiliza (workflow_call) antes de compilar, así que una release nunca sale
+# con algo de esto en rojo.
+on:
+  push:
+    branches: [develop]
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Setup PNPM
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install JS dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: TypeScript and frontend tests
+        run: |
+          pnpm exec tsc --noEmit
+          pnpm test
+
+      - name: Rust tests
+        working-directory: src-tauri
+        run: cargo test
+
+  benches:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PNPM
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install JS dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Chromium for Playwright
+        run: pnpm exec playwright-core install --with-deps chromium
+
+      # Fuera quedan `bench:regresion` y `bench:capturas`: comparan capturas
+      # tomadas en la máquina del autor y aquí las fuentes del sistema son otras.
+      - name: Benchmarks (Playwright contra Vite)
+        run: |
+          pnpm exec vite --port 5199 --strictPort > vite.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf -o /dev/null http://localhost:5199 && break; sleep 1; done
+          failed=""
+          for b in bench bench:menu bench:images bench:explorer bench:app bench:botones \
+                   bench:operaciones bench:vaults bench:soltar bench:tareas bench:resumen \
+                   bench:inicio bench:pizarras bench:ajustes bench:galeria bench:lectura \
+                   bench:temas bench:medida bench:pestanas bench:foco bench:corrector \
+                   bench:portapapeles bench:cursor bench:tablas; do
+            echo "::group::$b"
+            pnpm -s "$b" || failed="$failed $b"
+            echo "::endgroup::"
+          done
+          if [ -n "$failed" ]; then
+            echo "::error::Benchmarks en rojo:$failed"
+            exit 1
+          fi
