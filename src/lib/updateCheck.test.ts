@@ -121,5 +121,6 @@ describe("pickInstaller", () => {
   it("devuelve null si la plataforma no se reconoce o no hay instalador para ella", () => {
     expect(pickInstaller(assets, "Mozilla/5.0 (iPhone)")).toBeNull();
     expect(pickInstaller([assets[0]], WINDOWS)).toBeNull();
+    expect(pickInstaller(assets, "Mozilla/5.0 (Linux; Android 14; Pixel 8)")).toBeNull();
   });
 });

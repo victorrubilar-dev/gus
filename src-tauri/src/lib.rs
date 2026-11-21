@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
+#[cfg(desktop)]
 use tauri_plugin_opener::OpenerExt;
 
 mod biblioteca;
@@ -106,6 +107,7 @@ const UPDATE_DOWNLOAD_PREFIX: &str = "https://github.com/victorrubilar-dev/gus/r
 const INSTALLER_EXTENSIONS: [&str; 4] = [".exe", ".msi", ".dmg", ".appimage"];
 
 /// Nombre del instalador de una URL de release, o error si no es uno de Gus.
+#[cfg_attr(mobile, allow(dead_code))]
 fn installer_name(url: &str) -> Result<&str, String> {
     // La ruta es `<etiqueta>/<fichero>`: el fichero es lo que se guarda.
     let rest = url
@@ -134,7 +136,15 @@ fn can_self_update() -> bool {
     }
 }
 
+/// En el móvil no hay instalador que bajar: la APK se baja desde la release.
+#[cfg(mobile)]
+#[tauri::command]
+async fn download_update(_app: AppHandle, _url: String) -> Result<String, String> {
+    Err("En el móvil la actualización se baja desde la página de la release".to_string())
+}
+
 /// Baja el instalador de una release a Descargas y lo abre para instalarlo.
+#[cfg(desktop)]
 #[tauri::command]
 async fn download_update(app: AppHandle, url: String) -> Result<String, String> {
     let name = installer_name(&url)?;
@@ -445,16 +455,24 @@ fn unquote_yaml(value: &str) -> String {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_notification::init())
-        .manage(vigilancia::VaultWatcher::default())
-        .on_menu_event(|app, event| {
-            let _ = app.emit(menu::MENU_EVENT, event.id().0.clone());
-        })
+        .manage(vigilancia::VaultWatcher::default());
+    // El menú nativo solo existe en escritorio.
+    #[cfg(desktop)]
+    let builder = builder.on_menu_event(|app, event| {
+        let _ = app.emit(menu::MENU_EVENT, event.id().0.clone());
+    });
+    builder
         .setup(|app| {
+            // Android no define HOME: la configuración (`~/.config/gus`) va a los datos privados de la app.
+            #[cfg(target_os = "android")]
+            if let Ok(dir) = app.path().app_data_dir() {
+                std::env::set_var("HOME", dir);
+            }
             purge_expired_trash(&legacy_trash_dir());
             // Actualizador y reinicio: solo en escritorio, el móvil se actualiza por su tienda.
             #[cfg(desktop)]

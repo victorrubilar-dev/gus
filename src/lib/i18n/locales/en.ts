@@ -45,6 +45,7 @@ const en: Record<keyof typeof es, string> = {
   "app.tab.calendar": "Calendar",
   "app.tab.graph": "Graph",
   "app.tab.search": "Search",
+  "app.tab.settingsShort": "Settings",
   "app.tab.library": "Library",
   "app.tab.gallery": "Gallery",
   "tasks.newSubtask": "New subtask…",
@@ -213,6 +214,7 @@ const en: Record<keyof typeof es, string> = {
   "app.trash": "Trash",
   "app.settings": "Settings",
   "app.collapseSidebar": "Collapse sidebar",
+  "app.backToNotes": "Back to notes",
   "app.expandSidebar": "Expand sidebar",
   "app.loadingNote": "Loading note…",
   "tabs.label": "Open notes",
@@ -1167,6 +1169,7 @@ const en: Record<keyof typeof es, string> = {
   "onboarding.subtitle":
     "Notes, tasks and habits in one place. Everything stays on your computer: no account, no cloud.",
   "onboarding.start": "Get started",
+  "onboarding.subtitleMobile": "Notes, tasks and habits in one place. Everything stays on your phone: no account, no cloud.",
   "onboarding.setup": "Before you start, pick Gus's language and style.",
   "onboarding.language": "Application language",
   "onboarding.languageHint":
@@ -1214,6 +1217,7 @@ const en: Record<keyof typeof es, string> = {
   "firstVault.existingButton": "Choose folder…",
   "firstVault.or": "or",
   "firstVault.back": "Back",
+  "firstVault.introMobile": "A vault is a folder on your phone where Gus keeps your notes as .md files. Nothing leaves your phone.",
   "tour.habits.title": "Habits",
   "tour.habits.body": "Pick fixed days or a weekly goal (for example, 3 times a week, any day you like) and keep track of your streaks.",
   "tour.more.title": "And much more",

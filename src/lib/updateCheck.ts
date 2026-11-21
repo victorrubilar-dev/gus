@@ -20,6 +20,8 @@ export interface InstallerAsset {
 const INSTALLERS_BY_PLATFORM: [RegExp, string[]][] = [
   [/Windows/i, [".exe", ".msi"]],
   [/Mac/i, [".dmg"]],
+  // Antes que Linux: su user agent también dice «Linux». La APK se baja desde la release.
+  [/Android/i, []],
   [/Linux/i, [".appimage"]],
 ];
 

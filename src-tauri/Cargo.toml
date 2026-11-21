@@ -29,8 +29,6 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # Miniaturas para el selector de imágenes del menú «/» (y nada más).
 image = "0.25"
-# Descarga del instalador de una release (solo a petición del usuario, ver PRIVACY.md).
-reqwest = { version = "0.13", default-features = false, features = ["native-tls"] }
 notify-debouncer-mini = "0.7.0"
 
 
@@ -45,3 +43,6 @@ strip = true
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-process = "2"
 tauri-plugin-updater = "2"
+# Descarga del instalador de una release (solo a petición del usuario, ver PRIVACY.md).
+# Solo escritorio: native-tls pide OpenSSL, que Android no trae.
+reqwest = { version = "0.13", default-features = false, features = ["native-tls"] }

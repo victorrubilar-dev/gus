@@ -1,4 +1,4 @@
-import { useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { m } from "framer-motion";
 import clsx from "clsx";
 import {
@@ -13,6 +13,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   PenTool,
+  Search,
   Settings as SettingsIcon,
   StickyNote,
   Trash2,
@@ -20,6 +21,7 @@ import {
 } from "lucide-react";
 import gusIcon from "../assets/gus-icon-512.png";
 import { useT, type MessageKey } from "../lib/i18n";
+import { IS_MOBILE } from "../lib/platform";
 import { usePanelWidth } from "./usePanelWidth";
 
 export type TabId =
@@ -47,6 +49,53 @@ export const SIDEBAR_TABS: { id: TabId; labelKey: MessageKey; Icon: LucideIcon }
   { id: "habits", labelKey: "app.tab.habits", Icon: Flame },
   { id: "boards", labelKey: "app.tab.boards", Icon: PenTool },
 ];
+
+/** Secciones de la barra inferior en móvil: el núcleo de la app. */
+const MOBILE_TABS: { id: TabId; labelKey: MessageKey; Icon: LucideIcon }[] = [
+  ...SIDEBAR_TABS.filter((tab) => ["home", "notes", "tasks", "calendar"].includes(tab.id)),
+  { id: "search", labelKey: "app.tab.search", Icon: Search },
+  { id: "settings", labelKey: "app.tab.settingsShort", Icon: SettingsIcon },
+];
+
+/** Barra de navegación inferior del móvil, a la altura del pulgar. */
+function MobileNav({ activeTab, onSelectTab }: Pick<SidebarProps, "activeTab" | "onSelectTab">) {
+  const t = useT();
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
+  useEffect(() => {
+    // MainActivity encoge el WebView con el teclado: si se come más de un cuarto
+    // de la pantalla, está abierto y la barra solo quitaría sitio al texto.
+    const update = () => setKeyboardOpen(window.innerHeight < window.screen.height * 0.75);
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+  if (keyboardOpen) return null;
+  return (
+    <nav className="flex shrink-0 justify-around border-t border-gus-border bg-gus-panel px-1 py-1">
+      {MOBILE_TABS.map(({ id, labelKey, Icon }) => {
+        const label = t(labelKey);
+        const active = activeTab === id;
+        return (
+          <button
+            key={id}
+            type="button"
+            aria-label={label}
+            aria-pressed={active}
+            onClick={() => onSelectTab(id)}
+            className={clsx(
+              "flex min-h-12 min-w-12 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl outline-none",
+              "focus-visible:ring-2 focus-visible:ring-gus-accent/60",
+              active ? "text-gus-accent" : "text-gus-muted",
+            )}
+          >
+            <Icon className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
+            <span className="max-w-full truncate text-[0.65rem] leading-tight">{label}</span>
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
 
 const SIDEBAR_MIN_WIDTH = 64;
 const SIDEBAR_MAX_WIDTH = 320;
@@ -133,6 +182,7 @@ function SectionButton({ label, labeled, active, onClick, children }: SidebarBut
 
 export default function Sidebar({ sidebar, activeTab, onSelectTab, onLeaveVault }: SidebarProps) {
   const t = useT();
+  if (IS_MOBILE) return <MobileNav activeTab={activeTab} onSelectTab={onSelectTab} />;
   const { labeled } = sidebar;
   const plainButton = clsx(
     "flex items-center rounded-xl text-gus-muted outline-none transition-colors",

@@ -4,6 +4,8 @@ import clsx from "clsx";
 import { ArrowLeft, FolderOpen, ShieldCheck } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 import gusIcon from "../assets/gus-icon-512.png";
+import { IS_MOBILE } from "../lib/platform";
+import { folderPickerPath } from "../lib/androidPath";
 import { joinPath } from "../lib/fileName";
 import { useT } from "../lib/i18n";
 
@@ -36,7 +38,7 @@ export default function FirstVaultStep({ baseDir, busy, error, onCreate, onAddEx
     setLocalError(null);
     try {
       const selected = await open({ directory: true, multiple: false, title: t("vaults.baseFolder") });
-      return typeof selected === "string" ? selected : null;
+      return typeof selected === "string" ? folderPickerPath(selected) : null;
     } catch (reason: unknown) {
       setLocalError(String(reason));
       return null;
@@ -95,7 +97,7 @@ export default function FirstVaultStep({ baseDir, busy, error, onCreate, onAddEx
 
         <p className="mt-3 flex items-start gap-2 text-sm leading-6 text-gus-muted">
           <ShieldCheck className="mt-1 h-4 w-4 shrink-0 text-gus-accent" strokeWidth={1.75} aria-hidden="true" />
-          {t("firstVault.intro")}
+          {t(IS_MOBILE ? "firstVault.introMobile" : "firstVault.intro")}
         </p>
 
         {shownError && (

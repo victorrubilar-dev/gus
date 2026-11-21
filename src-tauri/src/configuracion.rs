@@ -225,6 +225,10 @@ pub struct AppConfig {
 }
 
 pub(crate) fn default_vaults_base() -> String {
+    // En Android, una carpeta pública: así otra app (Syncthing, Drive…) puede sincronizarla.
+    if cfg!(target_os = "android") {
+        return "/storage/emulated/0/Documents/Gus".to_string();
+    }
     match home_dir() {
         Some(home) => format!("{home}/Documents/gus-vaults"),
         None => "~/Documents/gus-vaults".to_string(),

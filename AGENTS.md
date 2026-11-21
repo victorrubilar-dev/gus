@@ -302,8 +302,13 @@ pnpm build
 # Build de app de escritorio (todas las plataformas)
 pnpm tauri build
 
+# Android (APK arm64). Toolchain en ~/Android: JDK 21, SDK y NDK.
+export JAVA_HOME=~/Android/jdk-21 ANDROID_HOME=~/Android/Sdk NDK_HOME=~/Android/Sdk/ndk/<versión>
+pnpm tauri android build --apk --target aarch64 --debug   # sin keystore
+pnpm tauri android build --apk --target aarch64           # release: necesita src-tauri/gen/android/keystore.properties
+
 # Tests
-pnpm test              # Todos los tests Vitest (383 tests en 45 ficheros)
+pnpm test              # Todos los tests Vitest (387 tests en 46 ficheros)
 pnpm test:watch        # Modo watch
 
 # Type checking

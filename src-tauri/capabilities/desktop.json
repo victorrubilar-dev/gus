@@ -1,0 +1,13 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "desktop",
+  "description": "Actualizador y reinicio: solo escritorio (el móvil se actualiza con la APK de la release)",
+  "windows": [
+    "main"
+  ],
+  "platforms": ["linux", "macOS", "windows"],
+  "permissions": [
+    "updater:default",
+    "process:allow-restart"
+  ]
+}

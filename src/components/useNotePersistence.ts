@@ -39,11 +39,14 @@ export function useNotePersistence({
   const sequenceRef = useRef(0);
   const dirtyRef = useRef(false);
   const autoSaveRef = useRef(autoSave);
+  /** Lo último escrito, para saber si cambió mientras se guardaba. */
+  const latestRef = useRef({ title, content });
   // Espejos sincronizados tras el commit y antes del paint: no se escribe en
   // un ref durante el render y, como persist/autoSave se llaman también desde
   // handlers, la ref es la vía válida (useEffectEvent solo sirve en efectos).
   useLayoutEffect(() => {
     autoSaveRef.current = autoSave;
+    latestRef.current = { title, content };
     dirtyRef.current = saveState === "dirty";
   });
 
@@ -75,6 +78,9 @@ export function useNotePersistence({
 
     ownPathRef.current = target;
     autoSaveRef.current?.({ path: target, title: safeFileName(title), content });
+    // Lo escrito mientras se guardaba sigue pendiente: marcarlo como guardado
+    // cancelaría el autoguardado ya programado y `flush` no lo escribiría nunca.
+    if (latestRef.current.content !== content || latestRef.current.title !== title) return true;
     setSaveState("saved");
     setSaveError(null);
     return true;

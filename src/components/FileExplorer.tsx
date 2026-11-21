@@ -74,7 +74,7 @@ export interface FileExplorerProps {
   /** Abre la búsqueda a texto completo del vault. */
   onOpenSearch?: () => void;
   onFileDeleted?: (path: string) => void;
-  width?: number;
+  width?: number | string;
   onBeforeFileAction?: (path: string) => void | Promise<void>;
   /** Se renombró o movió una nota o carpeta: la app actualiza los `[[enlaces]]`. */
   onEntriesMoved?: (moves: PathMove[]) => void;

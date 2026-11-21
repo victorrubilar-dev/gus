@@ -1,11 +1,14 @@
 //! Menú nativo. Solo macOS lo muestra (en Linux y Windows la ventana no lleva
 //! barra, como hasta ahora). Cada entrada propia emite `menu-action` con su id y
 //! el frontend la atiende; las etiquetas siguen el idioma de la app.
+#[cfg(desktop)]
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Runtime};
 
+#[cfg(desktop)]
 pub const MENU_EVENT: &str = "menu-action";
 
+#[cfg(desktop)]
 fn build_menu<R: Runtime>(app: &AppHandle<R>, en: bool) -> tauri::Result<Menu<R>> {
     let l = |es: &'static str, en_text: &'static str| if en { en_text } else { es };
     let item = |id: &str, text: &str| MenuItem::with_id(app, id, text, true, None::<&str>);
@@ -65,10 +68,15 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>, en: bool) -> tauri::Result<Menu<R>
 /// El frontend lo llama al arrancar y al cambiar de idioma.
 #[tauri::command]
 pub fn set_app_menu<R: Runtime>(app: AppHandle<R>, lang: String) -> Result<(), String> {
-    let menu = build_menu(&app, lang == "en").map_err(|e| e.to_string())?;
-    #[cfg(target_os = "macos")]
-    app.set_menu(menu).map_err(|e| e.to_string())?;
-    #[cfg(not(target_os = "macos"))]
-    drop(menu);
+    #[cfg(desktop)]
+    {
+        let menu = build_menu(&app, lang == "en").map_err(|e| e.to_string())?;
+        #[cfg(target_os = "macos")]
+        app.set_menu(menu).map_err(|e| e.to_string())?;
+        #[cfg(not(target_os = "macos"))]
+        drop(menu);
+    }
+    #[cfg(mobile)]
+    let _ = (app, lang);
     Ok(())
 }

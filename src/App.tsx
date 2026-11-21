@@ -8,7 +8,7 @@ import {
   useState,
   type CSSProperties,
 } from "react";
-import { LucideProvider } from "lucide-react";
+import { ArrowLeft, LucideProvider } from "lucide-react";
 import { AnimatePresence, domMax, LazyMotion, m, MotionConfig } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 import { message } from "@tauri-apps/plugin-dialog";
@@ -68,6 +68,7 @@ import type { LinkGraph } from "./lib/linkGraph";
 import { planLinkRewrites, rewriteWikiLinks, type PathMove } from "./lib/wikiRename";
 import { useStartupNotifications } from "./components/useStartupNotifications";
 import { DEFAULT_BASE_DIR } from "./lib/vaultConfig";
+import { IS_MOBILE } from "./lib/platform";
 import { usePanelWidth } from "./components/usePanelWidth";
 import Sidebar, { useSidebarWidth, type TabId } from "./components/Sidebar";
 import Tour, { type TourTab } from "./components/Tour";
@@ -489,7 +490,8 @@ function App({
 
   /** La bienvenida deja el tour pendiente: se lanza al abrir el primer vault. */
   function markTourPending() {
-    storeTourStatus("pending");
+    // El recorrido señala la barra lateral, que en el móvil no existe.
+    if (!IS_MOBILE) storeTourStatus("pending");
   }
 
   function finishTour() {
@@ -525,9 +527,20 @@ function App({
       ? dailyNoteDateFor(note.path, currentVault, settings.dailyNotesFolder)
       : null;
 
+  /** Móvil: «Volver» guarda la nota y cierra lo abierto para ver el explorador. */
+  async function backToExplorer() {
+    const path = note?.path;
+    try {
+      if (path) await handleBeforeFileAction(path);
+    } catch {
+      return; // Sin guardar no se cierra: el editor sigue mostrando la nota.
+    }
+    closeOpenNote();
+  }
+
   const notesView = currentVault === null ? null : (
     <div className="flex h-full w-full">
-      <FileExplorer
+      {!(IS_MOBILE && showEntryPanel) && <FileExplorer
         key={currentVault}
         ref={explorerRef}
         vaultPath={currentVault}
@@ -544,11 +557,11 @@ function App({
         onExportPdf={handleExportPdf}
         noteIcons={noteIcons}
         onSetIcon={setNoteIconFor}
-        width={explorerWidth}
+        width={IS_MOBILE ? "100%" : explorerWidth}
         shortcuts={settings.shortcuts}
-      />
+      />}
 
-      {!rightHidden && (
+      {!rightHidden && !IS_MOBILE && (
         <div
           role="separator"
           aria-orientation="vertical"
@@ -567,7 +580,17 @@ function App({
 
       {showEntryPanel && (
         <div className="flex min-w-0 flex-1 flex-col">
-          {tabs.length > 0 && (
+          {IS_MOBILE && (
+            <button
+              type="button"
+              onClick={() => void backToExplorer()}
+              className="flex min-h-11 shrink-0 items-center gap-1.5 border-b border-gus-border px-3 text-sm text-gus-muted outline-none focus-visible:ring-2 focus-visible:ring-gus-accent/60"
+            >
+              <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+              {t("app.backToNotes")}
+            </button>
+          )}
+          {tabs.length > 0 && !IS_MOBILE && (
             <NoteTabs tabs={tabs} activePath={note?.path ?? null} onSelect={(tab) => void handleSelectTab(tab)} onClose={(tab) => void handleCloseTab(tab)} />
           )}
           {image ? (
@@ -641,7 +664,8 @@ function App({
                     className="min-h-0 flex-1"
                   />
 
-                  <BacklinksPanel
+                  {/* En el móvil quitaría media pantalla al texto. */}
+                  {!IS_MOBILE && <BacklinksPanel
                     graph={linkGraph}
                     status={linkGraphStatus}
                     error={linkGraphError}
@@ -654,7 +678,7 @@ function App({
                       })
                     }
                     onOpenWikiTarget={(target) => void handleOpenWikiLink(target)}
-                  />
+                  />}
                 </div>
               )}
             </>
@@ -662,7 +686,7 @@ function App({
         </div>
       )}
 
-      {!showEntryPanel && (
+      {!showEntryPanel && !IS_MOBILE && (
         <WelcomePanel
           vaultPath={currentVault}
           refreshKey={vaultRefresh}
@@ -685,6 +709,8 @@ function App({
         <div
           className={clsx(
             "flex gus-app-root overflow-hidden bg-gus-bg text-gus-text",
+            // Móvil: barra de navegación abajo (MainActivity ya aparta las barras del sistema).
+            IS_MOBILE && "flex-col-reverse",
             !settings.animations && "gus-no-motion",
           )}
           style={
@@ -886,7 +912,7 @@ function App({
                 info={updateNotice}
                 current={APP_VERSION}
                 // A la derecha del menú lateral para no tapar sus botones.
-                offsetLeft={currentVault ? sidebarWidth + 16 : 16}
+                offsetLeft={currentVault && !IS_MOBILE ? sidebarWidth + 16 : 16}
                 self={selfUpdate}
                 onRestart={() => void restartAndInstall()}
                 onRetry={() => void retryDownload()}

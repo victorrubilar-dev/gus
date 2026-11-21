@@ -75,13 +75,14 @@ export default function EditorHeader({
 
   return (
   <header className="shrink-0 border-b border-gus-border gus-editor-pad py-4">
-    <div className="flex items-start gap-3">
+    {/* Con poco ancho (móvil) los botones bajan de línea en vez de aplastar el título. */}
+    <div className="flex flex-wrap items-start gap-3">
       <input
         value={title}
         onChange={(event) => onTitleChange(event.target.value)}
         placeholder={t("common.untitled")}
         aria-label={t("editor.title")}
-        className="min-w-0 flex-1 bg-transparent text-xl font-semibold text-gus-text outline-none placeholder:text-gus-muted"
+        className="min-w-[12rem] flex-1 bg-transparent text-xl font-semibold text-gus-text outline-none placeholder:text-gus-muted"
       />
 
       <SegmentedControl

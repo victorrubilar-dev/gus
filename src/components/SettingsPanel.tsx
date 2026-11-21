@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
+  ChevronLeft,
+  ChevronRight,
   Compass,
   Info,
   Keyboard,
@@ -30,6 +32,7 @@ import {
   type SettingDefinition,
   type SettingsCategoryId,
 } from "../lib/settings";
+import { IS_MOBILE } from "../lib/platform";
 import { AUTO_THEME, resolveTheme, THEME_LIST } from "../lib/themes";
 import type { CustomTheme } from "../lib/customThemes";
 import CustomThemesEditor from "./CustomThemesEditor";
@@ -60,6 +63,18 @@ const CATEGORY_ICONS: Record<SettingsCategoryId, LucideIcon> = {
   shortcuts: Keyboard,
   about: Info,
 };
+
+/** En el móvil no hay teclado físico ni recorrido guiado (señala la barra lateral). */
+const MOBILE_HIDDEN_CATEGORIES = new Set<SettingsCategoryId>(["shortcuts"]);
+const MOBILE_HIDDEN_KEYS = new Set<string>(["tour"]);
+const VISIBLE_CATEGORIES = IS_MOBILE
+  ? SETTINGS_CATEGORIES.filter((category) => !MOBILE_HIDDEN_CATEGORIES.has(category.id))
+  : SETTINGS_CATEGORIES;
+const VISIBLE_DEFINITIONS = IS_MOBILE
+  ? SETTINGS_DEFINITIONS.filter(
+      (definition) => !MOBILE_HIDDEN_CATEGORIES.has(definition.category) && !MOBILE_HIDDEN_KEYS.has(definition.key),
+    )
+  : SETTINGS_DEFINITIONS;
 
 const INPUT_CLASS =
   "rounded-lg border border-gus-border bg-gus-card px-3 py-2 text-sm text-gus-text outline-none transition-colors focus:border-gus-accent/60 placeholder:text-gus-muted";
@@ -459,6 +474,8 @@ export default function SettingsPanel({
 }: SettingsPanelProps) {
   const t = useT();
   const [activeCategory, setActiveCategory] = useState<SettingsCategoryId>("general");
+  /** Móvil: categoría abierta; sin ninguna se ve la lista de categorías. */
+  const [mobileCategory, setMobileCategory] = useState<SettingsCategoryId | null>(null);
   const [query, setQuery] = useState("");
 
   const normalizedQuery = query.trim().toLowerCase();
@@ -466,7 +483,7 @@ export default function SettingsPanel({
 
   const searchable = useMemo(
     () =>
-      SETTINGS_DEFINITIONS.map((definition) => {
+      VISIBLE_DEFINITIONS.map((definition) => {
         const category = SETTINGS_CATEGORIES.find((entry) => entry.id === definition.category);
         const haystack = [
           t(definition.labelKey),
@@ -487,8 +504,10 @@ export default function SettingsPanel({
     const matches = searchable.filter(({ haystack }) => haystack.includes(normalizedQuery));
 
     const wanted = searching
-      ? SETTINGS_CATEGORIES.map((category) => category.id)
-      : [activeCategory];
+      ? VISIBLE_CATEGORIES.map((category) => category.id)
+      : IS_MOBILE
+        ? (mobileCategory ? [mobileCategory] : [])
+        : [activeCategory];
 
     return wanted
       .map((categoryId) => ({
@@ -498,7 +517,7 @@ export default function SettingsPanel({
           .filter((definition) => definition.category === categoryId),
       }))
       .filter((group) => group.items.length > 0);
-  }, [searchable, normalizedQuery, searching, activeCategory]);
+  }, [searchable, normalizedQuery, searching, activeCategory, mobileCategory]);
 
   function update<Key extends keyof AppSettings>(key: Key, value: AppSettings[Key]) {
     onChange({ ...settings, [key]: value });
@@ -631,7 +650,7 @@ export default function SettingsPanel({
 
     if (definition.kind === "language") {
       return (
-        <div className="flex flex-col items-end gap-1">
+        <div className={clsx("flex flex-col gap-1", !IS_MOBILE && "items-end")}>
           <div
             role="radiogroup"
             aria-label={t(definition.labelKey)}
@@ -647,7 +666,8 @@ export default function SettingsPanel({
                   aria-checked={isActive}
                   onClick={() => onLanguageChange(entry.value)}
                   className={clsx(
-                    "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-gus-accent/70",
+                    "inline-flex items-center justify-center gap-1.5 rounded-md px-3 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-gus-accent/70",
+                    IS_MOBILE ? "min-h-10 flex-1" : "py-1.5",
                     isActive
                       ? "bg-gus-accent text-gus-bg"
                       : "text-gus-muted hover:text-gus-text",
@@ -658,7 +678,7 @@ export default function SettingsPanel({
               );
             })}
           </div>
-          <p className="max-w-[16rem] text-right text-meta leading-snug text-gus-muted">
+          <p className={clsx("text-meta leading-snug text-gus-muted", !IS_MOBILE && "max-w-[16rem] text-right")}>
             {t("settings.languageHint")}
           </p>
         </div>
@@ -672,7 +692,7 @@ export default function SettingsPanel({
         { label: t("settings.about.releases"), url: RELEASES_URL },
       ];
       return (
-        <div className="flex flex-wrap items-center justify-end gap-2">
+        <div className={clsx("flex flex-wrap items-center gap-2", !IS_MOBILE && "justify-end")}>
           {links.map((link) => (
             <button
               key={link.url}
@@ -708,7 +728,7 @@ export default function SettingsPanel({
       const checking = updateState.status === "checking";
 
       return (
-        <div className="flex max-w-[22rem] flex-col items-end gap-1.5">
+        <div className={clsx("flex max-w-[22rem] flex-col gap-1.5", !IS_MOBILE && "items-end")}>
           <button
             type="button"
             onClick={onCheckUpdate}
@@ -727,7 +747,7 @@ export default function SettingsPanel({
             {checking ? t("update.checking") : t("settings.update")}
           </button>
 
-          <div role="status" aria-live="polite" className="text-right text-meta leading-snug">
+          <div role="status" aria-live="polite" className={clsx("text-meta leading-snug", !IS_MOBILE && "text-right")}>
             {available && (
               <p className="text-gus-accent">
                 {t("update.available", { version: available.version, current: APP_VERSION })}{" "}
@@ -861,6 +881,191 @@ export default function SettingsPanel({
 
   const totalResults = groups.reduce((total, group) => total + group.items.length, 0);
 
+  // Los temas personalizados son obra de la persona, no un ajuste: se quedan.
+  const resetSettings = () => onChange({ ...DEFAULT_SETTINGS, customThemes: settings.customThemes });
+
+  function searchField(width: string) {
+    return (
+      <label className="relative flex items-center">
+        <Search
+          className="pointer-events-none absolute left-3 h-4 w-4 text-gus-muted"
+          aria-hidden="true"
+        />
+        <input
+          type="text"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder={t("settings.searchPlaceholder")}
+          aria-label={t("settings.searchLabel")}
+          className={clsx(INPUT_CLASS, width, "py-2 pr-8 pl-9")}
+        />
+        {query && (
+          <button
+            type="button"
+            onClick={() => setQuery("")}
+            aria-label={t("settings.clearSearch")}
+            className="absolute right-2 flex h-5 w-5 items-center justify-center rounded-full text-gus-muted transition-colors hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/70 focus-visible:outline-none"
+          >
+            <X className="h-3.5 w-3.5" aria-hidden="true" />
+          </button>
+        )}
+      </label>
+    );
+  }
+
+  const results = (
+    <>
+      {searching && (
+        <p className="mb-4 text-body text-gus-muted" role="status">
+          {t("settings.results", { count: totalResults, query: query.trim() })}
+        </p>
+      )}
+
+      {groups.length === 0 ? (
+        <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-gus-border py-14 text-center">
+          <Search className="h-5 w-5 text-gus-muted" aria-hidden="true" />
+          <p className="text-sm text-gus-muted">
+            {t("settings.noResults", { query: query.trim() })}
+          </p>
+          <button
+            type="button"
+            onClick={() => setQuery("")}
+            className={clsx(INPUT_CLASS, "text-body text-gus-muted hover:text-gus-text")}
+          >
+            {t("settings.clearSearch")}
+          </button>
+        </div>
+      ) : (
+        groups.map((group) => {
+          const Icon = CATEGORY_ICONS[group.category.id];
+          return (
+            <div key={group.category.id} className="mb-6 last:mb-0">
+              <div className={clsx("mb-2.5 flex items-center gap-2", IS_MOBILE && !searching && "hidden")}>
+                <Icon className="h-4 w-4 text-gus-accent" strokeWidth={1.75} aria-hidden="true" />
+                <h3 className="text-body font-semibold tracking-wider text-gus-muted uppercase">
+                  {t(group.category.labelKey)}
+                </h3>
+                <span aria-hidden="true" className="h-px flex-1 bg-gus-border" />
+              </div>
+
+              <div className="flex flex-col gap-2">
+                {group.items.map((definition) => (
+                  <div
+                    key={definition.key}
+                    className="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-gus-border bg-gus-card px-4 py-3.5"
+                  >
+                    {/* Base de 14rem: si el control no cabe al lado, baja de línea. */}
+                    <div className="min-w-0 flex-[1_1_14rem]">
+                      <p className="text-sm font-medium text-gus-text">
+                        {definition.kind === "about"
+                          ? t(definition.labelKey, { version: APP_VERSION })
+                          : t(definition.labelKey)}
+                      </p>
+                      <p className="mt-0.5 text-body text-gus-muted">
+                        {t(definition.descriptionKey)}
+                      </p>
+                    </div>
+
+                    <div
+                      className={
+                        // Móvil: todo lo que no sea un interruptor va debajo del texto, a lo ancho.
+                        (IS_MOBILE && definition.kind !== "toggle") ||
+                        definition.kind === "theme" ||
+                        definition.kind === "shortcuts" ||
+                        definition.kind === "textarea"
+                          ? "w-full"
+                          : "shrink-0"
+                      }
+                    >
+                      {renderControl(definition)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })
+      )}
+    </>
+  );
+
+  // Móvil: lista de categorías al estilo de los ajustes del sistema; cada una abre su página.
+  if (IS_MOBILE) {
+    const open = !searching && mobileCategory
+      ? VISIBLE_CATEGORIES.find((category) => category.id === mobileCategory) ?? null
+      : null;
+    return (
+      <section className="flex h-full flex-col overflow-hidden">
+        {open ? (
+          <header className="grid shrink-0 grid-cols-[1fr_auto_1fr] items-center border-b border-gus-border px-1 py-1">
+            <button
+              type="button"
+              onClick={() => setMobileCategory(null)}
+              className="flex min-h-11 items-center gap-0.5 justify-self-start rounded-lg pr-2 text-sm text-gus-accent outline-none focus-visible:ring-2 focus-visible:ring-gus-accent/70"
+            >
+              <ChevronLeft className="h-5 w-5" aria-hidden="true" />
+              {t("app.tab.settingsShort")}
+            </button>
+            <h2 className="truncate text-sm font-semibold text-gus-text">{t(open.labelKey)}</h2>
+          </header>
+        ) : (
+          <header className="shrink-0 px-4 pt-6 pb-2">
+            <h2 className="text-2xl font-semibold tracking-tight text-gus-text">{t("app.tab.settingsShort")}</h2>
+            <p className="mt-0.5 text-body text-gus-muted">{t("settings.subtitle")}</p>
+            <div className="mt-4 grid">{searchField("w-full")}</div>
+          </header>
+        )}
+
+        <div className="gus-scrollbar min-h-0 flex-1 overflow-y-auto px-4 pt-3 pb-8">
+          {open || searching ? (
+            results
+          ) : (
+            <>
+              <ul className="divide-y divide-gus-border overflow-hidden rounded-2xl border border-gus-border bg-gus-card">
+                {VISIBLE_CATEGORIES.map((category) => {
+                  const Icon = CATEGORY_ICONS[category.id];
+                  // Lo que hay dentro, para no tener que entrar a mirar.
+                  const summary = VISIBLE_DEFINITIONS.filter((definition) => definition.category === category.id)
+                    .map((definition) => t(definition.labelKey, { version: APP_VERSION }))
+                    .join(" · ");
+                  return (
+                    <li key={category.id}>
+                      <button
+                        type="button"
+                        onClick={() => setMobileCategory(category.id)}
+                        className="flex min-h-16 w-full items-center gap-3 px-4 py-3 text-left outline-none transition-colors focus-visible:bg-gus-panel active:bg-gus-panel"
+                      >
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gus-accent/15 text-gus-accent">
+                          <Icon className="h-[18px] w-[18px]" strokeWidth={1.75} aria-hidden="true" />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-sm font-medium text-gus-text">{t(category.labelKey)}</span>
+                          <span className="block truncate text-meta text-gus-muted">{summary}</span>
+                        </span>
+                        <ChevronRight className="h-4 w-4 shrink-0 text-gus-muted" aria-hidden="true" />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+
+              <button
+                type="button"
+                onClick={resetSettings}
+                title={t("settings.resetTitle")}
+                className="mt-6 flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-gus-border bg-gus-card text-sm text-rose-300 outline-none focus-visible:ring-2 focus-visible:ring-gus-accent/70 active:bg-gus-panel"
+              >
+                <RotateCcw className="h-4 w-4" aria-hidden="true" />
+                {t("settings.reset")}
+              </button>
+              <p className="mt-4 text-center text-meta text-gus-muted">Gus {APP_VERSION}</p>
+            </>
+          )}
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="flex h-full flex-col overflow-hidden">
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-gus-border px-6 py-4">
@@ -872,35 +1077,11 @@ export default function SettingsPanel({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <label className="relative flex items-center">
-            <Search
-              className="pointer-events-none absolute left-3 h-4 w-4 text-gus-muted"
-              aria-hidden="true"
-            />
-            <input
-              type="text"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder={t("settings.searchPlaceholder")}
-              aria-label={t("settings.searchLabel")}
-              className={clsx(INPUT_CLASS, "w-60 py-2 pr-8 pl-9")}
-            />
-            {query && (
-              <button
-                type="button"
-                onClick={() => setQuery("")}
-                aria-label={t("settings.clearSearch")}
-                className="absolute right-2 flex h-5 w-5 items-center justify-center rounded-full text-gus-muted transition-colors hover:text-gus-text focus-visible:ring-2 focus-visible:ring-gus-accent/70 focus-visible:outline-none"
-              >
-                <X className="h-3.5 w-3.5" aria-hidden="true" />
-              </button>
-            )}
-          </label>
+          {searchField("w-60")}
 
           <button
             type="button"
-            // Los temas personalizados son obra de la persona, no un ajuste: se quedan.
-            onClick={() => onChange({ ...DEFAULT_SETTINGS, customThemes: settings.customThemes })}
+            onClick={resetSettings}
             title={t("settings.resetTitle")}
             className={clsx(
               INPUT_CLASS,
@@ -913,10 +1094,14 @@ export default function SettingsPanel({
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1">
+      {/* Móvil: categorías en una fila desplazable encima del contenido. */}
+      <div className={clsx("flex min-h-0 flex-1", IS_MOBILE && "flex-col")}>
         <nav
           aria-label={t("settings.categoriesLabel")}
-          className="gus-scrollbar flex w-52 shrink-0 flex-col gap-1 overflow-y-auto border-r border-gus-border p-3"
+          className={clsx(
+            "gus-scrollbar flex shrink-0 gap-1 border-gus-border p-3",
+            IS_MOBILE ? "overflow-x-auto border-b" : "w-52 flex-col overflow-y-auto border-r",
+          )}
         >
           {SETTINGS_CATEGORIES.map((category) => {
             const Icon = CATEGORY_ICONS[category.id];
@@ -935,7 +1120,7 @@ export default function SettingsPanel({
                   setQuery("");
                 }}
                 className={clsx(
-                  "flex items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-gus-accent/70",
+                  "flex shrink-0 items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-gus-accent/70",
                   isActive
                     ? "bg-gus-accent/15 text-gus-accent"
                     : "text-gus-muted hover:bg-gus-card hover:text-gus-text",
@@ -949,75 +1134,8 @@ export default function SettingsPanel({
           })}
         </nav>
 
-        <div className="gus-scrollbar min-h-0 flex-1 overflow-y-auto px-6 py-5">
-          {searching && (
-            <p className="mb-4 text-body text-gus-muted" role="status">
-              {t("settings.results", { count: totalResults, query: query.trim() })}
-            </p>
-          )}
-
-          {groups.length === 0 ? (
-            <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-gus-border py-14 text-center">
-              <Search className="h-5 w-5 text-gus-muted" aria-hidden="true" />
-              <p className="text-sm text-gus-muted">
-                {t("settings.noResults", { query: query.trim() })}
-              </p>
-              <button
-                type="button"
-                onClick={() => setQuery("")}
-                className={clsx(INPUT_CLASS, "text-body text-gus-muted hover:text-gus-text")}
-              >
-                {t("settings.clearSearch")}
-              </button>
-            </div>
-          ) : (
-            groups.map((group) => {
-              const Icon = CATEGORY_ICONS[group.category.id];
-              return (
-                <div key={group.category.id} className="mb-6 last:mb-0">
-                  <div className="mb-2.5 flex items-center gap-2">
-                    <Icon className="h-4 w-4 text-gus-accent" strokeWidth={1.75} aria-hidden="true" />
-                    <h3 className="text-body font-semibold tracking-wider text-gus-muted uppercase">
-                      {t(group.category.labelKey)}
-                    </h3>
-                    <span aria-hidden="true" className="h-px flex-1 bg-gus-border" />
-                  </div>
-
-                  <div className="flex flex-col gap-2">
-                    {group.items.map((definition) => (
-                      <div
-                        key={definition.key}
-                        className="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-gus-border bg-gus-card px-4 py-3.5"
-                      >
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium text-gus-text">
-                            {definition.kind === "about"
-                              ? t(definition.labelKey, { version: APP_VERSION })
-                              : t(definition.labelKey)}
-                          </p>
-                          <p className="mt-0.5 text-body text-gus-muted">
-                            {t(definition.descriptionKey)}
-                          </p>
-                        </div>
-
-                        <div
-                          className={
-                            definition.kind === "theme" ||
-                            definition.kind === "shortcuts" ||
-                            definition.kind === "textarea"
-                              ? "w-full"
-                              : "shrink-0"
-                          }
-                        >
-                          {renderControl(definition)}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })
-          )}
+        <div className={clsx("gus-scrollbar min-h-0 flex-1 overflow-y-auto py-5", IS_MOBILE ? "px-4" : "px-6")}>
+          {results}
         </div>
       </div>
     </section>

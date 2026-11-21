@@ -38,6 +38,19 @@ jobs:
             exit 1
           fi
 
+      # APK de Android firmada con un keystore propio (no es la clave del actualizador).
+      #   Secrets: ANDROID_KEY_BASE64   (base64 -w0 del .jks)
+      #            ANDROID_KEY_ALIAS    (alias de la clave dentro del .jks)
+      #            ANDROID_KEY_PASSWORD (contraseña del almacén y de la clave)
+      - name: Existe el keystore de Android
+        env:
+          ANDROID_KEY_BASE64: ${{ secrets.ANDROID_KEY_BASE64 }}
+        run: |
+          if [ -z "$ANDROID_KEY_BASE64" ]; then
+            echo "::error::Falta el secret ANDROID_KEY_BASE64 (ver la nota sobre Android en release.yml)"
+            exit 1
+          fi
+
       - name: El tag coincide con la versión de package.json
         run: |
           version=$(node -p "require('./package.json').version")
@@ -135,6 +148,72 @@ jobs:
           if-no-files-found: error
 
   # ─────────────────────────────────────────────────────────────
+  # 1b) APK de Android (arm64, la de casi todos los teléfonos).
+  #     El runner ya trae el SDK y el NDK de Android.
+  # ─────────────────────────────────────────────────────────────
+  android:
+    needs: [ci, test]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PNPM
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install JS dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Rust para Android
+        run: rustup target add aarch64-linux-android
+
+      - name: Keystore
+        env:
+          ANDROID_KEY_BASE64: ${{ secrets.ANDROID_KEY_BASE64 }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          echo "$ANDROID_KEY_BASE64" | base64 -d > "$RUNNER_TEMP/gus-release.jks"
+          {
+            echo "storeFile=$RUNNER_TEMP/gus-release.jks"
+            echo "keyAlias=$ANDROID_KEY_ALIAS"
+            echo "password=$ANDROID_KEY_PASSWORD"
+          } > src-tauri/gen/android/keystore.properties
+
+      - name: Build APK
+        run: |
+          export NDK_HOME="$ANDROID_NDK_LATEST_HOME"
+          pnpm tauri android build --apk --target aarch64
+
+      - name: Collect APK
+        run: |
+          mkdir -p dist-assets
+          apk=$(find src-tauri/gen/android/app/build/outputs/apk -name '*-release.apk' | head -1)
+          test -n "$apk"
+          cp "$apk" "dist-assets/gus_${TAG#v}_arm64.apk"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundles-android
+          path: dist-assets/
+          if-no-files-found: error
+
+  # ─────────────────────────────────────────────────────────────
   # 2) Firma los instaladores de Windows con SignPath.
   #    Solo se activa cuando existen los secrets (ver abajo);
   #    sin ellos el job termina sin hacer nada y el .exe/.msi
@@ -207,7 +286,7 @@ jobs:
   # 3) Publica TODO en un único draft release (sin carreras)
   # ─────────────────────────────────────────────────────────────
   release:
-    needs: [build, sign-windows]
+    needs: [build, android, sign-windows]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -227,6 +306,12 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: bundles-macos
+          path: all-assets
+
+      - name: Download Android APK
+        uses: actions/download-artifact@v4
+        with:
+          name: bundles-android
           path: all-assets
 
       - name: Download Windows installers (sin firma)

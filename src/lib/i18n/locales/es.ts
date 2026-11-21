@@ -43,6 +43,7 @@ export default {
   "app.tab.calendar": "Calendario",
   "app.tab.graph": "Grafo",
   "app.tab.search": "Buscar",
+  "app.tab.settingsShort": "Ajustes",
   "app.tab.library": "Biblioteca",
   "app.tab.gallery": "Galería",
   "tasks.newSubtask": "Nueva subtarea…",
@@ -211,6 +212,7 @@ export default {
   "app.trash": "Papelera",
   "app.settings": "Configuración",
   "app.collapseSidebar": "Contraer barra",
+  "app.backToNotes": "Volver a las notas",
   "app.expandSidebar": "Expandir barra",
   "app.loadingNote": "Cargando nota…",
   "tabs.label": "Notas abiertas",
@@ -1164,6 +1166,7 @@ export default {
   "onboarding.subtitle":
     "Notas, tareas y hábitos en un solo sitio. Todo se queda en tu equipo: sin cuenta y sin nube.",
   "onboarding.start": "Empezar",
+  "onboarding.subtitleMobile": "Notas, tareas y hábitos en un solo sitio. Todo se queda en tu teléfono: sin cuenta y sin nube.",
   "onboarding.setup": "Antes de empezar, elige el idioma y el estilo de Gus.",
   "onboarding.language": "Idioma de la aplicación",
   "onboarding.languageHint":
@@ -1211,6 +1214,7 @@ export default {
   "firstVault.existingButton": "Elegir carpeta…",
   "firstVault.or": "o",
   "firstVault.back": "Volver",
+  "firstVault.introMobile": "Un vault es una carpeta del teléfono donde Gus guarda tus notas como archivos .md. Nada sale del teléfono.",
   "tour.habits.title": "Hábitos",
   "tour.habits.body": "Elige días fijos o una meta semanal (por ejemplo, 3 veces por semana, el día que quieras) y sigue tus rachas.",
   "tour.more.title": "Y mucho más",

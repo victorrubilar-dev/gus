@@ -12,6 +12,8 @@ import {
 } from "lucide-react";
 import clsx from "clsx";
 import { invoke } from "@tauri-apps/api/core";
+import { IS_MOBILE } from "../lib/platform";
+import { folderPickerPath } from "../lib/androidPath";
 import { joinPath } from "../lib/fileName";
 import gusIcon from "../assets/gus-icon-512.png";
 import { LANGUAGE_LIST, useT, type Language } from "../lib/i18n";
@@ -180,7 +182,7 @@ export default function VaultPicker({
       });
 
       if (typeof selected !== "string") return;
-      await onAddExisting(selected);
+      await onAddExisting(folderPickerPath(selected));
     } catch (error: unknown) {
       setLocalError(String(error));
     } finally {
@@ -202,8 +204,9 @@ export default function VaultPicker({
       });
 
       if (typeof selected !== "string") return;
-      setBaseInput(selected);
-      onSelectBaseDir(selected);
+      const folder = folderPickerPath(selected);
+      setBaseInput(folder);
+      onSelectBaseDir(folder);
     } catch (error: unknown) {
       setLocalError(String(error));
     } finally {
@@ -324,26 +327,35 @@ export default function VaultPicker({
 
   if (showWelcome && vaults.length === 0) {
     return (
-      <div className="gus-scrollbar flex h-full w-full items-center justify-center overflow-y-auto bg-gus-bg px-6 py-10">
+      <div
+        className={clsx(
+          "gus-scrollbar flex h-full w-full overflow-y-auto bg-gus-bg",
+          // Móvil: a pantalla completa, con «Empezar» abajo, al alcance del pulgar.
+          IS_MOBILE ? "flex-col px-5 pt-8 pb-5" : "items-center justify-center px-6 py-10",
+        )}
+      >
         <m.section
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.45, ease: "easeOut" }}
-          className="w-full max-w-md text-center"
+          className={clsx("w-full max-w-md text-center", IS_MOBILE && "mx-auto flex flex-1 flex-col")}
           aria-labelledby="welcome-title"
         >
           <m.div
             initial={{ opacity: 0, scale: 0.7 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: 0.08, type: "spring", stiffness: 260, damping: 18 }}
-            className="mb-5"
+            className={IS_MOBILE ? "mb-4" : "mb-5"}
             aria-hidden="true"
           >
             <img
               src={gusIcon}
               alt=""
               draggable={false}
-              className="mx-auto h-[110px] w-[110px] select-none drop-shadow-[0_10px_30px_rgba(0,0,0,0.35)]"
+              className={clsx(
+                "mx-auto select-none drop-shadow-[0_10px_30px_rgba(0,0,0,0.35)]",
+                IS_MOBILE ? "h-20 w-20" : "h-[110px] w-[110px]",
+              )}
             />
           </m.div>
 
@@ -363,7 +375,7 @@ export default function VaultPicker({
             transition={{ delay: 0.24, duration: 0.35 }}
             className="mx-auto mt-3 max-w-sm text-sm leading-6 text-gus-muted"
           >
-            {t("onboarding.subtitle")}
+            {t(IS_MOBILE ? "onboarding.subtitleMobile" : "onboarding.subtitle")}
           </m.p>
 
           {shownError && (
@@ -380,9 +392,12 @@ export default function VaultPicker({
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.38, duration: 0.35 }}
-            className="mt-7 flex flex-col gap-4 rounded-2xl border border-gus-border bg-gus-panel p-4 text-left"
+            className={clsx(
+              "flex flex-col text-left",
+              IS_MOBILE ? "mt-8 gap-6" : "mt-7 gap-4 rounded-2xl border border-gus-border bg-gus-panel p-4",
+            )}
           >
-            <p className="text-body leading-5 text-gus-muted">{t("onboarding.setup")}</p>
+            {!IS_MOBILE && <p className="text-body leading-5 text-gus-muted">{t("onboarding.setup")}</p>}
 
             <div>
               <p className="mb-1.5 text-meta font-semibold tracking-wider text-gus-muted uppercase">
@@ -403,7 +418,9 @@ export default function VaultPicker({
                       aria-checked={isActive}
                       onClick={() => onLanguageChange(entry.value)}
                       className={clsx(
-                        "flex-1 rounded-md px-3 py-1.5 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-gus-accent/70",
+                        "flex-1 rounded-md px-3 text-sm font-medium outline-none transition-colors",
+                        IS_MOBILE ? "min-h-10" : "py-1.5",
+                        "focus-visible:ring-2 focus-visible:ring-gus-accent/70",
                         isActive
                           ? "bg-gus-accent text-gus-bg"
                           : "text-gus-muted hover:text-gus-text",
@@ -443,6 +460,8 @@ export default function VaultPicker({
             </div>
           </m.div>
 
+          {IS_MOBILE && <div aria-hidden="true" className="min-h-8 flex-1" />}
+
           <m.button
             type="button"
             initial={{ opacity: 0, y: 10 }}
@@ -455,7 +474,11 @@ export default function VaultPicker({
               setShowWelcome(false);
               setLocalError(null);
             }}
-            className="mt-8 inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-gus-accent px-7 text-sm font-semibold text-gus-bg outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:ring-offset-2 focus-visible:ring-offset-gus-bg"
+            className={clsx(
+              "inline-flex min-h-12",
+              IS_MOBILE ? "w-full" : "mt-8",
+              "items-center justify-center gap-2 rounded-xl bg-gus-accent px-7 text-sm font-semibold text-gus-bg outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-gus-accent/60 focus-visible:ring-offset-2 focus-visible:ring-offset-gus-bg",
+            )}
           >
             {t("onboarding.start")}
             <ArrowRight className="h-4 w-4" aria-hidden="true" />
